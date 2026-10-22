@@ -10,6 +10,7 @@ use App\Models\Branch;
 use App\Models\FiscalYear;
 use App\Models\Invoice;
 use App\Models\Store;
+use App\Services\Sales\CustomerReceivableService;
 use App\Services\Sales\SalesService;
 use App\Support\Digits;
 use DomainException;
@@ -166,14 +167,19 @@ class SalesInvoiceController extends Controller
         return to_route('sales.show', $invoice);
     }
 
-    public function show(Request $request, Invoice $invoice): Response
-    {
+    public function show(
+        Request $request,
+        Invoice $invoice,
+        CustomerReceivableService $receivables,
+    ): Response {
         abort_unless($request->user()?->canManageSales(), 403);
         $this->assertSalesInvoice($invoice);
         $invoice->load(['items', 'customer.party']);
 
         return Inertia::render('sales/Show', [
             'can_confirm' => $request->user()->canConfirmSales(),
+            'can_receive' => $request->user()->canManageReceipts(),
+            'outstanding' => $receivables->outstandingForInvoice($invoice),
             'invoice' => [
                 'id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
@@ -186,6 +192,7 @@ class SalesInvoiceController extends Controller
                 'total' => $invoice->total,
                 'notes' => $invoice->notes,
                 'customer' => [
+                    'id' => $invoice->customer->id,
                     'name' => $invoice->customer->party->name,
                     'code' => $invoice->customer->party->code,
                     'phone' => $invoice->customer->party->phone,

@@ -2,6 +2,7 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import {
     BarChart3,
+    HandCoins,
     LayoutGrid,
     PackageSearch,
     ShoppingCart,
@@ -24,6 +25,7 @@ import { dashboard } from '@/routes';
 import { index as parties } from '@/routes/parties';
 import { index as products } from '@/routes/products';
 import { index as reports } from '@/routes/reports';
+import { index as receipts } from '@/routes/receipts';
 import { index as sales } from '@/routes/sales';
 import type { NavItem } from '@/types';
 
@@ -63,6 +65,14 @@ const mainNavItems = computed<NavItem[]>(() => {
             title: 'فروش و صندوق',
             href: sales(),
             icon: ShoppingCart,
+        });
+    }
+
+    if (user.value && ['manager', 'accountant'].includes(user.value.role)) {
+        items.push({
+            title: 'دریافت‌ها',
+            href: receipts(),
+            icon: HandCoins,
         });
     }
 

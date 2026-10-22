@@ -23,6 +23,7 @@ import {
     destroy as destroySale,
     index as salesIndex,
 } from '@/routes/sales';
+import { create as createReceipt } from '@/routes/receipts';
 
 type SaleStatus =
     | 'draft'
@@ -34,6 +35,8 @@ type SaleStatus =
 
 type Props = {
     can_confirm: boolean;
+    can_receive: boolean;
+    outstanding: string;
     invoice: {
         id: number;
         invoice_number: string;
@@ -46,6 +49,7 @@ type Props = {
         total: string;
         notes: string | null;
         customer: {
+            id: number;
             name: string;
             code: string;
             phone: string | null;
@@ -120,6 +124,9 @@ const statusMeta: Record<SaleStatus, { label: string; className: string }> = {
     },
 };
 const isDraft = computed(() => props.invoice.status === 'draft');
+const canReceive = computed(
+    () => props.can_receive && !isDraft.value && Number(props.outstanding) > 0,
+);
 const fieldError = (key: string) =>
     (form.errors as Record<string, string>)[key];
 
@@ -475,6 +482,34 @@ defineOptions({
                         <Spinner v-if="form.processing" />
                         <Check v-else class="size-4" />
                         تأیید و ثبت قطعی فروش
+                    </Button>
+                </section>
+
+                <section
+                    v-if="canReceive"
+                    class="rounded-2xl border border-emerald-500/20 bg-emerald-500/[.055] p-5"
+                >
+                    <div class="flex items-center gap-2">
+                        <CircleCheck class="size-5 text-emerald-600" />
+                        <h2 class="text-sm font-bold">مانده فاکتور</h2>
+                    </div>
+                    <p class="mt-3 text-xl font-black">
+                        {{ money.format(Number(outstanding)) }}
+                        <small class="text-[9px] font-medium">ریال</small>
+                    </p>
+                    <Button as-child class="mt-4 h-10 w-full rounded-xl">
+                        <Link
+                            :href="
+                                createReceipt.url({
+                                    query: {
+                                        customer_id: invoice.customer.id,
+                                        invoice_id: invoice.id,
+                                    },
+                                })
+                            "
+                        >
+                            ثبت دریافت وجه
+                        </Link>
                     </Button>
                 </section>
 

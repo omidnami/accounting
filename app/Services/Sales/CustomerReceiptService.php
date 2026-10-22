@@ -33,6 +33,7 @@ class CustomerReceiptService
         private readonly DocumentNumberService $documentNumbers,
         private readonly PostingService $posting,
         private readonly SettingService $settings,
+        private readonly CustomerReceivableService $receivables,
     ) {}
 
     /**
@@ -125,8 +126,8 @@ class CustomerReceiptService
             $period = AccountingPeriod::query()
                 ->where('store_id', $storeId)
                 ->where('fiscal_year_id', $fiscalYearId)
-                ->where('starts_on', '<=', $receiptDate)
-                ->where('ends_on', '>=', $receiptDate)
+                ->whereDate('starts_on', '<=', $receiptDate)
+                ->whereDate('ends_on', '>=', $receiptDate)
                 ->first();
 
             if (! $period) {
@@ -159,7 +160,7 @@ class CustomerReceiptService
                 $amount = Decimal::normalize($allocation['amount'], 2);
 
                 if (! Decimal::isPositive($amount)
-                    || Decimal::compare($amount, $this->outstandingFor($invoice), 2) > 0) {
+                    || Decimal::compare($amount, $this->receivables->outstandingForInvoice($invoice), 2) > 0) {
                     throw new DomainException('مبلغ دریافت از مانده فاکتور بیشتر است.');
                 }
 
@@ -273,23 +274,5 @@ class CustomerReceiptService
 
             return $receipt->refresh()->load(['allocations.invoice', 'customer.party', 'check']);
         });
-    }
-
-    private function outstandingFor(Invoice $invoice): string
-    {
-        $received = (string) $invoice->receiptAllocations()
-            ->whereHas('receipt', function ($query): void {
-                $query->where('status', TreasuryDocumentStatus::Confirmed);
-            })
-            ->sum('amount');
-        $returned = (string) Invoice::query()
-            ->where('parent_invoice_id', $invoice->id)
-            ->where('type', InvoiceType::SalesReturn)
-            ->where('status', InvoiceStatus::Confirmed)
-            ->sum('total');
-        $outstanding = Decimal::subtract($invoice->total, $received, 2);
-        $outstanding = Decimal::subtract($outstanding, $returned, 2);
-
-        return Decimal::compare($outstanding, '0', 2) > 0 ? $outstanding : '0.00';
     }
 }

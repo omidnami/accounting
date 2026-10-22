@@ -30,6 +30,7 @@ class SalesService
         private readonly InventoryService $inventory,
         private readonly PostingService $posting,
         private readonly SettingService $settings,
+        private readonly CustomerReceivableService $receivables,
     ) {}
 
     /**
@@ -218,7 +219,7 @@ class SalesService
             }
 
             $projectedCredit = Decimal::add(
-                $this->customerOutstanding($customer),
+                $this->receivables->customerOutstanding($customer, true),
                 $locked->total,
                 Decimal::MONEY_SCALE,
             );
@@ -327,39 +328,6 @@ class SalesService
 
             return $locked->refresh()->load(['items', 'customer.party']);
         });
-    }
-
-    private function customerOutstanding(Customer $customer): string
-    {
-        $total = '0.00';
-        $invoices = Invoice::query()
-            ->where('customer_id', $customer->id)
-            ->where('type', InvoiceType::Sales)
-            ->whereIn('status', [
-                InvoiceStatus::Confirmed,
-                InvoiceStatus::PartiallyPaid,
-            ])
-            ->lockForUpdate()
-            ->get();
-
-        foreach ($invoices as $invoice) {
-            $received = (string) $invoice->receiptAllocations()
-                ->whereHas('receipt', fn ($query) => $query->where('status', 'confirmed'))
-                ->sum('amount');
-            $returned = (string) Invoice::query()
-                ->where('parent_invoice_id', $invoice->id)
-                ->where('type', InvoiceType::SalesReturn)
-                ->where('status', InvoiceStatus::Confirmed)
-                ->sum('total');
-            $remaining = Decimal::subtract($invoice->total, $received, 2);
-            $remaining = Decimal::subtract($remaining, $returned, 2);
-
-            if (Decimal::compare($remaining, '0', 2) > 0) {
-                $total = Decimal::add($total, $remaining, 2);
-            }
-        }
-
-        return $total;
     }
 
     /**
