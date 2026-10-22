@@ -205,6 +205,67 @@ it('creates a sales draft and makes repeated submission idempotent', function ()
     expect(Invoice::query()->count())->toBe(1);
 });
 
+it('reports item-level validation errors for invalid sales lines', function () {
+    $context = salesUiContext();
+
+    $this->actingAs($context['user'])
+        ->post(route('sales.store'), salesInvoicePayload($context, [
+            'items' => [[
+                'product_id' => $context['product']->id,
+                'quantity' => '0',
+                'unit_price' => '200',
+                'discount_amount' => '0',
+                'tax_rate' => '120',
+            ]],
+        ]))
+        ->assertSessionHasErrors([
+            'items.0.quantity',
+            'items.0.tax_rate',
+        ]);
+});
+
+it('lets cashiers create drafts but requires a manager to confirm them', function () {
+    $context = salesUiContext(UserRole::Cashier);
+    $manager = User::factory()->create();
+    $manager->forceFill(['role' => UserRole::Manager])->save();
+
+    $this->actingAs($context['user'])
+        ->post(route('sales.store'), salesInvoicePayload($context))
+        ->assertRedirect();
+
+    $invoice = Invoice::query()->firstOrFail();
+
+    $this->actingAs($context['user'])
+        ->get(route('sales.show', $invoice))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('sales/Show')
+            ->where('can_confirm', false));
+
+    $this->actingAs($context['user'])
+        ->post(route('sales.confirm', $invoice), [
+            'warehouse_id' => $context['warehouse']->id,
+        ])
+        ->assertForbidden();
+
+    expect($invoice->refresh()->status)->toBe(InvoiceStatus::Draft);
+
+    $this->actingAs($manager)
+        ->get(route('sales.show', $invoice))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('sales/Show')
+            ->where('can_confirm', true));
+
+    $this->actingAs($manager)
+        ->post(route('sales.confirm', $invoice), [
+            'warehouse_id' => $context['warehouse']->id,
+        ])
+        ->assertRedirect(route('sales.show', $invoice));
+
+    expect($invoice->refresh()->status)->toBe(InvoiceStatus::Confirmed);
+});
+
 it('confirms a draft through the interface and posts inventory and accounting atomically', function () {
     $context = salesUiContext();
 

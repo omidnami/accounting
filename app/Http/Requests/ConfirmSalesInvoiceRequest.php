@@ -8,7 +8,7 @@ class ConfirmSalesInvoiceRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->canManageSales() ?? false;
+        return $this->user()?->canConfirmSales() ?? false;
     }
 
     /**

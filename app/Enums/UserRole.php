@@ -34,4 +34,9 @@ enum UserRole: string
     {
         return in_array($this, [self::Manager, self::Accountant, self::Cashier], true);
     }
+
+    public function canConfirmSales(): bool
+    {
+        return in_array($this, [self::Manager, self::Accountant], true);
+    }
 }

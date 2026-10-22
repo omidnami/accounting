@@ -33,6 +33,7 @@ type SaleStatus =
     | 'cancelled';
 
 type Props = {
+    can_confirm: boolean;
     invoice: {
         id: number;
         invoice_number: string;
@@ -430,7 +431,7 @@ defineOptions({
                 </section>
 
                 <section
-                    v-if="isDraft"
+                    v-if="isDraft && can_confirm"
                     class="rounded-2xl border border-primary/15 bg-primary/[.045] p-5"
                 >
                     <div class="flex items-center gap-2">
@@ -475,10 +476,32 @@ defineOptions({
                         <Check v-else class="size-4" />
                         تأیید و ثبت قطعی فروش
                     </Button>
+                </section>
+
+                <section
+                    v-else-if="isDraft && !can_confirm"
+                    class="rounded-2xl border border-amber-500/20 bg-amber-500/[.055] p-4"
+                >
+                    <div class="flex items-start gap-2.5">
+                        <CircleAlert
+                            class="mt-0.5 size-4 shrink-0 text-amber-600"
+                        />
+                        <p class="text-[10px] leading-6 text-muted-foreground">
+                            این پیش‌نویس آماده بررسی است. تأیید نهایی، خروج
+                            انبار و ثبت سند فقط توسط مدیر یا حسابدار انجام
+                            می‌شود.
+                        </p>
+                    </div>
+                </section>
+
+                <section
+                    v-if="isDraft"
+                    class="rounded-2xl border border-red-500/15 bg-card p-4"
+                >
                     <Button
                         type="button"
                         variant="ghost"
-                        class="mt-2 h-9 w-full rounded-xl text-red-600"
+                        class="h-9 w-full rounded-xl text-red-600"
                         :disabled="form.processing"
                         @click="deleteDraft"
                     >

@@ -124,4 +124,9 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     {
         return $this->role->canManageSales();
     }
+
+    public function canConfirmSales(): bool
+    {
+        return $this->role->canConfirmSales();
+    }
 }

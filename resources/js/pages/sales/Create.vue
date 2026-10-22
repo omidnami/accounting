@@ -110,6 +110,8 @@ const quantity = new Intl.NumberFormat('fa-IR', {
 });
 const fieldError = (key: string) =>
     (form.errors as Record<string, string>)[key];
+const lineError = (index: number, field: string) =>
+    (form.errors as Record<string, string>)[`items.${index}.${field}`];
 const lineGross = (line: SaleLine) =>
     parseNumber(line.quantity) * parseNumber(line.unit_price);
 const lineTax = (line: SaleLine) =>
@@ -747,6 +749,9 @@ defineOptions({
                                             <Minus class="size-3.5" />
                                         </Button>
                                     </div>
+                                    <InputError
+                                        :message="lineError(index, 'quantity')"
+                                    />
                                 </div>
                                 <div class="grid gap-1.5">
                                     <Label
@@ -765,6 +770,11 @@ defineOptions({
                                                 line,
                                                 'unit_price',
                                             )
+                                        "
+                                    />
+                                    <InputError
+                                        :message="
+                                            lineError(index, 'unit_price')
                                         "
                                     />
                                 </div>
@@ -787,6 +797,11 @@ defineOptions({
                                             )
                                         "
                                     />
+                                    <InputError
+                                        :message="
+                                            lineError(index, 'discount_amount')
+                                        "
+                                    />
                                 </div>
                                 <div class="grid gap-1.5">
                                     <Label
@@ -803,6 +818,9 @@ defineOptions({
                                         @blur="
                                             normalizeLineField(line, 'tax_rate')
                                         "
+                                    />
+                                    <InputError
+                                        :message="lineError(index, 'tax_rate')"
                                     />
                                 </div>
                             </div>

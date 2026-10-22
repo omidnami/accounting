@@ -173,6 +173,7 @@ class SalesInvoiceController extends Controller
         $invoice->load(['items', 'customer.party']);
 
         return Inertia::render('sales/Show', [
+            'can_confirm' => $request->user()->canConfirmSales(),
             'invoice' => [
                 'id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
