@@ -29,4 +29,13 @@ final class Digits
             '٩' => '9',
         ]);
     }
+
+    public static function normalizeNumber(string $value): string
+    {
+        return str_replace(
+            ['٫', '٬', ',', '،', ' '],
+            ['.', '', '', '', ''],
+            self::toLatin($value),
+        );
+    }
 }

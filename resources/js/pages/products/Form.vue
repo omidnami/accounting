@@ -60,6 +60,22 @@ const money = new Intl.NumberFormat('fa-IR', {
 });
 const fieldError = (key: string) =>
     (form.errors as Record<string, string>)[key];
+const normalizeNumber = (value: string) =>
+    value
+        .replace(/[۰-۹]/g, (digit) => `${'۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)}`)
+        .replace(/[٠-٩]/g, (digit) => `${'٠١٢٣٤٥٦٧٨٩'.indexOf(digit)}`)
+        .replace(/[٫]/g, '.')
+        .replace(/[٬,،\s]/g, '');
+
+type NumericField =
+    | 'purchase_price'
+    | 'sale_price'
+    | 'tax_rate'
+    | 'reorder_level';
+
+const normalizeNumericField = (field: NumericField) => {
+    form[field] = normalizeNumber(form[field]);
+};
 
 const submit = () => {
     if (props.product) {
@@ -250,6 +266,7 @@ defineOptions({
                                 inputmode="decimal"
                                 dir="ltr"
                                 class="h-11 rounded-xl px-4 text-left"
+                                @blur="normalizeNumericField('purchase_price')"
                             />
                             <InputError :message="form.errors.purchase_price" />
                         </div>
@@ -264,6 +281,7 @@ defineOptions({
                                 inputmode="decimal"
                                 dir="ltr"
                                 class="h-11 rounded-xl px-4 text-left"
+                                @blur="normalizeNumericField('sale_price')"
                             />
                             <InputError :message="form.errors.sale_price" />
                         </div>
@@ -276,6 +294,7 @@ defineOptions({
                                 inputmode="decimal"
                                 dir="ltr"
                                 class="h-11 rounded-xl px-4 text-left"
+                                @blur="normalizeNumericField('reorder_level')"
                             />
                             <p class="text-[10px] text-muted-foreground">
                                 در این مقدار یا کمتر، کالا کم‌موجود محسوب

@@ -88,6 +88,26 @@ it('creates a product with barcode, pricing, tax and reorder level', function ()
         ->and($product->version)->toBe(0);
 });
 
+it('normalizes Persian and Arabic numeric input with separators', function () {
+    $manager = productManagementUser(UserRole::Manager);
+
+    $this->actingAs($manager)
+        ->post(route('products.store'), productPayload([
+            'purchase_price' => '۱۰۰٬۰۰۰',
+            'sale_price' => '۱۵۰٫۵۰',
+            'tax_rate' => '۹',
+            'reorder_level' => '٥',
+        ]))
+        ->assertRedirect(route('products.index'));
+
+    $product = Product::query()->where('code', 'PROD-1001')->firstOrFail();
+
+    expect($product->purchase_price)->toBe('100000.00')
+        ->and($product->sale_price)->toBe('150.50')
+        ->and($product->tax_rate)->toBe('9.00')
+        ->and($product->reorder_level)->toBe('5.000');
+});
+
 it('enforces unique product codes and barcodes', function () {
     $manager = productManagementUser(UserRole::Manager);
 
@@ -223,6 +243,7 @@ it('scopes inventory aggregates to the selected store warehouse', function () {
             movementType: InventoryMovementType::Opening,
         );
     }
+    $secondWarehouse->update(['is_active' => false]);
 
     $this->actingAs($manager)
         ->get(route('products.index', ['warehouse_id' => $firstWarehouse->id]))
@@ -231,6 +252,17 @@ it('scopes inventory aggregates to the selected store warehouse', function () {
             ->where('products.data.0.total_quantity', '2.000')
             ->where('products.data.0.inventory_value', '200.00')
             ->where('summary.inventory_value', '200.00'));
+
+    $this->actingAs($manager)
+        ->get(route('products.index', ['warehouse_id' => $secondWarehouse->id]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('products.data.0.total_quantity', '7.000')
+            ->where('products.data.0.inventory_value', '700.00')
+            ->where('warehouses', fn ($warehouses) => collect($warehouses)->contains(
+                fn ($warehouse) => $warehouse['id'] === $secondWarehouse->id
+                    && $warehouse['is_active'] === false,
+            )));
 
     $this->actingAs($manager)
         ->get(route('products.index'))
@@ -287,7 +319,11 @@ it('updates a product and rejects stale changes', function () {
 
     $this->actingAs($manager)
         ->put(route('products.update', $product), $payload)
-        ->assertRedirect(route('products.index'));
+        ->assertRedirect(route('products.index'))
+        ->assertSessionHas('inertia.flash_data', fn (array $flash) => str_contains(
+            $flash['toast']['message'],
+            'کالای به‌روزشده',
+        ));
 
     expect($product->refresh()->version)->toBe(1)
         ->and($product->name)->toBe('کالای به‌روزشده');

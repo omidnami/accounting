@@ -66,6 +66,7 @@ type Props = {
         id: number;
         name: string;
         is_default: boolean;
+        is_active: boolean;
     }>;
     summary: {
         total: number;
@@ -301,6 +302,7 @@ defineOptions({
                         :value="warehouse.id.toString()"
                     >
                         {{ warehouse.name }}
+                        <span v-if="!warehouse.is_active">(غیرفعال)</span>
                     </option>
                 </select>
             </label>

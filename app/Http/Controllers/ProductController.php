@@ -34,7 +34,6 @@ class ProductController extends Controller
         if ($warehouseId !== null && ! Warehouse::query()
             ->whereKey($warehouseId)
             ->where('store_id', $store->id)
-            ->where('is_active', true)
             ->exists()) {
             throw ValidationException::withMessages([
                 'warehouse_id' => 'انبار انتخاب‌شده معتبر یا متعلق به این فروشگاه نیست.',
@@ -52,10 +51,10 @@ class ProductController extends Controller
             'products' => $catalog->paginate($store->id, $filters),
             'filters' => $filters,
             'warehouses' => $store->warehouses()
-                ->where('is_active', true)
+                ->orderByDesc('is_active')
                 ->orderByDesc('is_default')
                 ->orderBy('name')
-                ->get(['id', 'name', 'is_default']),
+                ->get(['id', 'name', 'is_default', 'is_active']),
             'summary' => $catalog->summary($store->id, $warehouseId),
         ]);
     }
@@ -114,7 +113,7 @@ class ProductController extends Controller
         $data = $request->validated();
 
         try {
-            DB::transaction(function () use ($product, $data): void {
+            $updatedName = DB::transaction(function () use ($product, $data): string {
                 $lockedProduct = Product::query()
                     ->whereKey($product->id)
                     ->lockForUpdate()
@@ -130,6 +129,8 @@ class ProductController extends Controller
                     ...collect($data)->except('version')->all(),
                     'version' => $lockedProduct->version + 1,
                 ]);
+
+                return $lockedProduct->name;
             }, attempts: 3);
         } catch (UniqueConstraintViolationException $exception) {
             $this->throwProductUniqueException($exception);
@@ -137,7 +138,7 @@ class ProductController extends Controller
 
         Inertia::flash('toast', [
             'type' => 'success',
-            'message' => "تغییرات کالای «{$product->name}» ذخیره شد.",
+            'message' => "تغییرات کالای «{$updatedName}» ذخیره شد.",
         ]);
 
         return to_route('products.index');

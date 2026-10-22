@@ -66,6 +66,17 @@ class ProductRequest extends FormRequest
             }
         }
 
+        foreach (['purchase_price', 'sale_price', 'tax_rate', 'reorder_level'] as $field) {
+            if (! $this->has($field)) {
+                continue;
+            }
+
+            $value = $this->input($field);
+            $normalized[$field] = is_string($value)
+                ? trim(Digits::normalizeNumber($value))
+                : $value;
+        }
+
         $this->merge($normalized);
     }
 
