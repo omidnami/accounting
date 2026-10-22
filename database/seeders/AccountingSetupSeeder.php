@@ -15,7 +15,14 @@ class AccountingSetupSeeder extends Seeder
         $store = Store::query()->where('code', 'MAIN')->firstOrFail();
         $year = app(JalaliDateService::class)->currentYear();
 
-        if (FiscalYear::query()->where('store_id', $store->id)->where('title', (string) $year)->exists()) {
+        $fiscalYear = FiscalYear::query()
+            ->where('store_id', $store->id)
+            ->where('title', (string) $year)
+            ->first();
+
+        if ($fiscalYear) {
+            app(FiscalYearSetupService::class)->ensureSequences($fiscalYear);
+
             return;
         }
 

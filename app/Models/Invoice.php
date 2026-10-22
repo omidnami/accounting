@@ -33,6 +33,7 @@ class Invoice extends Model
         'due_date',
         'customer_id',
         'supplier_id',
+        'parent_invoice_id',
         'subtotal',
         'discount_total',
         'tax_total',
@@ -97,6 +98,22 @@ class Invoice extends Model
     }
 
     /**
+     * @return BelongsTo<self, $this>
+     */
+    public function parentInvoice(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_invoice_id');
+    }
+
+    /**
+     * @return HasMany<self, $this>
+     */
+    public function childInvoices(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_invoice_id');
+    }
+
+    /**
      * @return HasMany<InvoiceItem, $this>
      */
     public function items(): HasMany
@@ -129,12 +146,23 @@ class Invoice extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    /**
+     * @return HasMany<PaymentAllocation, $this>
+     */
+    public function paymentAllocations(): HasMany
+    {
+        return $this->hasMany(PaymentAllocation::class);
+    }
+
     protected static function booted(): void
     {
         static::saving(function (Invoice $invoice): void {
-            if ($invoice->type === InvoiceType::Purchase) {
+            if (in_array($invoice->type, [
+                InvoiceType::Purchase,
+                InvoiceType::PurchaseReturn,
+            ], true)) {
                 if ($invoice->supplier_id === null || $invoice->customer_id !== null) {
-                    throw new DomainException('فاکتور خرید باید فقط به تأمین‌کننده متصل باشد.');
+                    throw new DomainException('فاکتور خرید یا برگشت خرید باید فقط به تأمین‌کننده متصل باشد.');
                 }
 
                 return;

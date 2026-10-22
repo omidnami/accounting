@@ -7,6 +7,7 @@ enum DocumentType: string
     case JournalEntry = 'journal_entry';
     case SalesInvoice = 'sales_invoice';
     case PurchaseInvoice = 'purchase_invoice';
+    case PurchaseReturn = 'purchase_return';
     case Quotation = 'quotation';
     case Receipt = 'receipt';
     case Payment = 'payment';

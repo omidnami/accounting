@@ -14,7 +14,7 @@ it('seeds the standard chart of accounts idempotently', function () {
 
     $this->seed(AccountSeeder::class);
 
-    expect($firstCount)->toBe(26)
+    expect($firstCount)->toBe(27)
         ->and(Account::query()->count())->toBe($firstCount)
         ->and(Store::query()->where('code', 'MAIN')->firstOrFail()->name)->toBe('فروشگاه سفارشی')
         ->and(Store::query()->where('code', 'MAIN')->firstOrFail()->defaultBranch)->not->toBeNull()

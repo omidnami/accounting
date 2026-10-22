@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class InvoiceItem extends Model
 {
@@ -14,6 +15,7 @@ class InvoiceItem extends Model
 
     protected $fillable = [
         'invoice_id',
+        'parent_invoice_item_id',
         'product_id',
         'product_code',
         'product_name',
@@ -45,6 +47,22 @@ class InvoiceItem extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    /**
+     * @return BelongsTo<self, $this>
+     */
+    public function parentItem(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_invoice_item_id');
+    }
+
+    /**
+     * @return HasMany<self, $this>
+     */
+    public function childItems(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_invoice_item_id');
     }
 
     /**

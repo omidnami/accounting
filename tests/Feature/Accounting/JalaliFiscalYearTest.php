@@ -30,7 +30,7 @@ it('creates twelve contiguous periods and default sequences', function () {
 
     expect($fiscalYear->calendar)->toBe(CalendarType::Jalali)
         ->and($fiscalYear->periods)->toHaveCount(12)
-        ->and($fiscalYear->documentSequences)->toHaveCount(7)
+        ->and($fiscalYear->documentSequences)->toHaveCount(8)
         ->and($fiscalYear->periods->first()->starts_on->toDateString())->toBe('2026-03-21')
         ->and($fiscalYear->periods->last()->ends_on->toDateString())->toBe('2027-03-20');
 

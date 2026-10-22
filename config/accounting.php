@@ -18,9 +18,11 @@ return [
         'vat_receivable' => '1106',
         'accounts_payable' => '2101',
         'vat_payable' => '2102',
+        'checks_payable' => '2103',
         'sales' => '4101',
         'sales_returns' => '4102',
         'sales_discounts' => '4103',
         'cogs' => '5101',
+        'purchase_return_difference' => '5106',
     ],
 ];

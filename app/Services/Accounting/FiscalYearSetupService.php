@@ -21,6 +21,7 @@ class FiscalYearSetupService
         'journal_entry' => 'JE-',
         'sales_invoice' => 'SI-',
         'purchase_invoice' => 'PI-',
+        'purchase_return' => 'PR-',
         'quotation' => 'QT-',
         'receipt' => 'RC-',
         'payment' => 'PY-',
@@ -70,25 +71,34 @@ class FiscalYearSetupService
                 ]);
             }
 
-            $branch = Branch::query()
-                ->where('store_id', $lockedStore->id)
-                ->where('is_default', true)
-                ->firstOrFail();
-
-            foreach (DocumentType::cases() as $type) {
-                DocumentSequence::query()->create([
-                    'store_id' => $lockedStore->id,
-                    'branch_id' => $branch->id,
-                    'fiscal_year_id' => $fiscalYear->id,
-                    'document_type' => $type,
-                    'prefix' => self::SEQUENCE_PREFIXES[$type->value].$year.'-',
-                    'next_number' => 1,
-                    'padding' => 6,
-                    'is_active' => true,
-                ]);
-            }
+            $this->ensureSequences($fiscalYear);
 
             return $fiscalYear->load(['periods', 'documentSequences']);
         });
+    }
+
+    public function ensureSequences(FiscalYear $fiscalYear): void
+    {
+        $branch = Branch::query()
+            ->where('store_id', $fiscalYear->store_id)
+            ->where('is_default', true)
+            ->firstOrFail();
+
+        foreach (DocumentType::cases() as $type) {
+            DocumentSequence::query()->firstOrCreate(
+                [
+                    'store_id' => $fiscalYear->store_id,
+                    'branch_id' => $branch->id,
+                    'fiscal_year_id' => $fiscalYear->id,
+                    'document_type' => $type,
+                ],
+                [
+                    'prefix' => self::SEQUENCE_PREFIXES[$type->value].$fiscalYear->title.'-',
+                    'next_number' => 1,
+                    'padding' => 6,
+                    'is_active' => true,
+                ],
+            );
+        }
     }
 }
