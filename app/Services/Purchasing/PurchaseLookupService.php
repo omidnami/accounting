@@ -5,6 +5,7 @@ namespace App\Services\Purchasing;
 use App\Models\InventoryBalance;
 use App\Models\Product;
 use App\Models\Supplier;
+use App\Support\Decimal;
 use App\Support\Digits;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -92,7 +93,10 @@ class PurchaseLookupService
                 'unit' => $product->unit,
                 'purchase_price' => $product->purchase_price,
                 'tax_rate' => $product->tax_rate,
-                'stock_quantity' => (string) ($product->getAttribute('stock_quantity') ?? '0.000'),
+                'stock_quantity' => Decimal::normalize(
+                    $product->getAttribute('stock_quantity') ?? 0,
+                    Decimal::QUANTITY_SCALE,
+                ),
             ])
             ->all();
     }

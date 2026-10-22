@@ -411,6 +411,7 @@ defineOptions({
                             :min="form.invoice_date"
                             class="h-11 rounded-xl"
                         />
+                        <InputError :message="form.errors.due_date" />
                     </div>
                     <div class="grid gap-2">
                         <Label for="warehouse">انبار ورود *</Label>
@@ -566,6 +567,11 @@ defineOptions({
                                                 line,
                                                 'discount_amount',
                                             )
+                                        "
+                                    />
+                                    <InputError
+                                        :message="
+                                            lineError(index, 'discount_amount')
                                         "
                                     />
                                 </div>

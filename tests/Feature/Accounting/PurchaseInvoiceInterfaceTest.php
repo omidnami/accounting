@@ -130,7 +130,8 @@ it('looks up active suppliers and products within the selected warehouse', funct
         ]))
         ->assertOk()
         ->assertJsonCount(1, 'data')
-        ->assertJsonPath('data.0.id', $context['product']->id);
+        ->assertJsonPath('data.0.id', $context['product']->id)
+        ->assertJsonPath('data.0.stock_quantity', '0.000');
 });
 
 it('creates a purchase draft and handles repeated submissions idempotently', function () {
@@ -197,6 +198,27 @@ it('confirms a purchase through the interface and receives stock atomically', fu
         ->and($balance->inventory_value)->toBe('400.00')
         ->and($entry->totalDebit())->toBe('440.00')
         ->and($entry->totalCredit())->toBe('440.00');
+});
+
+it('rejects confirmation when the supplier is deactivated after drafting', function () {
+    $context = purchaseUiContext();
+
+    $this->actingAs($context['user'])
+        ->post(route('purchases.store'), purchaseUiPayload($context))
+        ->assertRedirect();
+
+    $invoice = Invoice::query()->firstOrFail();
+    $context['supplier']->update(['is_active' => false]);
+
+    $this->actingAs($context['user'])
+        ->post(route('purchases.confirm', $invoice), [
+            'warehouse_id' => $context['warehouse']->id,
+        ])
+        ->assertSessionHasErrors('purchase');
+
+    expect($invoice->refresh()->status)->toBe(InvoiceStatus::Draft)
+        ->and(InventoryBalance::query()->count())->toBe(0)
+        ->and(JournalEntry::query()->count())->toBe(0);
 });
 
 it('validates line errors and deletes drafts only', function () {

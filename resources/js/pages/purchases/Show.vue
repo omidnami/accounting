@@ -11,6 +11,7 @@ import {
     Trash2,
     Warehouse,
 } from '@lucide/vue';
+import { computed } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
@@ -85,7 +86,7 @@ const statusLabel: Record<Status, string> = {
 };
 const fieldError = (key: string) =>
     (form.errors as Record<string, string>)[key];
-const isDraft = props.invoice.status === 'draft';
+const isDraft = computed(() => props.invoice.status === 'draft');
 
 const confirm = () => {
     form.post(confirmPurchase(props.invoice.id).url, {

@@ -10,6 +10,7 @@ use App\Models\AccountingPeriod;
 use App\Models\Branch;
 use App\Models\FiscalYear;
 use App\Models\Invoice;
+use App\Models\Party;
 use App\Models\Product;
 use App\Models\Supplier;
 use App\Models\User;
@@ -222,14 +223,27 @@ class PurchaseService
                 throw new DomainException('فقط فاکتور خرید پیش‌نویس قابل تأیید است.');
             }
 
-            $lockedInvoice->load(['items', 'supplier.party', 'branch', 'fiscalYear']);
-            $supplier = $lockedInvoice->supplier;
+            $lockedInvoice->load(['items', 'branch', 'fiscalYear']);
+            $supplier = Supplier::query()
+                ->whereKey($lockedInvoice->supplier_id)
+                ->lockForUpdate()
+                ->first();
 
-            if (! $supplier || ! $supplier->party?->is_active) {
+            if (! $supplier) {
                 throw new DomainException('تأمین‌کننده فاکتور معتبر و فعال نیست.');
             }
 
-            if ((int) $supplier->party->store_id !== (int) $lockedInvoice->store_id) {
+            $party = Party::query()
+                ->whereKey($supplier->party_id)
+                ->lockForUpdate()
+                ->first();
+            $supplier->setRelation('party', $party);
+
+            if (! $supplier->is_active || ! $party?->is_active) {
+                throw new DomainException('تأمین‌کننده فاکتور معتبر و فعال نیست.');
+            }
+
+            if ((int) $party->store_id !== (int) $lockedInvoice->store_id) {
                 throw new DomainException('تأمین‌کننده باید متعلق به فروشگاه فاکتور باشد.');
             }
 
@@ -254,7 +268,7 @@ class PurchaseService
             $inventoryTotal = '0.00';
             $taxTotal = '0.00';
 
-            foreach ($lockedInvoice->items as $item) {
+            foreach ($lockedInvoice->items->sortBy('product_id')->values() as $item) {
                 $itemCost = Decimal::subtract(
                     $item->line_total,
                     $item->tax_amount,
@@ -330,7 +344,7 @@ class PurchaseService
             $lockedInvoice->confirmDocument();
 
             return $lockedInvoice->refresh()->load(['items', 'supplier.party']);
-        });
+        }, attempts: 3);
     }
 
     /**
