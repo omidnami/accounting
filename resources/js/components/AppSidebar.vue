@@ -5,6 +5,7 @@ import {
     HandCoins,
     LayoutGrid,
     PackageSearch,
+    ShoppingBag,
     ShoppingCart,
     UsersRound,
 } from '@lucide/vue';
@@ -24,6 +25,7 @@ import {
 import { dashboard } from '@/routes';
 import { index as parties } from '@/routes/parties';
 import { index as products } from '@/routes/products';
+import { index as purchases } from '@/routes/purchases';
 import { index as reports } from '@/routes/reports';
 import { index as receipts } from '@/routes/receipts';
 import { index as sales } from '@/routes/sales';
@@ -49,6 +51,11 @@ const mainNavItems = computed<NavItem[]>(() => {
             title: 'کالا و موجودی',
             href: products(),
             icon: PackageSearch,
+        });
+        items.push({
+            title: 'خرید و تأمین',
+            href: purchases(),
+            icon: ShoppingBag,
         });
         items.push({
             title: 'گزارش‌های مالی',

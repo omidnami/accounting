@@ -20,6 +20,7 @@ use App\Services\Accounting\SettingService;
 use App\Services\Inventory\InventoryService;
 use App\Support\Decimal;
 use DomainException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 class PurchaseService
@@ -35,140 +36,174 @@ class PurchaseService
      * @param  array<string, mixed>  $attributes
      * @param  array<int, array<string, mixed>>  $items
      */
-    public function createDraft(array $attributes, array $items): Invoice
-    {
+    public function createDraft(
+        array $attributes,
+        array $items,
+        ?string $idempotencyKey = null,
+    ): Invoice {
         if ($items === []) {
             throw new DomainException('فاکتور خرید باید حداقل یک قلم داشته باشد.');
         }
 
-        return DB::transaction(function () use ($attributes, $items): Invoice {
-            unset($attributes['status']);
+        $requestHash = $idempotencyKey === null
+            ? null
+            : $this->draftRequestHash($attributes, $items);
 
-            $supplier = Supplier::query()
-                ->with('party')
-                ->findOrFail((int) $attributes['supplier_id']);
+        try {
+            return DB::transaction(function () use ($attributes, $items, $idempotencyKey, $requestHash): Invoice {
+                unset($attributes['status']);
 
-            if (! $supplier->is_active || ! $supplier->party?->is_active) {
-                throw new DomainException('تأمین‌کننده انتخاب‌شده فعال نیست.');
-            }
+                if ($idempotencyKey !== null) {
+                    $existing = Invoice::query()
+                        ->where('idempotency_key', $idempotencyKey)
+                        ->lockForUpdate()
+                        ->first();
 
-            if ((int) $supplier->party->store_id !== (int) $attributes['store_id']) {
-                throw new DomainException('تأمین‌کننده باید متعلق به فروشگاه فاکتور باشد.');
-            }
-
-            $branch = Branch::query()->findOrFail((int) $attributes['branch_id']);
-            $fiscalYear = FiscalYear::query()->findOrFail((int) $attributes['fiscal_year_id']);
-
-            if ((int) $branch->store_id !== (int) $attributes['store_id']
-                || (int) $fiscalYear->store_id !== (int) $attributes['store_id']) {
-                throw new DomainException('شعبه و سال مالی باید متعلق به فروشگاه فاکتور باشند.');
-            }
-
-            if (empty($attributes['invoice_number'])) {
-                $attributes['invoice_number'] = $this->documentNumbers->next(
-                    (int) $attributes['store_id'],
-                    (int) $attributes['branch_id'],
-                    (int) $attributes['fiscal_year_id'],
-                    DocumentType::PurchaseInvoice,
-                );
-            }
-
-            $invoice = Invoice::query()->create([
-                ...$attributes,
-                'type' => InvoiceType::Purchase,
-                'customer_id' => null,
-                'supplier_id' => $supplier->id,
-                'subtotal' => '0.00',
-                'discount_total' => '0.00',
-                'tax_total' => '0.00',
-                'total' => '0.00',
-            ]);
-
-            $subtotal = '0.00';
-            $discountTotal = '0.00';
-            $taxTotal = '0.00';
-            $total = '0.00';
-
-            foreach (array_values($items) as $index => $item) {
-                $product = Product::query()->findOrFail((int) $item['product_id']);
-
-                if (! $product->is_active) {
-                    throw new DomainException('کالای انتخاب‌شده غیرفعال است.');
+                    if ($existing) {
+                        return $this->resolveIdempotentDraft($existing, $requestHash);
+                    }
                 }
 
-                $quantity = Decimal::normalize($item['quantity'], Decimal::QUANTITY_SCALE);
+                $supplier = Supplier::query()
+                    ->with('party')
+                    ->findOrFail((int) $attributes['supplier_id']);
 
-                if (! Decimal::isPositive($quantity)) {
-                    throw new DomainException('مقدار هر قلم خرید باید بزرگ‌تر از صفر باشد.');
+                if (! $supplier->is_active || ! $supplier->party?->is_active) {
+                    throw new DomainException('تأمین‌کننده انتخاب‌شده فعال نیست.');
                 }
 
-                $unitPrice = Decimal::normalize($item['unit_price'], Decimal::MONEY_SCALE);
-
-                if (! Decimal::isPositive($unitPrice)) {
-                    throw new DomainException('قیمت واحد هر قلم خرید باید بزرگ‌تر از صفر باشد.');
+                if ((int) $supplier->party->store_id !== (int) $attributes['store_id']) {
+                    throw new DomainException('تأمین‌کننده باید متعلق به فروشگاه فاکتور باشد.');
                 }
 
-                $gross = Decimal::multiply($quantity, $unitPrice, Decimal::MONEY_SCALE);
-                $discount = Decimal::normalize(
-                    $item['discount_amount'] ?? 0,
-                    Decimal::MONEY_SCALE,
-                );
+                $branch = Branch::query()->findOrFail((int) $attributes['branch_id']);
+                $fiscalYear = FiscalYear::query()->findOrFail((int) $attributes['fiscal_year_id']);
 
-                if (Decimal::compare($discount, '0', Decimal::MONEY_SCALE) < 0) {
-                    throw new DomainException('تخفیف ردیف نمی‌تواند منفی باشد.');
+                if ((int) $branch->store_id !== (int) $attributes['store_id']
+                    || (int) $fiscalYear->store_id !== (int) $attributes['store_id']) {
+                    throw new DomainException('شعبه و سال مالی باید متعلق به فروشگاه فاکتور باشند.');
                 }
 
-                if (Decimal::compare($discount, $gross, Decimal::MONEY_SCALE) > 0) {
-                    throw new DomainException('تخفیف ردیف نمی‌تواند از مبلغ ردیف بیشتر باشد.');
+                if (empty($attributes['invoice_number'])) {
+                    $attributes['invoice_number'] = $this->documentNumbers->next(
+                        (int) $attributes['store_id'],
+                        (int) $attributes['branch_id'],
+                        (int) $attributes['fiscal_year_id'],
+                        DocumentType::PurchaseInvoice,
+                    );
                 }
 
-                $taxRate = Decimal::normalize(
-                    $item['tax_rate'] ?? $product->tax_rate,
-                    Decimal::MONEY_SCALE,
-                );
-
-                if (Decimal::compare($taxRate, '0', Decimal::MONEY_SCALE) < 0
-                    || Decimal::compare($taxRate, '100', Decimal::MONEY_SCALE) > 0) {
-                    throw new DomainException('نرخ مالیات باید بین صفر و صد درصد باشد.');
-                }
-
-                $taxable = Decimal::subtract($gross, $discount, Decimal::MONEY_SCALE);
-                $taxAmount = Decimal::divide(
-                    Decimal::multiply($taxable, $taxRate, 4),
-                    '100',
-                    Decimal::MONEY_SCALE,
-                );
-                $lineTotal = Decimal::add($taxable, $taxAmount, Decimal::MONEY_SCALE);
-
-                $invoice->items()->create([
-                    'product_id' => $product->id,
-                    'product_code' => $product->code,
-                    'product_name' => $product->name,
-                    'unit' => $product->unit,
-                    'quantity' => $quantity,
-                    'unit_price' => $unitPrice,
-                    'discount_amount' => $discount,
-                    'tax_rate' => $taxRate,
-                    'tax_amount' => $taxAmount,
-                    'line_total' => $lineTotal,
-                    'sort_order' => $index + 1,
+                $invoice = Invoice::query()->create([
+                    ...$attributes,
+                    'idempotency_key' => $idempotencyKey,
+                    'idempotency_request_hash' => $requestHash,
+                    'type' => InvoiceType::Purchase,
+                    'customer_id' => null,
+                    'supplier_id' => $supplier->id,
+                    'subtotal' => '0.00',
+                    'discount_total' => '0.00',
+                    'tax_total' => '0.00',
+                    'total' => '0.00',
                 ]);
 
-                $subtotal = Decimal::add($subtotal, $gross, Decimal::MONEY_SCALE);
-                $discountTotal = Decimal::add($discountTotal, $discount, Decimal::MONEY_SCALE);
-                $taxTotal = Decimal::add($taxTotal, $taxAmount, Decimal::MONEY_SCALE);
-                $total = Decimal::add($total, $lineTotal, Decimal::MONEY_SCALE);
+                $subtotal = '0.00';
+                $discountTotal = '0.00';
+                $taxTotal = '0.00';
+                $total = '0.00';
+
+                foreach (array_values($items) as $index => $item) {
+                    $product = Product::query()->findOrFail((int) $item['product_id']);
+
+                    if (! $product->is_active) {
+                        throw new DomainException('کالای انتخاب‌شده غیرفعال است.');
+                    }
+
+                    $quantity = Decimal::normalize($item['quantity'], Decimal::QUANTITY_SCALE);
+
+                    if (! Decimal::isPositive($quantity)) {
+                        throw new DomainException('مقدار هر قلم خرید باید بزرگ‌تر از صفر باشد.');
+                    }
+
+                    $unitPrice = Decimal::normalize($item['unit_price'], Decimal::MONEY_SCALE);
+
+                    if (! Decimal::isPositive($unitPrice)) {
+                        throw new DomainException('قیمت واحد هر قلم خرید باید بزرگ‌تر از صفر باشد.');
+                    }
+
+                    $gross = Decimal::multiply($quantity, $unitPrice, Decimal::MONEY_SCALE);
+                    $discount = Decimal::normalize(
+                        $item['discount_amount'] ?? 0,
+                        Decimal::MONEY_SCALE,
+                    );
+
+                    if (Decimal::compare($discount, '0', Decimal::MONEY_SCALE) < 0) {
+                        throw new DomainException('تخفیف ردیف نمی‌تواند منفی باشد.');
+                    }
+
+                    if (Decimal::compare($discount, $gross, Decimal::MONEY_SCALE) > 0) {
+                        throw new DomainException('تخفیف ردیف نمی‌تواند از مبلغ ردیف بیشتر باشد.');
+                    }
+
+                    $taxRate = Decimal::normalize(
+                        $item['tax_rate'] ?? $product->tax_rate,
+                        Decimal::MONEY_SCALE,
+                    );
+
+                    if (Decimal::compare($taxRate, '0', Decimal::MONEY_SCALE) < 0
+                        || Decimal::compare($taxRate, '100', Decimal::MONEY_SCALE) > 0) {
+                        throw new DomainException('نرخ مالیات باید بین صفر و صد درصد باشد.');
+                    }
+
+                    $taxable = Decimal::subtract($gross, $discount, Decimal::MONEY_SCALE);
+                    $taxAmount = Decimal::divide(
+                        Decimal::multiply($taxable, $taxRate, 4),
+                        '100',
+                        Decimal::MONEY_SCALE,
+                    );
+                    $lineTotal = Decimal::add($taxable, $taxAmount, Decimal::MONEY_SCALE);
+
+                    $invoice->items()->create([
+                        'product_id' => $product->id,
+                        'product_code' => $product->code,
+                        'product_name' => $product->name,
+                        'unit' => $product->unit,
+                        'quantity' => $quantity,
+                        'unit_price' => $unitPrice,
+                        'discount_amount' => $discount,
+                        'tax_rate' => $taxRate,
+                        'tax_amount' => $taxAmount,
+                        'line_total' => $lineTotal,
+                        'sort_order' => $index + 1,
+                    ]);
+
+                    $subtotal = Decimal::add($subtotal, $gross, Decimal::MONEY_SCALE);
+                    $discountTotal = Decimal::add($discountTotal, $discount, Decimal::MONEY_SCALE);
+                    $taxTotal = Decimal::add($taxTotal, $taxAmount, Decimal::MONEY_SCALE);
+                    $total = Decimal::add($total, $lineTotal, Decimal::MONEY_SCALE);
+                }
+
+                $invoice->forceFill([
+                    'subtotal' => $subtotal,
+                    'discount_total' => $discountTotal,
+                    'tax_total' => $taxTotal,
+                    'total' => $total,
+                ])->save();
+
+                return $invoice->refresh()->load('items');
+            });
+        } catch (UniqueConstraintViolationException $exception) {
+            if ($idempotencyKey !== null) {
+                $existing = Invoice::query()
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->first();
+
+                if ($existing) {
+                    return $this->resolveIdempotentDraft($existing, $requestHash);
+                }
             }
 
-            $invoice->forceFill([
-                'subtotal' => $subtotal,
-                'discount_total' => $discountTotal,
-                'tax_total' => $taxTotal,
-                'total' => $total,
-            ])->save();
-
-            return $invoice->refresh()->load('items');
-        });
+            throw $exception;
+        }
     }
 
     public function confirm(Invoice $invoice, int $warehouseId, User $approver): Invoice
@@ -296,5 +331,48 @@ class PurchaseService
 
             return $lockedInvoice->refresh()->load(['items', 'supplier.party']);
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @param  array<int, array<string, mixed>>  $items
+     */
+    private function draftRequestHash(array $attributes, array $items): string
+    {
+        $canonicalItems = collect($items)
+            ->map(fn (array $item): array => [
+                'product_id' => (int) $item['product_id'],
+                'quantity' => Decimal::normalize($item['quantity'], Decimal::QUANTITY_SCALE),
+                'unit_price' => Decimal::normalize($item['unit_price'], Decimal::MONEY_SCALE),
+                'discount_amount' => Decimal::normalize($item['discount_amount'] ?? 0, Decimal::MONEY_SCALE),
+                'tax_rate' => isset($item['tax_rate'])
+                    ? Decimal::normalize($item['tax_rate'], Decimal::MONEY_SCALE)
+                    : null,
+            ])
+            ->values()
+            ->all();
+
+        return hash('sha256', json_encode([
+            'store_id' => (int) $attributes['store_id'],
+            'branch_id' => (int) $attributes['branch_id'],
+            'fiscal_year_id' => (int) $attributes['fiscal_year_id'],
+            'supplier_id' => (int) $attributes['supplier_id'],
+            'invoice_date' => (string) $attributes['invoice_date'],
+            'due_date' => $attributes['due_date'] ?? null,
+            'notes' => $attributes['notes'] ?? null,
+            'created_by' => isset($attributes['created_by']) ? (int) $attributes['created_by'] : null,
+            'items' => $canonicalItems,
+        ], JSON_THROW_ON_ERROR));
+    }
+
+    private function resolveIdempotentDraft(Invoice $invoice, string $requestHash): Invoice
+    {
+        if ($invoice->type !== InvoiceType::Purchase
+            || $invoice->idempotency_request_hash === null
+            || ! hash_equals($invoice->idempotency_request_hash, $requestHash)) {
+            throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+        }
+
+        return $invoice->load('items');
     }
 }

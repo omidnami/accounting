@@ -4,6 +4,8 @@ use App\Http\Controllers\CustomerReceiptController;
 use App\Http\Controllers\FinancialReportsController;
 use App\Http\Controllers\PartyController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\PurchaseInvoiceController;
+use App\Http\Controllers\PurchaseLookupController;
 use App\Http\Controllers\SalesInvoiceController;
 use App\Http\Controllers\SalesLookupController;
 use Illuminate\Support\Facades\Route;
@@ -27,6 +29,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('receipts/create', [CustomerReceiptController::class, 'create'])->name('receipts.create');
     Route::post('receipts', [CustomerReceiptController::class, 'store'])->name('receipts.store');
     Route::get('receipts/{receipt}', [CustomerReceiptController::class, 'show'])->name('receipts.show');
+    Route::get('purchases/lookups/suppliers', [PurchaseLookupController::class, 'suppliers'])
+        ->name('purchases.lookups.suppliers');
+    Route::get('purchases/lookups/products', [PurchaseLookupController::class, 'products'])
+        ->name('purchases.lookups.products');
+    Route::get('purchases', [PurchaseInvoiceController::class, 'index'])->name('purchases.index');
+    Route::get('purchases/create', [PurchaseInvoiceController::class, 'create'])->name('purchases.create');
+    Route::post('purchases', [PurchaseInvoiceController::class, 'store'])->name('purchases.store');
+    Route::get('purchases/{invoice}', [PurchaseInvoiceController::class, 'show'])->name('purchases.show');
+    Route::post('purchases/{invoice}/confirm', [PurchaseInvoiceController::class, 'confirm'])
+        ->name('purchases.confirm');
+    Route::delete('purchases/{invoice}', [PurchaseInvoiceController::class, 'destroy'])
+        ->name('purchases.destroy');
     Route::get('sales', [SalesInvoiceController::class, 'index'])->name('sales.index');
     Route::get('sales/create', [SalesInvoiceController::class, 'create'])->name('sales.create');
     Route::post('sales', [SalesInvoiceController::class, 'store'])->name('sales.store');
