@@ -288,7 +288,7 @@ class SalesService
                 $approver,
             );
 
-            $locked->forceFill(['status' => InvoiceStatus::Confirmed])->save();
+            $locked->confirmDocument();
 
             return $locked->refresh()->load(['items', 'customer.party']);
         });

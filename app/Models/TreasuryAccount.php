@@ -2,7 +2,10 @@
 
 namespace App\Models;
 
+use App\Enums\AccountLevel;
+use App\Enums\AccountType;
 use App\Enums\TreasuryAccountType;
+use DomainException;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -65,5 +68,37 @@ class TreasuryAccount extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (TreasuryAccount $treasury): void {
+            $branch = Branch::query()->find($treasury->branch_id);
+            $account = Account::query()->find($treasury->gl_account_id);
+
+            if (! $branch || (int) $branch->store_id !== (int) $treasury->store_id) {
+                throw new DomainException('حساب خزانه و شعبه باید متعلق به یک فروشگاه باشند.');
+            }
+
+            if (! $account
+                || $account->level !== AccountLevel::Subsidiary
+                || $account->type !== AccountType::Asset
+                || ! $account->is_active
+                || (int) $account->store_id !== (int) $treasury->store_id) {
+                throw new DomainException('حساب دفتر کل خزانه باید معین، دارایی، فعال و متعلق به همان فروشگاه باشد.');
+            }
+        });
+
+        static::saved(function (TreasuryAccount $treasury): void {
+            if (! $treasury->is_default) {
+                return;
+            }
+
+            self::query()
+                ->where('branch_id', $treasury->branch_id)
+                ->where('type', $treasury->type)
+                ->whereKeyNot($treasury->getKey())
+                ->update(['is_default' => false]);
+        });
     }
 }

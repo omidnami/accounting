@@ -318,7 +318,8 @@ class PurchaseReturnService
                 $approver,
             );
 
-            $return->forceFill(['status' => InvoiceStatus::Confirmed])->save();
+            $return->confirmDocument();
+            $return->parentInvoice?->syncSettlementStatus();
 
             return $return->refresh()->load(['items', 'parentInvoice']);
         });

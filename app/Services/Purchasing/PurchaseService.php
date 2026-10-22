@@ -292,9 +292,7 @@ class PurchaseService
                 $approver,
             );
 
-            $lockedInvoice->forceFill([
-                'status' => InvoiceStatus::Confirmed,
-            ])->save();
+            $lockedInvoice->confirmDocument();
 
             return $lockedInvoice->refresh()->load(['items', 'supplier.party']);
         });

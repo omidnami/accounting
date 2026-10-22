@@ -57,6 +57,26 @@ class CustomerReceiptService
             throw new DomainException('دریافت باید حداقل به یک فاکتور تخصیص یابد.');
         }
 
+        $canonicalAllocations = collect($allocations)
+            ->map(fn (array $allocation): array => [
+                'invoice_id' => (int) $allocation['invoice_id'],
+                'amount' => Decimal::normalize($allocation['amount'], 2),
+            ])
+            ->sortBy('invoice_id')
+            ->values()
+            ->all();
+        $requestHash = hash('sha256', json_encode([
+            'store_id' => $storeId,
+            'branch_id' => $branchId,
+            'fiscal_year_id' => $fiscalYearId,
+            'customer_id' => $customerId,
+            'receipt_date' => $receiptDate,
+            'payment_method' => $paymentMethod->value,
+            'treasury_account_id' => $treasuryAccountId,
+            'check_id' => $checkId,
+            'allocations' => $canonicalAllocations,
+        ], JSON_THROW_ON_ERROR));
+
         return DB::transaction(function () use (
             $storeId,
             $branchId,
@@ -71,10 +91,17 @@ class CustomerReceiptService
             $checkId,
             $reference,
             $description,
+            $requestHash,
+            $canonicalAllocations,
         ): Receipt {
             $existing = Receipt::query()->where('idempotency_key', $idempotencyKey)->first();
 
             if ($existing) {
+                if ($existing->idempotency_request_hash !== null
+                    && ! hash_equals($existing->idempotency_request_hash, $requestHash)) {
+                    throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+                }
+
                 return $existing->load(['allocations.invoice', 'customer.party', 'check']);
             }
 
@@ -184,6 +211,7 @@ class CustomerReceiptService
                     DocumentType::Receipt,
                 ),
                 'idempotency_key' => $idempotencyKey,
+                'idempotency_request_hash' => $requestHash,
                 'receipt_date' => $receiptDate,
                 'amount' => $amountTotal,
                 'payment_method' => $paymentMethod,
@@ -196,7 +224,7 @@ class CustomerReceiptService
                 'description' => $description,
             ]);
 
-            foreach ($allocations as $allocation) {
+            foreach ($canonicalAllocations as $allocation) {
                 ReceiptAllocation::query()->create([
                     'receipt_id' => $receipt->id,
                     'invoice_id' => $allocation['invoice_id'],
@@ -236,16 +264,11 @@ class CustomerReceiptService
                 $approver,
             );
 
-            $receipt->forceFill(['status' => TreasuryDocumentStatus::Confirmed])->save();
+            $receipt->markConfirmed();
 
             foreach ($allocations as $allocation) {
                 $invoice = $invoices->get((int) $allocation['invoice_id']);
-                $outstanding = $this->outstandingFor($invoice);
-                $invoice->forceFill([
-                    'status' => Decimal::isZero($outstanding)
-                        ? InvoiceStatus::Paid
-                        : InvoiceStatus::PartiallyPaid,
-                ])->save();
+                $invoice->syncSettlementStatus();
             }
 
             return $receipt->refresh()->load(['allocations.invoice', 'customer.party', 'check']);

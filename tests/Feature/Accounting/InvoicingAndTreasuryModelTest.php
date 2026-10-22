@@ -60,7 +60,6 @@ it('connects sales invoices, items, products, and customers', function () {
         'tax_amount' => 250_000,
         'line_total' => 2_750_000,
     ]);
-    $invoice->update(['status' => InvoiceStatus::Confirmed]);
 
     expect($invoice->customer->is($customer))->toBeTrue()
         ->and($customer->invoices)->toHaveCount(1)
@@ -68,7 +67,7 @@ it('connects sales invoices, items, products, and customers', function () {
         ->and($item->product->is($product))->toBeTrue()
         ->and($invoice->products)->toHaveCount(1)
         ->and($invoice->type)->toBe(InvoiceType::Sales)
-        ->and($invoice->status)->toBe(InvoiceStatus::Confirmed);
+        ->and($invoice->status)->toBe(InvoiceStatus::Draft);
 });
 
 it('links a received check to its customer and receipt', function () {

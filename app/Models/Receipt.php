@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\JournalEntryStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\TreasuryDocumentStatus;
 use DomainException;
@@ -21,12 +22,19 @@ class Receipt extends Model
     /** @use HasFactory<Factory<static>> */
     use HasFactory;
 
+    private bool $statusTransitionAuthorized = false;
+
+    protected $attributes = [
+        'status' => 'pending',
+    ];
+
     protected $fillable = [
         'store_id',
         'branch_id',
         'fiscal_year_id',
         'receipt_number',
         'idempotency_key',
+        'idempotency_request_hash',
         'receipt_date',
         'amount',
         'payment_method',
@@ -35,7 +43,6 @@ class Receipt extends Model
         'check_id',
         'created_by',
         'reference',
-        'status',
         'description',
     ];
 
@@ -118,23 +125,13 @@ class Receipt extends Model
                 throw new DomainException('دریافت چکی باید به یک چک متصل باشد؛ سایر روش‌ها نباید چک داشته باشند.');
             }
 
-            $original = $receipt->getRawOriginal('status');
+            if ($receipt->exists
+                && array_diff(array_keys($receipt->getDirty()), ['status']) !== []) {
+                throw new DomainException('دریافت تأییدشده قابل ویرایش نیست.');
+            }
 
-            if ($receipt->exists && $original !== null) {
-                $from = TreasuryDocumentStatus::from($original);
-                $to = $receipt->status;
-                $onlyStatus = array_diff(array_keys($receipt->getDirty()), ['status']) === [];
-                $allowed = ($from === TreasuryDocumentStatus::Pending
-                        && in_array($to, [
-                            TreasuryDocumentStatus::Confirmed,
-                            TreasuryDocumentStatus::Cancelled,
-                        ], true))
-                    || ($from === TreasuryDocumentStatus::Confirmed
-                        && $to === TreasuryDocumentStatus::Bounced);
-
-                if (! $onlyStatus || ! $allowed) {
-                    throw new DomainException('دریافت تأییدشده قابل ویرایش نیست.');
-                }
+            if ($receipt->exists && $receipt->isDirty('status') && ! $receipt->statusTransitionAuthorized) {
+                throw new DomainException('تغییر وضعیت دریافت فقط از مسیر سرویس دامنه مجاز است.');
             }
         });
 
@@ -143,5 +140,50 @@ class Receipt extends Model
                 throw new DomainException('فقط دریافت در انتظار تأیید قابل حذف است.');
             }
         });
+    }
+
+    public function markConfirmed(): self
+    {
+        $hasEntry = JournalEntry::query()
+            ->where('source_type', $this->getMorphClass())
+            ->where('source_id', $this->getKey())
+            ->where('status', JournalEntryStatus::Posted)
+            ->exists();
+
+        if (! $hasEntry) {
+            throw new DomainException('دریافت بدون سند حسابداری ثبت‌شده قابل تأیید نیست.');
+        }
+
+        return $this->transitionTo(TreasuryDocumentStatus::Confirmed);
+    }
+
+    public function markBounced(): self
+    {
+        if (! $this->check?->bounce_entry_id) {
+            throw new DomainException('دریافت بدون سند برگشت چک قابل Bounced شدن نیست.');
+        }
+
+        return $this->transitionTo(TreasuryDocumentStatus::Bounced);
+    }
+
+    private function transitionTo(TreasuryDocumentStatus $status): self
+    {
+        $allowed = ($this->status === TreasuryDocumentStatus::Pending
+                && in_array($status, [
+                    TreasuryDocumentStatus::Confirmed,
+                    TreasuryDocumentStatus::Cancelled,
+                ], true))
+            || ($this->status === TreasuryDocumentStatus::Confirmed
+                && $status === TreasuryDocumentStatus::Bounced);
+
+        if (! $allowed) {
+            throw new DomainException('گذار وضعیت دریافت مجاز نیست.');
+        }
+
+        $this->statusTransitionAuthorized = true;
+        $this->status = $status;
+        $this->save();
+
+        return $this;
     }
 }

@@ -149,3 +149,23 @@ it('bounces a customer check and reopens the invoice receivable', function () {
         ->and($entry->totalDebit())->toBe('100.00')
         ->and($entry->totalCredit())->toBe('100.00');
 });
+
+it('collects a prior-year check in the next fiscal year', function () {
+    $context = createTreasurySalesContext();
+    [$check] = createCustomerCheckReceipt($context, 'R-300', 100);
+    app(FiscalYearSetupService::class)->setupJalaliYear($context['store'], 1406);
+    $bank = TreasuryAccount::query()
+        ->where('branch_id', $context['branch']->id)
+        ->where('type', TreasuryAccountType::Bank)
+        ->firstOrFail();
+
+    $settled = app(CheckSettlementService::class)->collectReceivable(
+        $check,
+        '2027-04-01',
+        $context['manager'],
+        $bank->id,
+    );
+
+    expect($settled->status)->toBe(CheckStatus::Collected)
+        ->and($settled->settlementEntry->fiscalYear->title)->toBe('1406');
+});

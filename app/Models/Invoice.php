@@ -4,6 +4,8 @@ namespace App\Models;
 
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
+use App\Enums\JournalEntryStatus;
+use App\Support\Decimal;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -23,6 +25,12 @@ class Invoice extends Model
     /** @use HasFactory<Factory<static>> */
     use HasFactory;
 
+    private bool $statusTransitionAuthorized = false;
+
+    protected $attributes = [
+        'status' => 'draft',
+    ];
+
     protected $fillable = [
         'store_id',
         'branch_id',
@@ -38,7 +46,6 @@ class Invoice extends Model
         'discount_total',
         'tax_total',
         'total',
-        'status',
         'notes',
         'created_by',
     ];
@@ -187,18 +194,18 @@ class Invoice extends Model
             }
 
             $previousStatus = InvoiceStatus::from($previous);
+            $dirty = array_keys($invoice->getDirty());
+
+            if ($invoice->isDirty('status') && ! $invoice->statusTransitionAuthorized) {
+                throw new DomainException('تغییر وضعیت فاکتور فقط از مسیر سرویس دامنه مجاز است.');
+            }
 
             if ($previousStatus === InvoiceStatus::Draft) {
                 return;
             }
 
-            if (array_diff(array_keys($invoice->getDirty()), ['status']) !== []) {
+            if (array_diff($dirty, ['status']) !== []) {
                 throw new DomainException('فاکتور پس از پیش‌نویس قابل ویرایش نیست.');
-            }
-
-            if ($invoice->isDirty('status')
-                && ! $invoice->isAllowedStatusTransition($previousStatus, $invoice->status)) {
-                throw new DomainException('تغییر وضعیت فاکتور مجاز نیست.');
             }
         });
 
@@ -207,6 +214,73 @@ class Invoice extends Model
                 throw new DomainException('فقط فاکتور پیش‌نویس قابل حذف است.');
             }
         });
+    }
+
+    public function confirmDocument(): self
+    {
+        if (! $this->exists || $this->status !== InvoiceStatus::Draft) {
+            throw new DomainException('فقط فاکتور پیش‌نویس قابل تأیید است.');
+        }
+
+        $hasPostedEntry = JournalEntry::query()
+            ->where('source_type', $this->getMorphClass())
+            ->where('source_id', $this->getKey())
+            ->where('status', JournalEntryStatus::Posted)
+            ->exists();
+
+        if (! $hasPostedEntry) {
+            throw new DomainException('فاکتور بدون سند حسابداری ثبت‌شده قابل تأیید نیست.');
+        }
+
+        $this->transitionStatusTo(InvoiceStatus::Confirmed);
+
+        return $this;
+    }
+
+    public function syncSettlementStatus(): self
+    {
+        $settled = $this->type === InvoiceType::Sales
+            ? (string) $this->receiptAllocations()
+                ->whereHas('receipt', fn ($query) => $query->where('status', 'confirmed'))
+                ->sum('amount')
+            : (string) $this->paymentAllocations()
+                ->whereHas('payment', fn ($query) => $query->where('status', 'confirmed'))
+                ->sum('amount');
+        $returned = (string) self::query()
+            ->where('parent_invoice_id', $this->id)
+            ->where('type', $this->type === InvoiceType::Sales
+                ? InvoiceType::SalesReturn
+                : InvoiceType::PurchaseReturn)
+            ->where('status', InvoiceStatus::Confirmed)
+            ->sum('total');
+        $remaining = Decimal::subtract($this->total, $settled, 2);
+        $remaining = Decimal::subtract($remaining, $returned, 2);
+
+        $status = Decimal::compare($returned, $this->total, 2) >= 0
+            ? InvoiceStatus::Reversed
+            : (Decimal::compare($remaining, '0', 2) <= 0
+                ? InvoiceStatus::Paid
+                : (Decimal::isPositive($settled)
+                    ? InvoiceStatus::PartiallyPaid
+                    : InvoiceStatus::Confirmed));
+        $this->transitionStatusTo($status);
+
+        return $this;
+    }
+
+    private function transitionStatusTo(InvoiceStatus $status): void
+    {
+        if ($status === $this->status) {
+            return;
+        }
+
+        if (! $this->isAllowedStatusTransition($this->status, $status)) {
+            throw new DomainException('گذار وضعیت فاکتور مجاز نیست.');
+        }
+
+        $this->statusTransitionAuthorized = true;
+        $this->status = $status;
+        $this->save();
     }
 
     private function isAllowedStatusTransition(

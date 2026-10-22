@@ -57,6 +57,26 @@ class SupplierPaymentService
             throw new DomainException('پرداخت باید حداقل به یک فاکتور تخصیص یابد.');
         }
 
+        $canonicalAllocations = collect($allocations)
+            ->map(fn (array $allocation): array => [
+                'invoice_id' => (int) $allocation['invoice_id'],
+                'amount' => Decimal::normalize($allocation['amount'], 2),
+            ])
+            ->sortBy('invoice_id')
+            ->values()
+            ->all();
+        $requestHash = hash('sha256', json_encode([
+            'store_id' => $storeId,
+            'branch_id' => $branchId,
+            'fiscal_year_id' => $fiscalYearId,
+            'supplier_id' => $supplierId,
+            'payment_date' => $paymentDate,
+            'payment_method' => $paymentMethod->value,
+            'treasury_account_id' => $treasuryAccountId,
+            'check_id' => $checkId,
+            'allocations' => $canonicalAllocations,
+        ], JSON_THROW_ON_ERROR));
+
         return DB::transaction(function () use (
             $storeId,
             $branchId,
@@ -71,10 +91,17 @@ class SupplierPaymentService
             $checkId,
             $reference,
             $description,
+            $requestHash,
+            $canonicalAllocations,
         ): Payment {
             $existing = Payment::query()->where('idempotency_key', $idempotencyKey)->first();
 
             if ($existing) {
+                if ($existing->idempotency_request_hash !== null
+                    && ! hash_equals($existing->idempotency_request_hash, $requestHash)) {
+                    throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+                }
+
                 return $existing->load(['allocations.invoice', 'supplier.party', 'check']);
             }
 
@@ -190,6 +217,7 @@ class SupplierPaymentService
                     DocumentType::Payment,
                 ),
                 'idempotency_key' => $idempotencyKey,
+                'idempotency_request_hash' => $requestHash,
                 'payment_date' => $paymentDate,
                 'amount' => $paymentAmount,
                 'payment_method' => $paymentMethod,
@@ -202,7 +230,7 @@ class SupplierPaymentService
                 'description' => $description,
             ]);
 
-            foreach ($allocations as $allocation) {
+            foreach ($canonicalAllocations as $allocation) {
                 PaymentAllocation::query()->create([
                     'payment_id' => $payment->id,
                     'invoice_id' => $allocation['invoice_id'],
@@ -242,16 +270,11 @@ class SupplierPaymentService
                 $approver,
             );
 
-            $payment->forceFill(['status' => TreasuryDocumentStatus::Confirmed])->save();
+            $payment->markConfirmed();
 
             foreach ($allocations as $allocation) {
                 $invoice = $invoices->get((int) $allocation['invoice_id']);
-                $outstanding = $this->outstandingFor($invoice);
-                $invoice->forceFill([
-                    'status' => Decimal::isZero($outstanding)
-                        ? InvoiceStatus::Paid
-                        : InvoiceStatus::PartiallyPaid,
-                ])->save();
+                $invoice->syncSettlementStatus();
             }
 
             return $payment->refresh()->load(['allocations.invoice', 'supplier.party', 'check']);

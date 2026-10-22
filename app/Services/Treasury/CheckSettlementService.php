@@ -15,7 +15,6 @@ use App\Models\TreasuryAccount;
 use App\Models\User;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
-use App\Support\Decimal;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -83,7 +82,7 @@ class CheckSettlementService
                 $partyId = $payment->supplier->party_id;
             }
 
-            $period = $this->periodFor($treasuryDocument->store_id, $treasuryDocument->fiscal_year_id, $bounceDate);
+            $period = $this->periodFor($treasuryDocument->store_id, $bounceDate);
             $lines = $isReceivable
                 ? [
                     [
@@ -119,7 +118,7 @@ class CheckSettlementService
                 [
                     'store_id' => $treasuryDocument->store_id,
                     'branch_id' => $treasuryDocument->branch_id,
-                    'fiscal_year_id' => $treasuryDocument->fiscal_year_id,
+                    'fiscal_year_id' => $period->fiscal_year_id,
                     'accounting_period_id' => $period->id,
                     'entry_date' => $bounceDate,
                     'description' => "برگشت چک {$locked->check_number}",
@@ -131,12 +130,8 @@ class CheckSettlementService
                 $approver,
             );
 
-            $treasuryDocument->forceFill(['status' => TreasuryDocumentStatus::Bounced])->save();
-            $locked->forceFill([
-                'status' => CheckStatus::Bounced,
-                'bounced_at' => now(),
-                'bounce_entry_id' => $entry->id,
-            ])->save();
+            $locked->markBounced($entry);
+            $treasuryDocument->markBounced();
 
             foreach ($treasuryDocument->allocations as $allocation) {
                 $this->refreshInvoiceStatus($allocation->invoice);
@@ -196,7 +191,7 @@ class CheckSettlementService
                 throw new DomainException('حساب بانکی فعال برای تسویه چک پیدا نشد.');
             }
 
-            $period = $this->periodFor($treasuryDocument->store_id, $treasuryDocument->fiscal_year_id, $settlementDate);
+            $period = $this->periodFor($treasuryDocument->store_id, $settlementDate);
             $isReceivable = $expectedType === CheckType::Receivable;
             $lines = $isReceivable
                 ? [
@@ -231,7 +226,7 @@ class CheckSettlementService
                 [
                     'store_id' => $treasuryDocument->store_id,
                     'branch_id' => $treasuryDocument->branch_id,
-                    'fiscal_year_id' => $treasuryDocument->fiscal_year_id,
+                    'fiscal_year_id' => $period->fiscal_year_id,
                     'accounting_period_id' => $period->id,
                     'entry_date' => $settlementDate,
                     'description' => "تسویه چک {$locked->check_number}",
@@ -243,21 +238,16 @@ class CheckSettlementService
                 $approver,
             );
 
-            $locked->forceFill([
-                'status' => $isReceivable ? CheckStatus::Collected : CheckStatus::Spent,
-                'settled_at' => now(),
-                'settlement_entry_id' => $entry->id,
-            ])->save();
+            $locked->markSettled($entry);
 
             return $locked->refresh();
         });
     }
 
-    private function periodFor(int $storeId, int $fiscalYearId, string $date): AccountingPeriod
+    private function periodFor(int $storeId, string $date): AccountingPeriod
     {
         return AccountingPeriod::query()
             ->where('store_id', $storeId)
-            ->where('fiscal_year_id', $fiscalYearId)
             ->where('starts_on', '<=', $date)
             ->where('ends_on', '>=', $date)
             ->firstOrFail();
@@ -282,11 +272,6 @@ class CheckSettlementService
             ->where('type', $isSales ? InvoiceType::SalesReturn : InvoiceType::PurchaseReturn)
             ->where('status', InvoiceStatus::Confirmed)
             ->sum('total');
-        $remaining = Decimal::subtract($invoice->total, $settled, 2);
-        $remaining = Decimal::subtract($remaining, $returned, 2);
-        $status = Decimal::compare($remaining, '0', 2) <= 0
-            ? InvoiceStatus::Paid
-            : (Decimal::isPositive($settled) ? InvoiceStatus::PartiallyPaid : InvoiceStatus::Confirmed);
-        $invoice->forceFill(['status' => $status])->save();
+        $invoice->syncSettlementStatus();
     }
 }
