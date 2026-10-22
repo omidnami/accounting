@@ -76,6 +76,14 @@ class AccountSeeder extends Seeder
                 'normal_balance' => NormalBalance::Debit,
             ],
             [
+                'code' => '1107',
+                'name' => 'چک‌های دریافتنی',
+                'parent_code' => '1000',
+                'type' => AccountType::Asset,
+                'level' => AccountLevel::Subsidiary,
+                'normal_balance' => NormalBalance::Debit,
+            ],
+            [
                 'code' => '1201',
                 'name' => 'دارایی‌های ثابت',
                 'parent_code' => '1000',

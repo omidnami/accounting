@@ -14,6 +14,7 @@ return [
         'cash' => '1101',
         'bank' => '1102',
         'accounts_receivable' => '1103',
+        'checks_receivable' => '1107',
         'inventory' => '1104',
         'vat_receivable' => '1106',
         'accounts_payable' => '2101',

@@ -154,6 +154,14 @@ class Invoice extends Model
         return $this->hasMany(PaymentAllocation::class);
     }
 
+    /**
+     * @return HasMany<ReceiptAllocation, $this>
+     */
+    public function receiptAllocations(): HasMany
+    {
+        return $this->hasMany(ReceiptAllocation::class);
+    }
+
     protected static function booted(): void
     {
         static::saving(function (Invoice $invoice): void {

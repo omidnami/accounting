@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property PaymentMethod $payment_method
@@ -90,6 +91,14 @@ class Receipt extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /**
+     * @return HasMany<ReceiptAllocation, $this>
+     */
+    public function allocations(): HasMany
+    {
+        return $this->hasMany(ReceiptAllocation::class);
     }
 
     protected static function booted(): void

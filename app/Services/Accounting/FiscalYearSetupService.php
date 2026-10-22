@@ -20,6 +20,7 @@ class FiscalYearSetupService
     private const SEQUENCE_PREFIXES = [
         'journal_entry' => 'JE-',
         'sales_invoice' => 'SI-',
+        'sales_return' => 'SR-',
         'purchase_invoice' => 'PI-',
         'purchase_return' => 'PR-',
         'quotation' => 'QT-',

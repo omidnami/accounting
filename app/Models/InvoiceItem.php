@@ -26,6 +26,8 @@ class InvoiceItem extends Model
         'tax_rate',
         'tax_amount',
         'line_total',
+        'unit_cost_snapshot',
+        'total_cost_snapshot',
         'sort_order',
     ];
 
@@ -38,6 +40,8 @@ class InvoiceItem extends Model
             'tax_rate' => 'decimal:2',
             'tax_amount' => 'decimal:2',
             'line_total' => 'decimal:2',
+            'unit_cost_snapshot' => 'decimal:4',
+            'total_cost_snapshot' => 'decimal:2',
         ];
     }
 
