@@ -11,6 +11,7 @@ use App\Models\FiscalYear;
 use App\Models\Invoice;
 use App\Models\Store;
 use App\Services\Purchasing\PurchaseService;
+use App\Services\Purchasing\SupplierPayableService;
 use App\Support\Digits;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
@@ -165,13 +166,18 @@ class PurchaseInvoiceController extends Controller
         return to_route('purchases.show', $invoice);
     }
 
-    public function show(Request $request, Invoice $invoice): Response
-    {
+    public function show(
+        Request $request,
+        Invoice $invoice,
+        SupplierPayableService $payables,
+    ): Response {
         abort_unless($request->user()?->canManagePurchases(), 403);
         $this->assertPurchaseInvoice($invoice);
         $invoice->load(['items', 'supplier.party']);
 
         return Inertia::render('purchases/Show', [
+            'can_pay' => $request->user()->canManagePayments(),
+            'payable' => $payables->outstandingForInvoice($invoice),
             'invoice' => [
                 'id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,
@@ -184,6 +190,7 @@ class PurchaseInvoiceController extends Controller
                 'total' => $invoice->total,
                 'notes' => $invoice->notes,
                 'supplier' => [
+                    'id' => $invoice->supplier->id,
                     'name' => $invoice->supplier->party->name,
                     'code' => $invoice->supplier->party->code,
                     'phone' => $invoice->supplier->party->phone,

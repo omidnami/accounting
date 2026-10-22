@@ -49,4 +49,9 @@ enum UserRole: string
     {
         return in_array($this, [self::Manager, self::Accountant], true);
     }
+
+    public function canManagePayments(): bool
+    {
+        return in_array($this, [self::Manager, self::Accountant], true);
+    }
 }

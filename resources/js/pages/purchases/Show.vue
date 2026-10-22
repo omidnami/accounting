@@ -21,6 +21,7 @@ import {
     destroy as destroyPurchase,
     index as purchasesIndex,
 } from '@/routes/purchases';
+import { create as createPayment } from '@/routes/payments';
 
 type Status =
     | 'draft'
@@ -31,6 +32,8 @@ type Status =
     | 'cancelled';
 
 const props = defineProps<{
+    can_pay: boolean;
+    payable: string;
     invoice: {
         id: number;
         invoice_number: string;
@@ -42,7 +45,12 @@ const props = defineProps<{
         tax_total: string;
         total: string;
         notes: string | null;
-        supplier: { name: string; code: string; phone: string | null };
+        supplier: {
+            id: number;
+            name: string;
+            code: string;
+            phone: string | null;
+        };
         items: Array<{
             id: number;
             product_code: string | null;
@@ -87,6 +95,9 @@ const statusLabel: Record<Status, string> = {
 const fieldError = (key: string) =>
     (form.errors as Record<string, string>)[key];
 const isDraft = computed(() => props.invoice.status === 'draft');
+const canPay = computed(
+    () => props.can_pay && !isDraft.value && Number(props.payable) > 0,
+);
 
 const confirm = () => {
     form.post(confirmPurchase(props.invoice.id).url, {
@@ -336,6 +347,34 @@ defineOptions({
                         @click="remove"
                     >
                         <Trash2 class="size-4" /> حذف پیش‌نویس
+                    </Button>
+                </section>
+
+                <section
+                    v-if="canPay"
+                    class="rounded-2xl border border-amber-500/20 bg-amber-500/[.055] p-5"
+                >
+                    <div class="flex items-center gap-2">
+                        <CircleAlert class="size-5 text-amber-600" />
+                        <h2 class="text-sm font-bold">مانده پرداختنی</h2>
+                    </div>
+                    <p class="mt-3 text-xl font-black">
+                        {{ money.format(Number(payable)) }}
+                        <small class="text-[9px] font-medium">ریال</small>
+                    </p>
+                    <Button as-child class="mt-4 h-10 w-full rounded-xl">
+                        <Link
+                            :href="
+                                createPayment.url({
+                                    query: {
+                                        supplier_id: invoice.supplier.id,
+                                        invoice_id: invoice.id,
+                                    },
+                                })
+                            "
+                        >
+                            ثبت پرداخت به تأمین‌کننده
+                        </Link>
                     </Button>
                 </section>
             </aside>

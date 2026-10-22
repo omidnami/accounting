@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\JournalEntryStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\TreasuryDocumentStatus;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property PaymentMethod $payment_method
  * @property TreasuryDocumentStatus $status
  * @property numeric-string $amount
+ * @property CarbonImmutable $payment_date
  */
 class Payment extends Model
 {

@@ -33,6 +33,7 @@ class SupplierPaymentService
         private readonly DocumentNumberService $documentNumbers,
         private readonly PostingService $posting,
         private readonly SettingService $settings,
+        private readonly SupplierPayableService $payables,
     ) {}
 
     /**
@@ -74,6 +75,9 @@ class SupplierPaymentService
             'payment_method' => $paymentMethod->value,
             'treasury_account_id' => $treasuryAccountId,
             'check_id' => $checkId,
+            'reference' => $reference,
+            'description' => $description,
+            'created_by' => $approver->id,
             'allocations' => $canonicalAllocations,
         ], JSON_THROW_ON_ERROR));
 
@@ -127,8 +131,8 @@ class SupplierPaymentService
             $period = AccountingPeriod::query()
                 ->where('store_id', $storeId)
                 ->where('fiscal_year_id', $fiscalYearId)
-                ->where('starts_on', '<=', $paymentDate)
-                ->where('ends_on', '>=', $paymentDate)
+                ->whereDate('starts_on', '<=', $paymentDate)
+                ->whereDate('ends_on', '>=', $paymentDate)
                 ->first();
 
             if (! $period) {
@@ -143,6 +147,7 @@ class SupplierPaymentService
 
             $invoices = Invoice::query()
                 ->whereIn('id', $invoiceIds)
+                ->orderBy('id')
                 ->lockForUpdate()
                 ->get()
                 ->keyBy('id');
@@ -165,7 +170,7 @@ class SupplierPaymentService
                 $amount = Decimal::normalize($allocation['amount'], Decimal::MONEY_SCALE);
 
                 if (! Decimal::isPositive($amount)
-                    || Decimal::compare($amount, $this->outstandingFor($invoice), Decimal::MONEY_SCALE) > 0) {
+                    || Decimal::compare($amount, $this->payables->outstandingForInvoice($invoice), Decimal::MONEY_SCALE) > 0) {
                     throw new DomainException('مبلغ تخصیص از مانده فاکتور بیشتر است.');
                 }
 
@@ -278,26 +283,6 @@ class SupplierPaymentService
             }
 
             return $payment->refresh()->load(['allocations.invoice', 'supplier.party', 'check']);
-        });
-    }
-
-    private function outstandingFor(Invoice $invoice): string
-    {
-        $paid = (string) $invoice->paymentAllocations()
-            ->whereHas('payment', function ($query): void {
-                $query->where('status', TreasuryDocumentStatus::Confirmed);
-            })
-            ->sum('amount');
-        $returned = (string) Invoice::query()
-            ->where('parent_invoice_id', $invoice->id)
-            ->where('type', InvoiceType::PurchaseReturn)
-            ->where('status', InvoiceStatus::Confirmed)
-            ->sum('total');
-        $outstanding = Decimal::subtract($invoice->total, $paid, Decimal::MONEY_SCALE);
-        $outstanding = Decimal::subtract($outstanding, $returned, Decimal::MONEY_SCALE);
-
-        return Decimal::compare($outstanding, '0', Decimal::MONEY_SCALE) > 0
-            ? $outstanding
-            : '0.00';
+        }, attempts: 3);
     }
 }

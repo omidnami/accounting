@@ -2,6 +2,7 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import {
     BarChart3,
+    CircleDollarSign,
     HandCoins,
     LayoutGrid,
     PackageSearch,
@@ -25,6 +26,7 @@ import {
 import { dashboard } from '@/routes';
 import { index as parties } from '@/routes/parties';
 import { index as products } from '@/routes/products';
+import { index as payments } from '@/routes/payments';
 import { index as purchases } from '@/routes/purchases';
 import { index as reports } from '@/routes/reports';
 import { index as receipts } from '@/routes/receipts';
@@ -80,6 +82,11 @@ const mainNavItems = computed<NavItem[]>(() => {
             title: 'دریافت‌ها',
             href: receipts(),
             icon: HandCoins,
+        });
+        items.push({
+            title: 'پرداخت‌ها',
+            href: payments(),
+            icon: CircleDollarSign,
         });
     }
 

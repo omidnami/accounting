@@ -8,6 +8,7 @@ use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\PurchaseLookupController;
 use App\Http\Controllers\SalesInvoiceController;
 use App\Http\Controllers\SalesLookupController;
+use App\Http\Controllers\SupplierPaymentController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
@@ -41,6 +42,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('purchases.confirm');
     Route::delete('purchases/{invoice}', [PurchaseInvoiceController::class, 'destroy'])
         ->name('purchases.destroy');
+    Route::get('payments/lookups/invoices', [SupplierPaymentController::class, 'openInvoices'])
+        ->name('payments.lookups.invoices');
+    Route::get('payments', [SupplierPaymentController::class, 'index'])->name('payments.index');
+    Route::get('payments/create', [SupplierPaymentController::class, 'create'])->name('payments.create');
+    Route::post('payments', [SupplierPaymentController::class, 'store'])->name('payments.store');
+    Route::get('payments/{payment}', [SupplierPaymentController::class, 'show'])->name('payments.show');
     Route::get('sales', [SalesInvoiceController::class, 'index'])->name('sales.index');
     Route::get('sales/create', [SalesInvoiceController::class, 'create'])->name('sales.create');
     Route::post('sales', [SalesInvoiceController::class, 'store'])->name('sales.store');
