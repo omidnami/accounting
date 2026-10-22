@@ -25,6 +25,7 @@ class CustomerReceivableService
                 'receiptAllocations.receipt',
                 'childInvoices',
             ])
+            ->orderBy('id')
             ->when($lockForUpdate, fn ($query) => $query->lockForUpdate())
             ->get();
         $total = '0.00';
@@ -57,7 +58,7 @@ class CustomerReceivableService
         Customer $customer,
         int $storeId,
         ?int $focusInvoiceId = null,
-        int $limit = 50,
+        ?int $limit = null,
     ): Collection {
         $invoices = Invoice::query()
             ->where('store_id', $storeId)
@@ -76,7 +77,7 @@ class CustomerReceivableService
             })
             ->orderBy('invoice_date')
             ->orderBy('id')
-            ->limit($limit)
+            ->when($limit !== null, fn ($query) => $query->limit($limit))
             ->get();
 
         return $invoices

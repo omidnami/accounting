@@ -5,6 +5,9 @@ import {
     Banknote,
     CalendarDays,
     Check,
+    CircleAlert,
+    CircleX,
+    Clock3,
     CreditCard,
     HandCoins,
     Landmark,
@@ -12,6 +15,7 @@ import {
     ReceiptText,
     UserRound,
 } from '@lucide/vue';
+import { computed } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
     create as createReceipt,
@@ -68,12 +72,42 @@ const methodMeta = {
     card: { label: 'کارتی', icon: CreditCard },
     check: { label: 'چکی', icon: ReceiptText },
 };
-const statusLabel = {
-    pending: 'در انتظار',
-    confirmed: 'تأییدشده',
-    bounced: 'برگشتی',
-    cancelled: 'لغوشده',
+const statusMeta = {
+    pending: {
+        label: 'در انتظار',
+        icon: Clock3,
+        badgeClass: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+        panelClass:
+            'border-amber-500/20 bg-amber-500/[.055] text-amber-700 dark:text-amber-300',
+        message: 'این دریافت هنوز تأیید و سند نهایی نشده است.',
+    },
+    confirmed: {
+        label: 'تأییدشده',
+        icon: Check,
+        badgeClass: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+        panelClass:
+            'border-emerald-500/20 bg-emerald-500/[.055] text-emerald-700 dark:text-emerald-300',
+        message:
+            'این دریافت تأیید شده، به فاکتورهای بالا تخصیص یافته و سند حسابداری آن ثبت شده است. برای اصلاح باید فرآیند برگشت کنترل‌شده انجام شود.',
+    },
+    bounced: {
+        label: 'برگشتی',
+        icon: CircleAlert,
+        badgeClass: 'bg-red-500/10 text-red-700 dark:text-red-300',
+        panelClass:
+            'border-red-500/20 bg-red-500/[.055] text-red-700 dark:text-red-300',
+        message:
+            'این دریافت برگشت خورده است و اثر آن بر مطالبات و حساب خزانه باید با سند اصلاحی کنترل شود.',
+    },
+    cancelled: {
+        label: 'لغوشده',
+        icon: CircleX,
+        badgeClass: 'bg-muted text-muted-foreground',
+        panelClass: 'border-border bg-muted/35 text-muted-foreground',
+        message: 'این دریافت لغو شده و اثر مالی فعالی ندارد.',
+    },
 };
+const receiptStatus = computed(() => statusMeta[props.receipt.status]);
 const printReceipt = () => window.print();
 
 defineOptions({
@@ -107,9 +141,15 @@ defineOptions({
                         <HandCoins class="size-5" />
                         <span class="text-xs font-bold">رسید دریافت</span>
                         <span
-                            class="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300"
-                            >{{ statusLabel[receipt.status] }}</span
+                            class="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold"
+                            :class="receiptStatus.badgeClass"
                         >
+                            <component
+                                :is="receiptStatus.icon"
+                                class="size-3"
+                            />
+                            {{ receiptStatus.label }}
+                        </span>
                     </div>
                     <h1
                         dir="ltr"
@@ -261,13 +301,12 @@ defineOptions({
         </section>
 
         <section
-            class="flex items-start gap-2.5 rounded-2xl border border-emerald-500/20 bg-emerald-500/[.055] p-4 print:hidden"
+            class="flex items-start gap-2.5 rounded-2xl border p-4 print:hidden"
+            :class="receiptStatus.panelClass"
         >
-            <Check class="mt-0.5 size-4 text-emerald-600" />
+            <component :is="receiptStatus.icon" class="mt-0.5 size-4" />
             <p class="text-[10px] leading-6 text-muted-foreground">
-                این دریافت تأیید شده، به فاکتورهای بالا تخصیص یافته و سند
-                حسابداری آن ثبت شده است. برای اصلاح باید فرآیند برگشت کنترل‌شده
-                انجام شود.
+                {{ receiptStatus.message }}
             </p>
         </section>
     </div>

@@ -75,6 +75,9 @@ class CustomerReceiptService
             'payment_method' => $paymentMethod->value,
             'treasury_account_id' => $treasuryAccountId,
             'check_id' => $checkId,
+            'reference' => $reference,
+            'description' => $description,
+            'created_by' => $approver->id,
             'allocations' => $canonicalAllocations,
         ], JSON_THROW_ON_ERROR));
 
@@ -140,7 +143,12 @@ class CustomerReceiptService
                 throw new DomainException('یک فاکتور نمی‌تواند چند تخصیص در یک دریافت داشته باشد.');
             }
 
-            $invoices = Invoice::query()->whereIn('id', $invoiceIds)->lockForUpdate()->get()->keyBy('id');
+            $invoices = Invoice::query()
+                ->whereIn('id', $invoiceIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
             $amountTotal = '0.00';
 
             foreach ($allocations as $allocation) {
@@ -273,6 +281,6 @@ class CustomerReceiptService
             }
 
             return $receipt->refresh()->load(['allocations.invoice', 'customer.party', 'check']);
-        });
+        }, attempts: 3);
     }
 }

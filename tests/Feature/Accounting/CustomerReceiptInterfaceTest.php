@@ -15,8 +15,10 @@ use App\Models\User;
 use App\Services\Accounting\FiscalYearSetupService;
 use App\Services\Accounting\JalaliDateService;
 use App\Services\Inventory\InventoryService;
+use App\Services\Sales\CustomerReceivableService;
 use App\Services\Sales\SalesService;
 use Database\Seeders\AccountSeeder;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 
 function receiptUiContext(UserRole $role = UserRole::Manager): array
@@ -61,7 +63,7 @@ function receiptUiContext(UserRole $role = UserRole::Manager): array
     app(InventoryService::class)->receive(
         warehouseId: $warehouse->id,
         productId: $product->id,
-        quantity: 20,
+        quantity: 100,
         unitCost: 100,
         movementDate: $date,
         idempotencyKey: 'receipt-ui-opening-'.$user->id,
@@ -203,6 +205,14 @@ it('registers a partial cash receipt and updates the invoice settlement', functi
         ->assertRedirect();
 
     expect(Receipt::query()->count())->toBe(1);
+
+    $this->actingAs($context['user'])
+        ->post(route('receipts.store'), array_replace($payload, [
+            'reference' => 'DIFFERENT-REFERENCE',
+        ]))
+        ->assertSessionHasErrors('receipt');
+
+    expect(Receipt::query()->count())->toBe(1);
 });
 
 it('allocates one receipt across multiple customer invoices', function () {
@@ -257,6 +267,38 @@ it('shows receipts and their allocated invoices', function () {
             ->component('receipts/Show')
             ->where('receipt.id', $receipt->id)
             ->where('receipt.allocations.0.invoice.id', $invoice->id));
+});
+
+it('does not hide customer invoices beyond a fifty-row limit', function () {
+    $context = receiptUiContext();
+    $now = now();
+    $rows = [];
+
+    foreach (range(1, 51) as $index) {
+        $rows[] = [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'invoice_number' => sprintf('OPEN-RCP-%02d', $index),
+            'type' => 'sales',
+            'invoice_date' => $context['date'],
+            'customer_id' => $context['customer']->id,
+            'subtotal' => '100.00',
+            'discount_total' => '0.00',
+            'tax_total' => '0.00',
+            'total' => '100.00',
+            'status' => 'confirmed',
+            'created_by' => $context['user']->id,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ];
+    }
+
+    DB::table('invoices')->insert($rows);
+    $invoices = app(CustomerReceivableService::class)
+        ->openInvoices($context['customer'], $context['store']->id);
+
+    expect($invoices)->toHaveCount(51);
 });
 
 it('passes receivable status to the sales invoice page', function () {
