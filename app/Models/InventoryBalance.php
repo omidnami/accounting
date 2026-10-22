@@ -2,13 +2,20 @@
 
 namespace App\Models;
 
+use App\Support\Decimal;
 use DomainException;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property numeric-string $quantity
+ * @property numeric-string $inventory_value
+ */
 class InventoryBalance extends Model
 {
+    /** @use HasFactory<Factory<static>> */
     use HasFactory;
 
     protected $fillable = [
@@ -32,21 +39,33 @@ class InventoryBalance extends Model
         ];
     }
 
+    /**
+     * @return BelongsTo<Store, $this>
+     */
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
     }
 
+    /**
+     * @return BelongsTo<Branch, $this>
+     */
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
     }
 
+    /**
+     * @return BelongsTo<Warehouse, $this>
+     */
     public function warehouse(): BelongsTo
     {
         return $this->belongsTo(Warehouse::class);
     }
 
+    /**
+     * @return BelongsTo<Product, $this>
+     */
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
@@ -54,11 +73,7 @@ class InventoryBalance extends Model
 
     public function isAvailable(string|int|float $quantity): bool
     {
-        return bccomp(
-            (string) $this->quantity,
-            (string) $quantity,
-            3,
-        ) >= 0;
+        return Decimal::compare($this->quantity, $quantity) >= 0;
     }
 
     protected static function booted(): void

@@ -3,14 +3,22 @@
 namespace App\Models;
 
 use App\Enums\AccountingPeriodStatus;
+use Carbon\CarbonImmutable;
 use DomainException;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property AccountingPeriodStatus $status
+ * @property CarbonImmutable $starts_on
+ * @property CarbonImmutable $ends_on
+ */
 class AccountingPeriod extends Model
 {
+    /** @use HasFactory<Factory<static>> */
     use HasFactory;
 
     protected $fillable = [
@@ -35,21 +43,33 @@ class AccountingPeriod extends Model
         ];
     }
 
+    /**
+     * @return BelongsTo<Store, $this>
+     */
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
     }
 
+    /**
+     * @return BelongsTo<FiscalYear, $this>
+     */
     public function fiscalYear(): BelongsTo
     {
         return $this->belongsTo(FiscalYear::class);
     }
 
+    /**
+     * @return HasMany<JournalEntry, $this>
+     */
     public function journalEntries(): HasMany
     {
         return $this->hasMany(JournalEntry::class);
     }
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function closer(): BelongsTo
     {
         return $this->belongsTo(User::class, 'closed_by');

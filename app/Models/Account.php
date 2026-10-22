@@ -7,13 +7,21 @@ use App\Enums\AccountType;
 use App\Enums\NormalBalance;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int|null $id
+ * @property AccountType $type
+ * @property AccountLevel $level
+ * @property NormalBalance $normal_balance
+ */
 class Account extends Model
 {
+    /** @use HasFactory<Factory<static>> */
     use HasFactory;
 
     protected $fillable = [
@@ -38,36 +46,60 @@ class Account extends Model
         ];
     }
 
+    /**
+     * @return BelongsTo<self, $this>
+     */
     public function parent(): BelongsTo
     {
         return $this->belongsTo(self::class, 'parent_id');
     }
 
+    /**
+     * @return BelongsTo<Store, $this>
+     */
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
     }
 
+    /**
+     * @return HasMany<self, $this>
+     */
     public function children(): HasMany
     {
         return $this->hasMany(self::class, 'parent_id');
     }
 
+    /**
+     * @return HasMany<JournalEntryLine, $this>
+     */
     public function journalEntryLines(): HasMany
     {
         return $this->hasMany(JournalEntryLine::class);
     }
 
+    /**
+     * @param  Builder<$this>  $query
+     * @return Builder<$this>
+     */
     public function scopeGeneral(Builder $query): Builder
     {
         return $query->where('level', AccountLevel::General);
     }
 
+    /**
+     * @param  Builder<$this>  $query
+     * @return Builder<$this>
+     */
     public function scopeSubsidiary(Builder $query): Builder
     {
         return $query->where('level', AccountLevel::Subsidiary);
     }
 
+    /**
+     * @param  Builder<$this>  $query
+     * @return Builder<$this>
+     */
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('is_active', true);
@@ -81,10 +113,6 @@ class Account extends Model
     protected static function booted(): void
     {
         static::saving(function (Account $account): void {
-            if ($account->store_id === null) {
-                throw new DomainException('هر حساب باید به یک فروشگاه متصل باشد.');
-            }
-
             if ($account->level === AccountLevel::General && $account->parent_id !== null) {
                 throw new DomainException('حساب کل نمی‌تواند حساب والد داشته باشد.');
             }
@@ -97,7 +125,7 @@ class Account extends Model
                 throw new DomainException('حساب معین باید به یک حساب کل متصل باشد.');
             }
 
-            if ($account->id !== null && $account->parent_id === $account->id) {
+            if ($account->exists && $account->parent_id === $account->getKey()) {
                 throw new DomainException('یک حساب نمی‌تواند والد خودش باشد.');
             }
 
@@ -119,7 +147,7 @@ class Account extends Model
             $visited = [];
 
             while ($ancestor !== null) {
-                if ($account->id !== null && $ancestor->id === $account->id) {
+                if ($account->exists && $ancestor->getKey() === $account->getKey()) {
                     throw new DomainException('ساختار سلسله‌مراتبی حساب‌ها نمی‌تواند حلقه داشته باشد.');
                 }
 

@@ -6,9 +6,11 @@ use App\Enums\AccountingPeriodStatus;
 use App\Enums\FiscalYearStatus;
 use App\Enums\JournalEntryStatus;
 use App\Support\Decimal;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,8 +20,13 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * @property JournalEntryStatus $status
+ * @property CarbonImmutable $entry_date
+ */
 class JournalEntry extends Model
 {
+    /** @use HasFactory<Factory<static>> */
     use HasFactory;
 
     protected $fillable = [
@@ -47,56 +54,90 @@ class JournalEntry extends Model
         ];
     }
 
+    /**
+     * @return HasMany<JournalEntryLine, $this>
+     */
     public function lines(): HasMany
     {
         return $this->hasMany(JournalEntryLine::class)->orderBy('sort_order');
     }
 
+    /**
+     * @return BelongsTo<User, $this>
+     */
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
+    /**
+     * @return BelongsTo<Store, $this>
+     */
     public function store(): BelongsTo
     {
         return $this->belongsTo(Store::class);
     }
 
+    /**
+     * @return BelongsTo<Branch, $this>
+     */
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
     }
 
+    /**
+     * @return BelongsTo<FiscalYear, $this>
+     */
     public function fiscalYear(): BelongsTo
     {
         return $this->belongsTo(FiscalYear::class);
     }
 
+    /**
+     * @return BelongsTo<AccountingPeriod, $this>
+     */
     public function accountingPeriod(): BelongsTo
     {
         return $this->belongsTo(AccountingPeriod::class);
     }
 
+    /**
+     * @return MorphTo<Model, $this>
+     */
     public function source(): MorphTo
     {
         return $this->morphTo();
     }
 
+    /**
+     * @return BelongsTo<self, $this>
+     */
     public function reversalOf(): BelongsTo
     {
         return $this->belongsTo(self::class, 'reversal_of_id');
     }
 
+    /**
+     * @return HasOne<self, $this>
+     */
     public function reversal(): HasOne
     {
         return $this->hasOne(self::class, 'reversal_of_id');
     }
 
+    /**
+     * @param  Builder<$this>  $query
+     * @return Builder<$this>
+     */
     public function scopePosted(Builder $query): Builder
     {
         return $query->where('status', JournalEntryStatus::Posted);
     }
 
+    /**
+     * @param  Collection<int, JournalEntryLine>|null  $lines
+     */
     public function totalDebit(?Collection $lines = null): string
     {
         $lines ??= $this->lines()->get();
@@ -109,6 +150,9 @@ class JournalEntry extends Model
         return $total;
     }
 
+    /**
+     * @param  Collection<int, JournalEntryLine>|null  $lines
+     */
     public function totalCredit(?Collection $lines = null): string
     {
         $lines ??= $this->lines()->get();
@@ -121,6 +165,9 @@ class JournalEntry extends Model
         return $total;
     }
 
+    /**
+     * @param  Collection<int, JournalEntryLine>|null  $lines
+     */
     public function isBalanced(?Collection $lines = null): bool
     {
         $lines ??= $this->lines()->get();
@@ -132,6 +179,9 @@ class JournalEntry extends Model
             && Decimal::compare($debit, $credit, Decimal::MONEY_SCALE) === 0;
     }
 
+    /**
+     * @param  Collection<int, JournalEntryLine>|null  $lines
+     */
     public function assertBalanced(?Collection $lines = null): void
     {
         if (! $this->isBalanced($lines)) {
@@ -167,6 +217,9 @@ class JournalEntry extends Model
         });
     }
 
+    /**
+     * @param  Collection<int, int>  $accountIds
+     */
     private function validatePostingScope(Collection $accountIds): void
     {
         if ($this->store_id === null
@@ -209,12 +262,24 @@ class JournalEntry extends Model
             throw new DomainException('ثبت سند در سال مالی غیرفعال مجاز نیست.');
         }
 
-        $accountStores = Account::query()
+        $accounts = Account::query()
             ->whereIn('id', $accountIds)
-            ->pluck('store_id');
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
 
-        if ($accountStores->contains(fn ($storeId): bool => (int) $storeId !== (int) $this->store_id)) {
-            throw new DomainException('تمام حساب‌های سند باید متعلق به فروشگاه سند باشند.');
+        if ($accounts->count() !== $accountIds->unique()->count()) {
+            throw new DomainException('همه حساب‌های ردیف سند باید وجود داشته باشند.');
+        }
+
+        foreach ($accounts as $account) {
+            if (! $account->is_active || $account->isGeneral()) {
+                throw new DomainException('تمام حساب‌های سند باید معین و فعال باشند.');
+            }
+
+            if ((int) $account->store_id !== (int) $this->store_id) {
+                throw new DomainException('تمام حساب‌های سند باید متعلق به فروشگاه سند باشند.');
+            }
         }
     }
 

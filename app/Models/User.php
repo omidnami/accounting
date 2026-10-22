@@ -22,6 +22,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property string $email
  * @property Carbon|null $email_verified_at
  * @property string $password
+ * @property UserRole $role
  * @property string|null $two_factor_secret
  * @property string|null $two_factor_recovery_codes
  * @property Carbon|null $two_factor_confirmed_at
@@ -51,31 +52,49 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         ];
     }
 
+    /**
+     * @return HasMany<JournalEntry, $this>
+     */
     public function journalEntries(): HasMany
     {
         return $this->hasMany(JournalEntry::class, 'created_by');
     }
 
+    /**
+     * @return HasMany<Invoice, $this>
+     */
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class, 'created_by');
     }
 
+    /**
+     * @return HasMany<Receipt, $this>
+     */
     public function receipts(): HasMany
     {
         return $this->hasMany(Receipt::class, 'created_by');
     }
 
+    /**
+     * @return HasMany<Payment, $this>
+     */
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class, 'created_by');
     }
 
+    /**
+     * @return HasMany<Check, $this>
+     */
     public function checks(): HasMany
     {
         return $this->hasMany(Check::class, 'created_by');
     }
 
+    /**
+     * @return HasMany<InventoryMovement, $this>
+     */
     public function inventoryMovements(): HasMany
     {
         return $this->hasMany(InventoryMovement::class, 'created_by');
@@ -83,7 +102,6 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 
     public function canApproveJournalEntries(): bool
     {
-        return $this->role instanceof UserRole
-            && $this->role->canApproveJournalEntries();
+        return $this->role->canApproveJournalEntries();
     }
 }

@@ -5,12 +5,18 @@ namespace App\Models;
 use App\Enums\JournalEntryStatus;
 use App\Support\Decimal;
 use DomainException;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property numeric-string $debit
+ * @property numeric-string $credit
+ */
 class JournalEntryLine extends Model
 {
+    /** @use HasFactory<Factory<static>> */
     use HasFactory;
 
     protected $fillable = [
@@ -30,11 +36,17 @@ class JournalEntryLine extends Model
         ];
     }
 
+    /**
+     * @return BelongsTo<JournalEntry, $this>
+     */
     public function journalEntry(): BelongsTo
     {
         return $this->belongsTo(JournalEntry::class);
     }
 
+    /**
+     * @return BelongsTo<Account, $this>
+     */
     public function account(): BelongsTo
     {
         return $this->belongsTo(Account::class);
@@ -71,8 +83,7 @@ class JournalEntryLine extends Model
                 throw new DomainException('هر ردیف سند باید فقط یکی از مبالغ بدهکار یا بستانکار را داشته باشد.');
             }
 
-            if ($entry && $account->store_id !== null
-                && (int) $account->store_id !== (int) $entry->store_id) {
+            if ($entry && (int) $account->store_id !== (int) $entry->store_id) {
                 throw new DomainException('حساب ردیف باید متعلق به فروشگاه سند باشد.');
             }
         });

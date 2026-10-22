@@ -197,6 +197,23 @@ it('rejects a posting date outside the selected period', function () {
     app(PostingService::class)->approveAndPost($entry, $manager);
 })->throws(DomainException::class);
 
+it('rechecks that every account is still active at final posting', function () {
+    $context = createHardenedJournalContext();
+    $manager = createPostingUser(UserRole::Manager);
+    $entry = app(PostingService::class)->createDraft(
+        journalAttributes($context, 'JE-0010'),
+        [
+            ['account_id' => $context['cash']->id, 'debit' => 100_000, 'credit' => 0],
+            ['account_id' => $context['sales']->id, 'debit' => 0, 'credit' => 100_000],
+        ],
+    );
+    $context['cash']->update(['is_active' => false]);
+
+    expect(fn () => app(PostingService::class)->approveAndPost($entry, $manager))
+        ->toThrow(DomainException::class)
+        ->and($entry->fresh()->status)->toBe(JournalEntryStatus::Draft);
+});
+
 it('rejects a line account from another store', function () {
     $context = createHardenedJournalContext();
     $otherStore = Store::query()->create([
