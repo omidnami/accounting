@@ -172,13 +172,59 @@ class Invoice extends Model
                 if ($invoice->supplier_id === null || $invoice->customer_id !== null) {
                     throw new DomainException('فاکتور خرید یا برگشت خرید باید فقط به تأمین‌کننده متصل باشد.');
                 }
+            } elseif ($invoice->customer_id === null || $invoice->supplier_id !== null) {
+                throw new DomainException('فاکتور فروش یا پیش‌فاکتور باید فقط به مشتری متصل باشد.');
+            }
 
+            if (! $invoice->exists) {
                 return;
             }
 
-            if ($invoice->customer_id === null || $invoice->supplier_id !== null) {
-                throw new DomainException('فاکتور فروش یا پیش‌فاکتور باید فقط به مشتری متصل باشد.');
+            $previous = $invoice->getRawOriginal('status');
+
+            if ($previous === null) {
+                return;
+            }
+
+            $previousStatus = InvoiceStatus::from($previous);
+
+            if ($previousStatus === InvoiceStatus::Draft) {
+                return;
+            }
+
+            if (array_diff(array_keys($invoice->getDirty()), ['status']) !== []) {
+                throw new DomainException('فاکتور پس از پیش‌نویس قابل ویرایش نیست.');
+            }
+
+            if ($invoice->isDirty('status')
+                && ! $invoice->isAllowedStatusTransition($previousStatus, $invoice->status)) {
+                throw new DomainException('تغییر وضعیت فاکتور مجاز نیست.');
             }
         });
+
+        static::deleting(function (Invoice $invoice): void {
+            if ($invoice->status !== InvoiceStatus::Draft) {
+                throw new DomainException('فقط فاکتور پیش‌نویس قابل حذف است.');
+            }
+        });
+    }
+
+    private function isAllowedStatusTransition(
+        InvoiceStatus $from,
+        InvoiceStatus $to,
+    ): bool {
+        return in_array([$from, $to], [
+            [InvoiceStatus::Draft, InvoiceStatus::Confirmed],
+            [InvoiceStatus::Draft, InvoiceStatus::Cancelled],
+            [InvoiceStatus::Confirmed, InvoiceStatus::PartiallyPaid],
+            [InvoiceStatus::Confirmed, InvoiceStatus::Paid],
+            [InvoiceStatus::Confirmed, InvoiceStatus::Reversed],
+            [InvoiceStatus::PartiallyPaid, InvoiceStatus::Paid],
+            [InvoiceStatus::PartiallyPaid, InvoiceStatus::Confirmed],
+            [InvoiceStatus::PartiallyPaid, InvoiceStatus::Reversed],
+            [InvoiceStatus::Paid, InvoiceStatus::Reversed],
+            [InvoiceStatus::Paid, InvoiceStatus::PartiallyPaid],
+            [InvoiceStatus::Paid, InvoiceStatus::Confirmed],
+        ], true);
     }
 }

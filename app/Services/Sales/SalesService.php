@@ -169,11 +169,27 @@ class SalesService
                 throw new DomainException('فقط فاکتور فروش پیش‌نویس قابل تأیید است.');
             }
 
-            $locked->load(['items', 'customer.party']);
+            $locked->load('items');
+            $customer = Customer::query()
+                ->with('party')
+                ->whereKey($locked->customer_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $locked->setRelation('customer', $customer);
 
-            if (! $locked->customer?->party?->is_active
-                || (int) $locked->customer->party->store_id !== (int) $locked->store_id) {
+            if (! $customer->is_active || ! $customer->party?->is_active
+                || (int) $customer->party->store_id !== (int) $locked->store_id) {
                 throw new DomainException('مشتری فاکتور معتبر و متعلق به فروشگاه نیست.');
+            }
+
+            $projectedCredit = Decimal::add(
+                $this->customerOutstanding($customer),
+                $locked->total,
+                Decimal::MONEY_SCALE,
+            );
+
+            if (Decimal::compare($projectedCredit, $customer->credit_limit, Decimal::MONEY_SCALE) > 0) {
+                throw new DomainException('سقف اعتبار مشتری برای این فاکتور کافی نیست.');
             }
 
             $warehouse = Warehouse::query()->findOrFail($warehouseId);
@@ -276,5 +292,38 @@ class SalesService
 
             return $locked->refresh()->load(['items', 'customer.party']);
         });
+    }
+
+    private function customerOutstanding(Customer $customer): string
+    {
+        $total = '0.00';
+        $invoices = Invoice::query()
+            ->where('customer_id', $customer->id)
+            ->where('type', InvoiceType::Sales)
+            ->whereIn('status', [
+                InvoiceStatus::Confirmed,
+                InvoiceStatus::PartiallyPaid,
+            ])
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($invoices as $invoice) {
+            $received = (string) $invoice->receiptAllocations()
+                ->whereHas('receipt', fn ($query) => $query->where('status', 'confirmed'))
+                ->sum('amount');
+            $returned = (string) Invoice::query()
+                ->where('parent_invoice_id', $invoice->id)
+                ->where('type', InvoiceType::SalesReturn)
+                ->where('status', InvoiceStatus::Confirmed)
+                ->sum('total');
+            $remaining = Decimal::subtract($invoice->total, $received, 2);
+            $remaining = Decimal::subtract($remaining, $returned, 2);
+
+            if (Decimal::compare($remaining, '0', 2) > 0) {
+                $total = Decimal::add($total, $remaining, 2);
+            }
+        }
+
+        return $total;
     }
 }

@@ -16,6 +16,7 @@ use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
 use App\Services\Inventory\InventoryService;
 use App\Support\Decimal;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -52,6 +53,14 @@ class SalesReturnService
                 || ! $original->customer?->party?->is_active
                 || (int) $original->customer->party->store_id !== (int) $original->store_id) {
                 throw new DomainException('فاکتور فروش معتبر و متعلق به فروشگاه برای برگشت یافت نشد.');
+            }
+
+            $fiscalYear = $original->fiscalYear()->firstOrFail();
+            $returnDateValue = CarbonImmutable::parse($returnDate);
+
+            if ($returnDateValue->lessThan($fiscalYear->starts_on)
+                || $returnDateValue->greaterThan($fiscalYear->ends_on)) {
+                throw new DomainException('تاریخ برگشت فروش باید داخل سال مالی فاکتور اصلی باشد.');
             }
 
             $return = Invoice::query()->create([

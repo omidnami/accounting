@@ -36,7 +36,10 @@ function createSalesContext(): array
         'code' => 'SALES-CUSTOMER',
         'name' => 'مشتری فروش',
     ]);
-    $customer = Customer::query()->create(['party_id' => $party->id]);
+    $customer = Customer::query()->create([
+        'party_id' => $party->id,
+        'credit_limit' => 10_000_000,
+    ]);
     $product = Product::query()->create([
         'code' => 'SALES-P-001',
         'name' => 'کالای فروش',
@@ -114,6 +117,7 @@ it('allocates one customer receipt across multiple sales invoices', function () 
             ['invoice_id' => $invoiceB->id, 'amount' => 100],
         ],
         approver: $context['manager'],
+        idempotencyKey: 'receipt-multi-001',
     );
 
     expect($receipt->amount)->toBe('400.00')
@@ -121,6 +125,24 @@ it('allocates one customer receipt across multiple sales invoices', function () 
         ->and($invoiceA->fresh()->status)->toBe(InvoiceStatus::PartiallyPaid)
         ->and($invoiceB->fresh()->status)->toBe(InvoiceStatus::PartiallyPaid)
         ->and(JournalEntry::query()->where('source_type', Receipt::class)->count())->toBe(1);
+
+    $duplicate = $receiptService->receive(
+        storeId: $context['store']->id,
+        branchId: $context['branch']->id,
+        fiscalYearId: $context['fiscalYear']->id,
+        customerId: $context['customer']->id,
+        receiptDate: '2026-05-04',
+        paymentMethod: PaymentMethod::Cash,
+        allocations: [
+            ['invoice_id' => $invoiceA->id, 'amount' => 300],
+            ['invoice_id' => $invoiceB->id, 'amount' => 100],
+        ],
+        approver: $context['manager'],
+        idempotencyKey: 'receipt-multi-001',
+    );
+
+    expect($duplicate->is($receipt))->toBeTrue()
+        ->and(Receipt::query()->count())->toBe(1);
 });
 
 it('confirms a sales return, restores inventory, and reverses revenue and COGS', function () {
@@ -145,3 +167,75 @@ it('confirms a sales return, restores inventory, and reverses revenue and COGS',
         ->and($journal->totalDebit())->toBe('320.00')
         ->and($journal->totalCredit())->toBe('320.00');
 });
+
+it('blocks editing or deleting finalized sales documents', function () {
+    $context = createSalesContext();
+    $invoice = createSalesInvoice($context, 1);
+
+    expect(fn () => $invoice->update(['notes' => 'ویرایش غیرمجاز']))
+        ->toThrow(DomainException::class);
+
+    expect(fn () => $invoice->items->first()->update(['quantity' => 2]))
+        ->toThrow(DomainException::class);
+
+    expect(fn () => $invoice->delete())
+        ->toThrow(DomainException::class);
+});
+
+it('rejects a sale above the customer credit limit', function () {
+    $context = createSalesContext();
+    $context['customer']->update(['credit_limit' => 100]);
+    $service = app(SalesService::class);
+    $invoice = $service->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'customer_id' => $context['customer']->id,
+            'invoice_date' => '2026-05-02',
+        ],
+        [[
+            'product_id' => $context['product']->id,
+            'quantity' => 1,
+            'unit_price' => 200,
+            'tax_rate' => 10,
+        ]],
+    );
+
+    expect(fn () => $service->confirm($invoice, $context['warehouse']->id, $context['manager']))
+        ->toThrow(DomainException::class)
+        ->and($invoice->fresh()->status)->toBe(InvoiceStatus::Draft);
+});
+
+it('rejects a sales return dated outside the original fiscal year', function () {
+    $context = createSalesContext();
+    $invoice = createSalesInvoice($context, 1);
+
+    app(SalesReturnService::class)->createDraft(
+        $invoice,
+        [['invoice_item_id' => $invoice->items->first()->id, 'quantity' => 1]],
+        '2027-03-21',
+        $context['manager']->id,
+    );
+})->throws(DomainException::class);
+
+it('rejects settling an invoice from another branch', function () {
+    $context = createSalesContext();
+    $invoice = createSalesInvoice($context, 1);
+    $otherBranch = $context['store']->branches()->create([
+        'code' => 'OTHER-SALES-BRANCH',
+        'name' => 'شعبه دیگر فروش',
+    ]);
+
+    app(CustomerReceiptService::class)->receive(
+        storeId: $context['store']->id,
+        branchId: $otherBranch->id,
+        fiscalYearId: $context['fiscalYear']->id,
+        customerId: $context['customer']->id,
+        receiptDate: '2026-05-04',
+        paymentMethod: PaymentMethod::Cash,
+        allocations: [['invoice_id' => $invoice->id, 'amount' => 100]],
+        approver: $context['manager'],
+        idempotencyKey: 'wrong-branch-receipt',
+    );
+})->throws(DomainException::class);

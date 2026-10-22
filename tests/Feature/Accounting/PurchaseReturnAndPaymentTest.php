@@ -178,6 +178,7 @@ it('allocates multiple payments across purchase invoices until paid', function (
             ['invoice_id' => $invoiceB->id, 'amount' => 100_000],
         ],
         approver: $context['manager'],
+        idempotencyKey: 'supplier-payment-001',
     );
 
     expect($firstPayment->amount)->toBe('400000.00')
@@ -197,6 +198,7 @@ it('allocates multiple payments across purchase invoices until paid', function (
             ['invoice_id' => $invoiceB->id, 'amount' => 120_000],
         ],
         approver: $context['manager'],
+        idempotencyKey: 'supplier-payment-002',
     );
 
     expect($secondPayment->amount)->toBe('480000.00')

@@ -35,6 +35,10 @@ class Check extends Model
         'supplier_id',
         'created_by',
         'description',
+        'settled_at',
+        'bounced_at',
+        'settlement_entry_id',
+        'bounce_entry_id',
     ];
 
     protected function casts(): array
@@ -45,6 +49,8 @@ class Check extends Model
             'due_date' => 'immutable_date',
             'type' => CheckType::class,
             'status' => CheckStatus::class,
+            'settled_at' => 'datetime',
+            'bounced_at' => 'datetime',
         ];
     }
 
@@ -102,6 +108,18 @@ class Check extends Model
     public function payment(): HasOne
     {
         return $this->hasOne(Payment::class);
+    }
+
+    /** @return BelongsTo<JournalEntry, $this> */
+    public function settlementEntry(): BelongsTo
+    {
+        return $this->belongsTo(JournalEntry::class, 'settlement_entry_id');
+    }
+
+    /** @return BelongsTo<JournalEntry, $this> */
+    public function bounceEntry(): BelongsTo
+    {
+        return $this->belongsTo(JournalEntry::class, 'bounce_entry_id');
     }
 
     protected static function booted(): void

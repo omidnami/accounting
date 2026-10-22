@@ -5,8 +5,10 @@ namespace Database\Seeders;
 use App\Enums\AccountLevel;
 use App\Enums\AccountType;
 use App\Enums\NormalBalance;
+use App\Enums\TreasuryAccountType;
 use App\Models\Account;
 use App\Models\Store;
+use App\Models\TreasuryAccount;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -268,5 +270,32 @@ class AccountSeeder extends Seeder
                 );
             }
         });
+
+        $branch = $store->defaultBranch;
+        $cash = Account::query()->where('store_id', $store->id)->where('code', '1101')->firstOrFail();
+        $bank = Account::query()->where('store_id', $store->id)->where('code', '1102')->firstOrFail();
+
+        TreasuryAccount::query()->firstOrCreate(
+            ['branch_id' => $branch->id, 'code' => 'CASH'],
+            [
+                'store_id' => $store->id,
+                'gl_account_id' => $cash->id,
+                'name' => 'صندوق اصلی',
+                'type' => TreasuryAccountType::Cash,
+                'is_default' => true,
+                'is_active' => true,
+            ],
+        );
+        TreasuryAccount::query()->firstOrCreate(
+            ['branch_id' => $branch->id, 'code' => 'BANK'],
+            [
+                'store_id' => $store->id,
+                'gl_account_id' => $bank->id,
+                'name' => 'بانک اصلی',
+                'type' => TreasuryAccountType::Bank,
+                'is_default' => true,
+                'is_active' => true,
+            ],
+        );
     }
 }

@@ -13,6 +13,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property PaymentMethod $payment_method
+ * @property TreasuryDocumentStatus $status
+ * @property numeric-string $amount
  */
 class Receipt extends Model
 {
@@ -24,9 +26,11 @@ class Receipt extends Model
         'branch_id',
         'fiscal_year_id',
         'receipt_number',
+        'idempotency_key',
         'receipt_date',
         'amount',
         'payment_method',
+        'treasury_account_id',
         'customer_id',
         'check_id',
         'created_by',
@@ -85,6 +89,12 @@ class Receipt extends Model
         return $this->belongsTo(Check::class);
     }
 
+    /** @return BelongsTo<TreasuryAccount, $this> */
+    public function treasuryAccount(): BelongsTo
+    {
+        return $this->belongsTo(TreasuryAccount::class);
+    }
+
     /**
      * @return BelongsTo<User, $this>
      */
@@ -106,6 +116,31 @@ class Receipt extends Model
         static::saving(function (Receipt $receipt): void {
             if (($receipt->payment_method === PaymentMethod::Check) !== ($receipt->check_id !== null)) {
                 throw new DomainException('دریافت چکی باید به یک چک متصل باشد؛ سایر روش‌ها نباید چک داشته باشند.');
+            }
+
+            $original = $receipt->getRawOriginal('status');
+
+            if ($receipt->exists && $original !== null) {
+                $from = TreasuryDocumentStatus::from($original);
+                $to = $receipt->status;
+                $onlyStatus = array_diff(array_keys($receipt->getDirty()), ['status']) === [];
+                $allowed = ($from === TreasuryDocumentStatus::Pending
+                        && in_array($to, [
+                            TreasuryDocumentStatus::Confirmed,
+                            TreasuryDocumentStatus::Cancelled,
+                        ], true))
+                    || ($from === TreasuryDocumentStatus::Confirmed
+                        && $to === TreasuryDocumentStatus::Bounced);
+
+                if (! $onlyStatus || ! $allowed) {
+                    throw new DomainException('دریافت تأییدشده قابل ویرایش نیست.');
+                }
+            }
+        });
+
+        static::deleting(function (Receipt $receipt): void {
+            if ($receipt->status !== TreasuryDocumentStatus::Pending) {
+                throw new DomainException('فقط دریافت در انتظار تأیید قابل حذف است.');
             }
         });
     }

@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\TreasuryDocumentStatus;
+use DomainException;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -36,5 +38,22 @@ class ReceiptAllocation extends Model
     public function invoice(): BelongsTo
     {
         return $this->belongsTo(Invoice::class);
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (ReceiptAllocation $allocation): void {
+            $receipt = $allocation->receipt()->first();
+
+            if ($receipt && $receipt->status !== TreasuryDocumentStatus::Pending) {
+                throw new DomainException('تخصیص دریافت تأییدشده قابل ویرایش نیست.');
+            }
+        });
+
+        static::deleting(function (ReceiptAllocation $allocation): void {
+            if ($allocation->receipt()->where('status', '!=', TreasuryDocumentStatus::Pending)->exists()) {
+                throw new DomainException('تخصیص دریافت تأییدشده قابل حذف نیست.');
+            }
+        });
     }
 }

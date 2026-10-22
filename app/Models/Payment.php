@@ -26,9 +26,11 @@ class Payment extends Model
         'branch_id',
         'fiscal_year_id',
         'payment_number',
+        'idempotency_key',
         'payment_date',
         'amount',
         'payment_method',
+        'treasury_account_id',
         'supplier_id',
         'check_id',
         'created_by',
@@ -87,6 +89,12 @@ class Payment extends Model
         return $this->belongsTo(Check::class);
     }
 
+    /** @return BelongsTo<TreasuryAccount, $this> */
+    public function treasuryAccount(): BelongsTo
+    {
+        return $this->belongsTo(TreasuryAccount::class);
+    }
+
     /**
      * @return BelongsTo<User, $this>
      */
@@ -108,6 +116,31 @@ class Payment extends Model
         static::saving(function (Payment $payment): void {
             if (($payment->payment_method === PaymentMethod::Check) !== ($payment->check_id !== null)) {
                 throw new DomainException('پرداخت چکی باید به یک چک متصل باشد؛ سایر روش‌ها نباید چک داشته باشند.');
+            }
+
+            $original = $payment->getRawOriginal('status');
+
+            if ($payment->exists && $original !== null) {
+                $from = TreasuryDocumentStatus::from($original);
+                $to = $payment->status;
+                $onlyStatus = array_diff(array_keys($payment->getDirty()), ['status']) === [];
+                $allowed = ($from === TreasuryDocumentStatus::Pending
+                        && in_array($to, [
+                            TreasuryDocumentStatus::Confirmed,
+                            TreasuryDocumentStatus::Cancelled,
+                        ], true))
+                    || ($from === TreasuryDocumentStatus::Confirmed
+                        && $to === TreasuryDocumentStatus::Bounced);
+
+                if (! $onlyStatus || ! $allowed) {
+                    throw new DomainException('پرداخت تأییدشده قابل ویرایش نیست.');
+                }
+            }
+        });
+
+        static::deleting(function (Payment $payment): void {
+            if ($payment->status !== TreasuryDocumentStatus::Pending) {
+                throw new DomainException('فقط پرداخت در انتظار تأیید قابل حذف است.');
             }
         });
     }

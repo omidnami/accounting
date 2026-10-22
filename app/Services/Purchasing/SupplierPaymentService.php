@@ -8,6 +8,7 @@ use App\Enums\DocumentType;
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Enums\PaymentMethod;
+use App\Enums\TreasuryAccountType;
 use App\Enums\TreasuryDocumentStatus;
 use App\Models\AccountingPeriod;
 use App\Models\Branch;
@@ -17,6 +18,7 @@ use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\PaymentAllocation;
 use App\Models\Supplier;
+use App\Models\TreasuryAccount;
 use App\Models\User;
 use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\PostingService;
@@ -45,6 +47,8 @@ class SupplierPaymentService
         PaymentMethod $paymentMethod,
         array $allocations,
         User $approver,
+        string $idempotencyKey,
+        ?int $treasuryAccountId = null,
         ?int $checkId = null,
         ?string $reference = null,
         ?string $description = null,
@@ -62,10 +66,18 @@ class SupplierPaymentService
             $paymentMethod,
             $allocations,
             $approver,
+            $idempotencyKey,
+            $treasuryAccountId,
             $checkId,
             $reference,
             $description,
         ): Payment {
+            $existing = Payment::query()->where('idempotency_key', $idempotencyKey)->first();
+
+            if ($existing) {
+                return $existing->load(['allocations.invoice', 'supplier.party', 'check']);
+            }
+
             $supplier = Supplier::query()
                 ->with('party')
                 ->findOrFail($supplierId);
@@ -115,6 +127,7 @@ class SupplierPaymentService
                 if (! $invoice
                     || $invoice->type !== InvoiceType::Purchase
                     || (int) $invoice->supplier_id !== $supplier->id
+                    || (int) $invoice->branch_id !== $branchId
                     || ! in_array($invoice->status, [
                         InvoiceStatus::Confirmed,
                         InvoiceStatus::PartiallyPaid,
@@ -133,11 +146,13 @@ class SupplierPaymentService
             }
 
             $check = null;
+            $treasuryAccount = null;
 
             if ($paymentMethod === PaymentMethod::Check) {
                 $check = Check::query()->lockForUpdate()->findOrFail($checkId);
 
                 if ($check->type !== CheckType::Payable
+                    || $check->status !== CheckStatus::Pending
                     || (int) $check->supplier_id !== $supplier->id
                     || (int) $check->store_id !== $storeId
                     || Decimal::compare($check->amount, $paymentAmount, Decimal::MONEY_SCALE) !== 0) {
@@ -145,6 +160,23 @@ class SupplierPaymentService
                 }
             } elseif ($checkId !== null) {
                 throw new DomainException('برای روش‌های غیرچکی نباید شناسه چک ارسال شود.');
+            } else {
+                $treasuryType = $paymentMethod === PaymentMethod::Cash
+                    ? TreasuryAccountType::Cash
+                    : TreasuryAccountType::Bank;
+                $treasuryAccount = TreasuryAccount::query()
+                    ->where('store_id', $storeId)
+                    ->where('branch_id', $branchId)
+                    ->where('type', $treasuryType)
+                    ->where('is_active', true)
+                    ->when($treasuryAccountId !== null, fn ($query) => $query->whereKey($treasuryAccountId))
+                    ->orderByDesc('is_default')
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $treasuryAccount || ! $treasuryAccount->glAccount()->where('is_active', true)->exists()) {
+                    throw new DomainException('حساب خزانه فعال برای این روش پرداخت پیدا نشد.');
+                }
             }
 
             $payment = Payment::query()->create([
@@ -157,9 +189,11 @@ class SupplierPaymentService
                     $fiscalYearId,
                     DocumentType::Payment,
                 ),
+                'idempotency_key' => $idempotencyKey,
                 'payment_date' => $paymentDate,
                 'amount' => $paymentAmount,
                 'payment_method' => $paymentMethod,
+                'treasury_account_id' => $treasuryAccount?->id,
                 'supplier_id' => $supplier->id,
                 'check_id' => $check?->id,
                 'created_by' => $approver->id,
@@ -175,12 +209,6 @@ class SupplierPaymentService
                     'amount' => Decimal::normalize($allocation['amount'], Decimal::MONEY_SCALE),
                 ]);
             }
-
-            $creditAccount = match ($paymentMethod) {
-                PaymentMethod::Cash => 'cash',
-                PaymentMethod::Bank, PaymentMethod::Card => 'bank',
-                PaymentMethod::Check => 'checks_payable',
-            };
 
             $this->posting->post(
                 [
@@ -203,7 +231,9 @@ class SupplierPaymentService
                         'description' => 'کاهش بدهی تأمین‌کننده',
                     ],
                     [
-                        'account_id' => $this->settings->defaultAccountId($creditAccount, $storeId),
+                        'account_id' => $treasuryAccount
+                            ? $treasuryAccount->gl_account_id
+                            : $this->settings->defaultAccountId('checks_payable', $storeId),
                         'debit' => '0.00',
                         'credit' => $paymentAmount,
                         'description' => 'منبع پرداخت',
@@ -213,7 +243,6 @@ class SupplierPaymentService
             );
 
             $payment->forceFill(['status' => TreasuryDocumentStatus::Confirmed])->save();
-            $check?->forceFill(['status' => CheckStatus::Spent])->save();
 
             foreach ($allocations as $allocation) {
                 $invoice = $invoices->get((int) $allocation['invoice_id']);

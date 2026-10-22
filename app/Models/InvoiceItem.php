@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\InvoiceStatus;
+use DomainException;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -75,5 +77,22 @@ class InvoiceItem extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (InvoiceItem $item): void {
+            $invoice = $item->invoice()->first();
+
+            if ($invoice && $invoice->status !== InvoiceStatus::Draft) {
+                throw new DomainException('اقلام فاکتور پس از پیش‌نویس قابل ویرایش نیستند.');
+            }
+        });
+
+        static::deleting(function (InvoiceItem $item): void {
+            if ($item->invoice()->where('status', '!=', InvoiceStatus::Draft)->exists()) {
+                throw new DomainException('اقلام فاکتور پس از پیش‌نویس قابل حذف نیستند.');
+            }
+        });
     }
 }

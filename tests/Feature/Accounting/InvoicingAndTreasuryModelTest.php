@@ -48,7 +48,6 @@ it('connects sales invoices, items, products, and customers', function () {
         'customer_id' => $customer->id,
         'subtotal' => 2_500_000,
         'total' => 2_750_000,
-        'status' => InvoiceStatus::Confirmed,
     ]);
 
     $item = $invoice->items()->create([
@@ -61,6 +60,7 @@ it('connects sales invoices, items, products, and customers', function () {
         'tax_amount' => 250_000,
         'line_total' => 2_750_000,
     ]);
+    $invoice->update(['status' => InvoiceStatus::Confirmed]);
 
     expect($invoice->customer->is($customer))->toBeTrue()
         ->and($customer->invoices)->toHaveCount(1)
