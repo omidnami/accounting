@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
-import { BarChart3, LayoutGrid } from '@lucide/vue';
+import { BarChart3, LayoutGrid, UsersRound } from '@lucide/vue';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavMain from '@/components/NavMain.vue';
@@ -15,6 +15,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import { index as parties } from '@/routes/parties';
 import { index as reports } from '@/routes/reports';
 import type { NavItem } from '@/types';
 
@@ -29,6 +30,11 @@ const mainNavItems = computed<NavItem[]>(() => {
     ];
 
     if (user.value && ['manager', 'accountant'].includes(user.value.role)) {
+        items.push({
+            title: 'طرف‌حساب‌ها',
+            href: parties(),
+            icon: UsersRound,
+        });
         items.push({
             title: 'گزارش‌های مالی',
             href: reports(),

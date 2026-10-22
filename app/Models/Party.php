@@ -29,6 +29,7 @@ class Party extends Model
         'tax_id',
         'address',
         'is_active',
+        'version',
     ];
 
     protected function casts(): array
@@ -36,6 +37,7 @@ class Party extends Model
         return [
             'entity_type' => PartyEntityType::class,
             'is_active' => 'boolean',
+            'version' => 'integer',
         ];
     }
 
