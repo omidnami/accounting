@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
-import { LayoutGrid } from '@lucide/vue';
+import { Link, usePage } from '@inertiajs/vue3';
+import { BarChart3, LayoutGrid } from '@lucide/vue';
+import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
@@ -14,15 +15,29 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import { index as reports } from '@/routes/reports';
 import type { NavItem } from '@/types';
 
-const mainNavItems: NavItem[] = [
-    {
-        title: 'داشبورد',
-        href: dashboard(),
-        icon: LayoutGrid,
-    },
-];
+const user = computed(() => usePage().props.auth.user);
+const mainNavItems = computed<NavItem[]>(() => {
+    const items: NavItem[] = [
+        {
+            title: 'داشبورد',
+            href: dashboard(),
+            icon: LayoutGrid,
+        },
+    ];
+
+    if (user.value && ['manager', 'accountant'].includes(user.value.role)) {
+        items.push({
+            title: 'گزارش‌های مالی',
+            href: reports(),
+            icon: BarChart3,
+        });
+    }
+
+    return items;
+});
 </script>
 
 <template>
