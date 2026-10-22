@@ -210,3 +210,15 @@ it('rejects payment above outstanding and renders payment pages', function () {
             ->where('can_pay', true)
             ->where('payable', fn ($value) => is_string($value)));
 });
+
+it('rejects payment when the supplier is deactivated before paying', function () {
+    $context = supplierPaymentUiContext();
+    $context['supplier']->update(['is_active' => false]);
+
+    $this->actingAs($context['user'])
+        ->post(route('payments.store'), supplierPaymentPayload($context))
+        ->assertSessionHasErrors('payment');
+
+    expect(Payment::query()->count())->toBe(0)
+        ->and($context['invoice']->refresh()->status)->toBe(InvoiceStatus::Confirmed);
+});

@@ -138,6 +138,11 @@ const loadSuppliers = async () => {
         );
 
         if (id === requestId) supplierResults.value = response.data;
+    } catch {
+        if (id === requestId) {
+            supplierResults.value = [];
+            lookupError.value = 'دریافت فهرست تأمین‌کنندگان انجام نشد.';
+        }
     } finally {
         if (id === requestId) supplierLoading.value = false;
     }
@@ -503,6 +508,7 @@ defineOptions({
                                 v-model="form.reference"
                                 class="h-11"
                             />
+                            <InputError :message="form.errors.reference" />
                         </div>
                     </div>
 
@@ -564,6 +570,9 @@ defineOptions({
                                 {{ account.name }}
                             </option>
                         </select>
+                        <InputError
+                            :message="form.errors.treasury_account_id"
+                        />
                     </div>
 
                     <div class="mt-5 grid gap-2">
@@ -574,6 +583,7 @@ defineOptions({
                             rows="3"
                             class="rounded-xl border px-4 py-3 text-sm"
                         />
+                        <InputError :message="form.errors.description" />
                     </div>
                 </section>
             </div>

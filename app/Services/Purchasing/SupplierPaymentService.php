@@ -15,6 +15,7 @@ use App\Models\Branch;
 use App\Models\Check;
 use App\Models\FiscalYear;
 use App\Models\Invoice;
+use App\Models\Party;
 use App\Models\Payment;
 use App\Models\PaymentAllocation;
 use App\Models\Supplier;
@@ -110,14 +111,20 @@ class SupplierPaymentService
             }
 
             $supplier = Supplier::query()
-                ->with('party')
-                ->findOrFail($supplierId);
+                ->whereKey($supplierId)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $party = Party::query()
+                ->whereKey($supplier->party_id)
+                ->lockForUpdate()
+                ->first();
+            $supplier->setRelation('party', $party);
 
-            if (! $supplier->is_active || ! $supplier->party?->is_active) {
+            if (! $supplier->is_active || ! $party?->is_active) {
                 throw new DomainException('تأمین‌کننده پرداخت فعال نیست.');
             }
 
-            if ((int) $supplier->party->store_id !== $storeId) {
+            if ((int) $party->store_id !== $storeId) {
                 throw new DomainException('تأمین‌کننده باید متعلق به فروشگاه پرداخت باشد.');
             }
 

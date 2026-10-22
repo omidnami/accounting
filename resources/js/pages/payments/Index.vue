@@ -62,11 +62,23 @@ const methodLabel: Record<Method, string> = {
     card: 'کارتی',
     check: 'چکی',
 };
-const statusLabel: Record<Status, string> = {
-    pending: 'در انتظار',
-    confirmed: 'تأییدشده',
-    bounced: 'برگشتی',
-    cancelled: 'لغوشده',
+const statusMeta: Record<Status, { label: string; className: string }> = {
+    pending: {
+        label: 'در انتظار',
+        className: 'bg-amber-500/10 text-amber-700 dark:text-amber-300',
+    },
+    confirmed: {
+        label: 'تأییدشده',
+        className: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
+    },
+    bounced: {
+        label: 'برگشتی',
+        className: 'bg-red-500/10 text-red-700 dark:text-red-300',
+    },
+    cancelled: {
+        label: 'لغوشده',
+        className: 'bg-muted text-muted-foreground',
+    },
 };
 const pageLabel = (label: string) =>
     /^\d+$/.test(label) ? count.format(Number(label)) : '…';
@@ -244,9 +256,12 @@ defineOptions({
                             </td>
                             <td class="px-4 py-4">
                                 <span
-                                    class="rounded-full bg-muted px-2.5 py-1 text-[10px]"
+                                    class="rounded-full px-2.5 py-1 text-[10px] font-semibold"
+                                    :class="
+                                        statusMeta[payment.status].className
+                                    "
                                 >
-                                    {{ statusLabel[payment.status] }}
+                                    {{ statusMeta[payment.status].label }}
                                 </span>
                             </td>
                             <td class="px-5 py-4 text-left">
