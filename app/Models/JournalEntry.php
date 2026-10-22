@@ -206,7 +206,7 @@ class JournalEntry extends Model
             }
 
             $lines = $entry->lines()->lockForUpdate()->get();
-            $entry->validatePostingScope($lines->pluck('account_id'));
+            $entry->validatePostingScope($lines);
             $entry->assertBalanced($lines);
             $entry->postingTransitionAuthorized = true;
             $entry->status = JournalEntryStatus::Posted;
@@ -218,9 +218,9 @@ class JournalEntry extends Model
     }
 
     /**
-     * @param  Collection<int, int>  $accountIds
+     * @param  Collection<int, JournalEntryLine>  $lines
      */
-    private function validatePostingScope(Collection $accountIds): void
+    private function validatePostingScope(Collection $lines): void
     {
         if ($this->store_id === null
             || $this->branch_id === null
@@ -263,12 +263,12 @@ class JournalEntry extends Model
         }
 
         $accounts = Account::query()
-            ->whereIn('id', $accountIds)
+            ->whereIn('id', $lines->pluck('account_id'))
             ->lockForUpdate()
             ->get()
             ->keyBy('id');
 
-        if ($accounts->count() !== $accountIds->unique()->count()) {
+        if ($accounts->count() !== $lines->pluck('account_id')->unique()->count()) {
             throw new DomainException('همه حساب‌های ردیف سند باید وجود داشته باشند.');
         }
 
@@ -280,6 +280,28 @@ class JournalEntry extends Model
             if ((int) $account->store_id !== (int) $this->store_id) {
                 throw new DomainException('تمام حساب‌های سند باید متعلق به فروشگاه سند باشند.');
             }
+
+            $line = $lines->firstWhere('account_id', $account->id);
+
+            if ($account->requires_party && $line?->party_id === null) {
+                throw new DomainException('ردیف‌های حساب دریافتنی یا پرداختنی باید طرف‌حساب داشته باشند.');
+            }
+        }
+
+        $partyIds = $lines->pluck('party_id')->filter()->unique();
+
+        if ($partyIds->isEmpty()) {
+            return;
+        }
+
+        $activeParties = Party::query()
+            ->whereIn('id', $partyIds)
+            ->where('is_active', true)
+            ->lockForUpdate()
+            ->pluck('id');
+
+        if ($activeParties->count() !== $partyIds->count()) {
+            throw new DomainException('همه طرف‌حساب‌های ردیف سند باید وجود داشته و فعال باشند.');
         }
     }
 

@@ -101,6 +101,17 @@ class AccountingPeriod extends Model
                 || $period->ends_on->greaterThan($fiscalYear->ends_on)) {
                 throw new DomainException('بازه دوره باید داخل بازه سال مالی باشد.');
             }
+
+            $overlap = self::query()
+                ->where('fiscal_year_id', $period->fiscal_year_id)
+                ->when($period->exists, fn ($query) => $query->whereKeyNot($period->getKey()))
+                ->where('starts_on', '<=', $period->ends_on)
+                ->where('ends_on', '>=', $period->starts_on)
+                ->exists();
+
+            if ($overlap) {
+                throw new DomainException('دوره مالی با یک دوره دیگر هم‌پوشانی دارد.');
+            }
         });
     }
 }

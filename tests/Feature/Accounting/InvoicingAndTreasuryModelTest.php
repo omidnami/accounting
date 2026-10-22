@@ -9,15 +9,19 @@ use App\Enums\TreasuryDocumentStatus;
 use App\Models\Check;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\Party;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Receipt;
 use App\Models\Supplier;
 
 it('connects sales invoices, items, products, and customers', function () {
-    $customer = Customer::query()->create([
+    $party = Party::query()->create([
         'code' => 'C-001',
         'name' => 'مشتری آزمایشی',
+    ]);
+    $customer = Customer::query()->create([
+        'party_id' => $party->id,
     ]);
 
     $product = Product::query()->create([
@@ -58,9 +62,12 @@ it('connects sales invoices, items, products, and customers', function () {
 });
 
 it('links a received check to its customer and receipt', function () {
-    $customer = Customer::query()->create([
+    $party = Party::query()->create([
         'code' => 'C-002',
         'name' => 'مشتری چک',
+    ]);
+    $customer = Customer::query()->create([
+        'party_id' => $party->id,
     ]);
 
     $check = Check::query()->create([
@@ -91,9 +98,12 @@ it('links a received check to its customer and receipt', function () {
 });
 
 it('links a payable check to its supplier and payment', function () {
-    $supplier = Supplier::query()->create([
+    $party = Party::query()->create([
         'code' => 'S-002',
         'name' => 'تأمین‌کننده چک',
+    ]);
+    $supplier = Supplier::query()->create([
+        'party_id' => $party->id,
     ]);
 
     $check = Check::query()->create([
@@ -123,9 +133,12 @@ it('links a payable check to its supplier and payment', function () {
 });
 
 it('rejects a sales invoice connected to a supplier', function () {
-    $supplier = Supplier::query()->create([
+    $party = Party::query()->create([
         'code' => 'S-003',
         'name' => 'تأمین‌کننده نامعتبر',
+    ]);
+    $supplier = Supplier::query()->create([
+        'party_id' => $party->id,
     ]);
 
     Invoice::query()->create([

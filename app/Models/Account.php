@@ -18,6 +18,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property AccountType $type
  * @property AccountLevel $level
  * @property NormalBalance $normal_balance
+ * @property bool $requires_party
  */
 class Account extends Model
 {
@@ -32,6 +33,7 @@ class Account extends Model
         'type',
         'level',
         'normal_balance',
+        'requires_party',
         'description',
         'is_active',
     ];
@@ -42,6 +44,7 @@ class Account extends Model
             'type' => AccountType::class,
             'level' => AccountLevel::class,
             'normal_balance' => NormalBalance::class,
+            'requires_party' => 'boolean',
             'is_active' => 'boolean',
         ];
     }

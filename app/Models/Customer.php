@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Customer extends Model
@@ -13,14 +14,10 @@ class Customer extends Model
     use HasFactory;
 
     protected $fillable = [
-        'code',
-        'name',
-        'phone',
-        'email',
-        'national_id',
-        'tax_id',
-        'address',
+        'party_id',
         'credit_limit',
+        'payment_terms',
+        'sales_notes',
         'is_active',
     ];
 
@@ -30,6 +27,14 @@ class Customer extends Model
             'credit_limit' => 'decimal:2',
             'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * @return BelongsTo<Party, $this>
+     */
+    public function party(): BelongsTo
+    {
+        return $this->belongsTo(Party::class);
     }
 
     /**

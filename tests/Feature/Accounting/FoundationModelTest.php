@@ -8,6 +8,7 @@ use App\Models\Branch;
 use App\Models\Customer;
 use App\Models\FiscalYear;
 use App\Models\Invoice;
+use App\Models\Party;
 use App\Models\Store;
 use Carbon\CarbonImmutable;
 
@@ -105,9 +106,12 @@ it('attaches operational documents to a store, branch, and fiscal year', functio
 
 it('exposes store and branch relations on invoices', function () {
     ['store' => $store, 'branch' => $branch, 'fiscalYear' => $fiscalYear] = createFoundation();
-    $customer = Customer::query()->create([
+    $party = Party::query()->create([
         'code' => 'C-BRANCH-001',
         'name' => 'مشتری شعبه',
+    ]);
+    $customer = Customer::query()->create([
+        'party_id' => $party->id,
     ]);
 
     $invoice = Invoice::query()->create([

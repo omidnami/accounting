@@ -22,6 +22,7 @@ class JournalEntryLine extends Model
     protected $fillable = [
         'journal_entry_id',
         'account_id',
+        'party_id',
         'debit',
         'credit',
         'description',
@@ -52,6 +53,14 @@ class JournalEntryLine extends Model
         return $this->belongsTo(Account::class);
     }
 
+    /**
+     * @return BelongsTo<Party, $this>
+     */
+    public function party(): BelongsTo
+    {
+        return $this->belongsTo(Party::class);
+    }
+
     protected static function booted(): void
     {
         static::saving(function (JournalEntryLine $line): void {
@@ -69,6 +78,18 @@ class JournalEntryLine extends Model
 
             if ($account->isGeneral()) {
                 throw new DomainException('ثبت ردیف سند فقط روی حساب معین مجاز است.');
+            }
+
+            if ($account->requires_party && $line->party_id === null) {
+                throw new DomainException('این حساب نیازمند تعیین طرف‌حساب است.');
+            }
+
+            if ($line->party_id !== null) {
+                $party = Party::query()->find($line->party_id);
+
+                if (! $party || ! $party->is_active) {
+                    throw new DomainException('طرف‌حساب ردیف سند باید فعال و معتبر باشد.');
+                }
             }
 
             $debit = Decimal::normalize($line->debit, Decimal::MONEY_SCALE);

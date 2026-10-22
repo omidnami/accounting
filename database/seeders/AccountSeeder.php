@@ -49,6 +49,7 @@ class AccountSeeder extends Seeder
                 'type' => AccountType::Asset,
                 'level' => AccountLevel::Subsidiary,
                 'normal_balance' => NormalBalance::Debit,
+                'requires_party' => true,
             ],
             [
                 'code' => '1104',
@@ -96,6 +97,7 @@ class AccountSeeder extends Seeder
                 'type' => AccountType::Liability,
                 'level' => AccountLevel::Subsidiary,
                 'normal_balance' => NormalBalance::Credit,
+                'requires_party' => true,
             ],
             [
                 'code' => '2102',
@@ -244,6 +246,7 @@ class AccountSeeder extends Seeder
                         'type' => $account['type'],
                         'level' => $account['level'],
                         'normal_balance' => $account['normal_balance'],
+                        'requires_party' => $account['requires_party'] ?? false,
                         'is_active' => true,
                     ],
                 );

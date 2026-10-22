@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CalendarType;
 use App\Enums\FiscalYearStatus;
 use Carbon\CarbonImmutable;
 use DomainException;
@@ -13,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property FiscalYearStatus $status
+ * @property CalendarType $calendar
  * @property CarbonImmutable $starts_on
  * @property CarbonImmutable $ends_on
  */
@@ -24,6 +26,7 @@ class FiscalYear extends Model
     protected $fillable = [
         'store_id',
         'title',
+        'calendar',
         'starts_on',
         'ends_on',
         'status',
@@ -38,6 +41,7 @@ class FiscalYear extends Model
             'starts_on' => 'immutable_date',
             'ends_on' => 'immutable_date',
             'status' => FiscalYearStatus::class,
+            'calendar' => CalendarType::class,
             'is_current' => 'boolean',
             'closed_at' => 'datetime',
         ];
@@ -112,6 +116,17 @@ class FiscalYear extends Model
         static::saving(function (FiscalYear $fiscalYear): void {
             if ($fiscalYear->starts_on->greaterThanOrEqualTo($fiscalYear->ends_on)) {
                 throw new DomainException('تاریخ شروع سال مالی باید قبل از تاریخ پایان آن باشد.');
+            }
+
+            $overlap = self::query()
+                ->where('store_id', $fiscalYear->store_id)
+                ->when($fiscalYear->exists, fn ($query) => $query->whereKeyNot($fiscalYear->getKey()))
+                ->where('starts_on', '<=', $fiscalYear->ends_on)
+                ->where('ends_on', '>=', $fiscalYear->starts_on)
+                ->exists();
+
+            if ($overlap) {
+                throw new DomainException('بازه سال مالی با سال مالی دیگری هم‌پوشانی دارد.');
             }
         });
 

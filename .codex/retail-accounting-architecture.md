@@ -50,6 +50,10 @@
 - `warehouses`، `inventory_movements` و `inventory_balances` ساخته شده‌اند.
 - `InventoryService` ورود، خروج، انتقال، میانگین موزون متحرک، idempotency و عدم موجودی منفی را کنترل می‌کند.
 - محاسبات مقداری و پولی انبار با `bcmath` انجام می‌شود و خروجی اعشاری snapshot می‌شود.
+- `parties` هویت واحد طرف‌حساب است و پروفایل‌های `customers` و `suppliers` به آن متصل‌اند.
+- ردیف سند `party_id` دارد و حساب‌های دریافتنی/پرداختنی الزام طرف‌حساب دارند.
+- `FiscalYearSetupService` سال مالی و ۱۲ دوره شمسی را با کنترل هم‌پوشانی می‌سازد.
+- `PurchaseService` جریان خرید تا ورود انبار و سند خودکار را به‌صورت اتمیک اجرا می‌کند.
 - ساخت و شماره‌گذاری سند از `PostingService` انجام می‌شود و API عمومی ثبت در مدل وجود ندارد.
 - گذار نهایی سند با قفل سند و ردیف‌ها، کاربر مجاز، دوره باز و تاریخ داخل دوره انجام می‌شود.
 - سند ثبت‌شده و هدر آن غیرقابل‌ویرایش است.
@@ -82,6 +86,10 @@ customers 1-* invoices *-1 suppliers
 invoices 1-* invoice_items *-1 products
 invoices *-1 branches
 invoices *-1 fiscal_years
+
+parties 1-0..1 customers
+parties 1-0..1 suppliers
+journal_entry_lines *-0..1 parties
 
 customers 1-* receipts
 suppliers 1-* payments
