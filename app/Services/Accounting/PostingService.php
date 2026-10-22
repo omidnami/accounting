@@ -3,8 +3,8 @@
 namespace App\Services\Accounting;
 
 use App\Enums\AccountingPeriodStatus;
+use App\Enums\DocumentType;
 use App\Enums\FiscalYearStatus;
-use App\Enums\JournalEntryStatus;
 use App\Models\JournalEntry;
 use App\Models\User;
 use DomainException;
@@ -13,16 +13,41 @@ use Illuminate\Support\Facades\DB;
 
 class PostingService
 {
+    public function __construct(
+        private readonly DocumentNumberService $documentNumbers,
+    ) {}
+
     /**
      * @param  array<string, mixed>  $attributes
      * @param  array<int, array<string, mixed>>  $lines
      */
     public function createDraft(array $attributes, array $lines): JournalEntry
     {
-        return JournalEntry::createBalanced([
-            ...$attributes,
-            'status' => JournalEntryStatus::Draft,
-        ], $lines);
+        return DB::transaction(function () use ($attributes, $lines): JournalEntry {
+            unset($attributes['status'], $attributes['posted_at']);
+
+            if (empty($attributes['entry_number'])) {
+                $attributes['entry_number'] = $this->documentNumbers->next(
+                    (int) $attributes['store_id'],
+                    (int) $attributes['branch_id'],
+                    (int) $attributes['fiscal_year_id'],
+                    DocumentType::JournalEntry,
+                );
+            }
+
+            $entry = JournalEntry::query()->create($attributes);
+
+            foreach (array_values($lines) as $index => $line) {
+                $entry->lines()->create([
+                    ...$line,
+                    'sort_order' => $line['sort_order'] ?? $index + 1,
+                ]);
+            }
+
+            $entry->assertBalanced();
+
+            return $entry->refresh()->load('lines');
+        });
     }
 
     /**
@@ -58,6 +83,6 @@ class PostingService
             throw new DomainException('ثبت سند در سال مالی غیرفعال مجاز نیست.');
         }
 
-        return DB::transaction(fn (): JournalEntry => $entry->post());
+        return $entry->finalizePosting($approver);
     }
 }

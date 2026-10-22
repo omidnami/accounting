@@ -228,14 +228,17 @@ class AccountSeeder extends Seeder
             foreach ($accounts as $account) {
                 $parentId = isset($account['parent_code'])
                     ? Account::query()
+                        ->where('store_id', $store->id)
                         ->where('code', $account['parent_code'])
                         ->value('id')
                     : null;
 
-                Account::query()->updateOrCreate(
-                    ['code' => $account['code']],
+                Account::query()->firstOrCreate(
                     [
                         'store_id' => $store->id,
+                        'code' => $account['code'],
+                    ],
+                    [
                         'parent_id' => $parentId,
                         'name' => $account['name'],
                         'type' => $account['type'],

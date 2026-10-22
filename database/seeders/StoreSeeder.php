@@ -13,7 +13,7 @@ class StoreSeeder extends Seeder
     public function run(): void
     {
         DB::transaction(function (): void {
-            $store = Store::query()->updateOrCreate(
+            $store = Store::query()->firstOrCreate(
                 ['code' => 'MAIN'],
                 [
                     'name' => 'فروشگاه اصلی',
@@ -23,7 +23,7 @@ class StoreSeeder extends Seeder
                 ],
             );
 
-            $branch = Branch::query()->updateOrCreate(
+            $branch = Branch::query()->firstOrCreate(
                 [
                     'store_id' => $store->id,
                     'code' => 'MAIN',
@@ -35,7 +35,7 @@ class StoreSeeder extends Seeder
                 ],
             );
 
-            Warehouse::query()->updateOrCreate(
+            Warehouse::query()->firstOrCreate(
                 [
                     'branch_id' => $branch->id,
                     'code' => 'MAIN',

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\JournalEntryStatus;
+use App\Support\Decimal;
 use DomainException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -58,15 +59,21 @@ class JournalEntryLine extends Model
                 throw new DomainException('ثبت ردیف سند فقط روی حساب معین مجاز است.');
             }
 
-            $debit = round((float) $line->debit, 2);
-            $credit = round((float) $line->credit, 2);
+            $debit = Decimal::normalize($line->debit, Decimal::MONEY_SCALE);
+            $credit = Decimal::normalize($line->credit, Decimal::MONEY_SCALE);
 
-            if ($debit < 0 || $credit < 0) {
+            if (Decimal::compare($debit, '0', Decimal::MONEY_SCALE) < 0
+                || Decimal::compare($credit, '0', Decimal::MONEY_SCALE) < 0) {
                 throw new DomainException('مبلغ بدهکار یا بستانکار نمی‌تواند منفی باشد.');
             }
 
-            if (($debit > 0) === ($credit > 0)) {
+            if (Decimal::isPositive($debit) === Decimal::isPositive($credit)) {
                 throw new DomainException('هر ردیف سند باید فقط یکی از مبالغ بدهکار یا بستانکار را داشته باشد.');
+            }
+
+            if ($entry && $account->store_id !== null
+                && (int) $account->store_id !== (int) $entry->store_id) {
+                throw new DomainException('حساب ردیف باید متعلق به فروشگاه سند باشد.');
             }
         });
 

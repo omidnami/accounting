@@ -2,8 +2,12 @@
 
 namespace App\Models;
 
+use App\Enums\AccountingPeriodStatus;
+use App\Enums\FiscalYearStatus;
 use App\Enums\JournalEntryStatus;
+use App\Support\Decimal;
 use DomainException;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class JournalEntry extends Model
@@ -25,13 +30,13 @@ class JournalEntry extends Model
         'fiscal_year_id',
         'accounting_period_id',
         'description',
-        'status',
         'source_type',
         'source_id',
         'reversal_of_id',
         'created_by',
-        'posted_at',
     ];
+
+    private bool $postingTransitionAuthorized = false;
 
     protected function casts(): array
     {
@@ -92,82 +97,124 @@ class JournalEntry extends Model
         return $query->where('status', JournalEntryStatus::Posted);
     }
 
-    /**
-     * Persist an entry and its lines atomically, rejecting an unbalanced entry.
-     *
-     * @param  array<string, mixed>  $attributes
-     * @param  array<int, array<string, mixed>>  $lines
-     */
-    public static function createBalanced(array $attributes, array $lines): self
+    public function totalDebit(?Collection $lines = null): string
     {
-        return DB::transaction(function () use ($attributes, $lines): self {
-            $requestedStatus = $attributes['status'] ?? JournalEntryStatus::Draft;
-            unset($attributes['status'], $attributes['posted_at']);
+        $lines ??= $this->lines()->get();
+        $total = '0.00';
 
-            $entry = self::query()->create([
-                ...$attributes,
-                'status' => JournalEntryStatus::Draft,
-            ]);
+        foreach ($lines as $line) {
+            $total = Decimal::add($total, $line->debit, Decimal::MONEY_SCALE);
+        }
 
-            foreach (array_values($lines) as $index => $line) {
-                $entry->lines()->create([
-                    ...$line,
-                    'sort_order' => $line['sort_order'] ?? $index + 1,
-                ]);
+        return $total;
+    }
+
+    public function totalCredit(?Collection $lines = null): string
+    {
+        $lines ??= $this->lines()->get();
+        $total = '0.00';
+
+        foreach ($lines as $line) {
+            $total = Decimal::add($total, $line->credit, Decimal::MONEY_SCALE);
+        }
+
+        return $total;
+    }
+
+    public function isBalanced(?Collection $lines = null): bool
+    {
+        $lines ??= $this->lines()->get();
+        $debit = $this->totalDebit($lines);
+        $credit = $this->totalCredit($lines);
+
+        return $lines->count() >= 2
+            && Decimal::compare($debit, '0', Decimal::MONEY_SCALE) > 0
+            && Decimal::compare($debit, $credit, Decimal::MONEY_SCALE) === 0;
+    }
+
+    public function assertBalanced(?Collection $lines = null): void
+    {
+        if (! $this->isBalanced($lines)) {
+            throw new DomainException('جمع بدهکار و بستانکار سند باید حداقل دو ردیف و کاملاً برابر باشد.');
+        }
+    }
+
+    public function finalizePosting(User $approver): self
+    {
+        if (! $approver->canApproveJournalEntries()) {
+            throw new AuthorizationException('تأیید و ثبت سند فقط برای مدیر و حسابدار مجاز است.');
+        }
+
+        return DB::transaction(function (): self {
+            $entry = self::query()
+                ->whereKey($this->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($entry->status !== JournalEntryStatus::Draft) {
+                throw new DomainException('فقط سند پیش‌نویس قابل ثبت است.');
             }
 
-            $entry->load('lines');
-            $entry->assertBalanced();
+            $lines = $entry->lines()->lockForUpdate()->get();
+            $entry->validatePostingScope($lines->pluck('account_id'));
+            $entry->assertBalanced($lines);
+            $entry->postingTransitionAuthorized = true;
+            $entry->status = JournalEntryStatus::Posted;
+            $entry->posted_at = now();
+            $entry->save();
 
-            if ($requestedStatus === JournalEntryStatus::Posted || $requestedStatus === JournalEntryStatus::Posted->value) {
-                $entry->post();
-            }
-
-            return $entry->refresh()->load('lines');
+            return $entry->refresh()->load(['lines', 'creator']);
         });
     }
 
-    public function post(): self
+    private function validatePostingScope(Collection $accountIds): void
     {
-        if ($this->status !== JournalEntryStatus::Draft) {
-            throw new DomainException('فقط سند پیش‌نویس قابل ثبت است.');
+        if ($this->store_id === null
+            || $this->branch_id === null
+            || $this->fiscal_year_id === null
+            || $this->accounting_period_id === null) {
+            throw new DomainException('فروشگاه، شعبه، سال مالی و دوره برای ثبت سند الزامی هستند.');
         }
 
-        $this->assertBalanced();
-        $this->status = JournalEntryStatus::Posted;
-        $this->posted_at = now();
-        $this->save();
+        $branch = Branch::query()->find($this->branch_id);
+        $fiscalYear = FiscalYear::query()->find($this->fiscal_year_id);
+        $period = AccountingPeriod::query()->find($this->accounting_period_id);
 
-        return $this;
-    }
+        if (! $branch || (int) $branch->store_id !== (int) $this->store_id) {
+            throw new DomainException('شعبه سند باید متعلق به فروشگاه سند باشد.');
+        }
 
-    public function totalDebit(): float
-    {
-        $lines = $this->relationLoaded('lines') ? $this->lines : $this->lines()->get();
+        if (! $fiscalYear || (int) $fiscalYear->store_id !== (int) $this->store_id) {
+            throw new DomainException('سال مالی سند باید متعلق به فروشگاه سند باشد.');
+        }
 
-        return round($lines->sum(fn (JournalEntryLine $line): float => (float) $line->debit), 2);
-    }
+        if (! $period
+            || (int) $period->store_id !== (int) $this->store_id
+            || (int) $period->fiscal_year_id !== (int) $this->fiscal_year_id) {
+            throw new DomainException('دوره سند باید متعلق به فروشگاه و سال مالی سند باشد.');
+        }
 
-    public function totalCredit(): float
-    {
-        $lines = $this->relationLoaded('lines') ? $this->lines : $this->lines()->get();
+        if ($this->entry_date->lessThan($period->starts_on)
+            || $this->entry_date->greaterThan($period->ends_on)
+            || $this->entry_date->lessThan($fiscalYear->starts_on)
+            || $this->entry_date->greaterThan($fiscalYear->ends_on)) {
+            throw new DomainException('تاریخ سند باید داخل دوره و سال مالی باشد.');
+        }
 
-        return round($lines->sum(fn (JournalEntryLine $line): float => (float) $line->credit), 2);
-    }
+        if ($period->status !== AccountingPeriodStatus::Open) {
+            throw new DomainException('ثبت سند در دوره بسته یا نیمه‌بسته مجاز نیست.');
+        }
 
-    public function isBalanced(): bool
-    {
-        $lines = $this->relationLoaded('lines') ? $this->lines : $this->lines()->get();
+        if ($fiscalYear->status !== FiscalYearStatus::Open) {
+            throw new DomainException('ثبت سند در سال مالی غیرفعال مجاز نیست.');
+        }
 
-        return $lines->count() >= 2
-            && $this->totalDebit() > 0
-            && abs($this->totalDebit() - $this->totalCredit()) < 0.005;
-    }
+        $accountStores = Account::query()
+            ->whereIn('id', $accountIds)
+            ->pluck('store_id');
 
-    public function assertBalanced(): void
-    {
-        if (! $this->isBalanced()) {
-            throw new DomainException('جمع بدهکار و بستانکار سند باید حداقل دو ردیف و کاملاً برابر باشد.');
+        if ($accountStores->contains(fn ($storeId): bool => (int) $storeId !== (int) $this->store_id)) {
+            throw new DomainException('تمام حساب‌های سند باید متعلق به فروشگاه سند باشند.');
         }
     }
 
@@ -180,8 +227,17 @@ class JournalEntry extends Model
         });
 
         static::updating(function (JournalEntry $entry): void {
-            if ($entry->isDirty('status') && $entry->status === JournalEntryStatus::Posted) {
-                $entry->assertBalanced();
+            $originalStatus = $entry->getRawOriginal('status');
+
+            if ($originalStatus !== null
+                && JournalEntryStatus::from($originalStatus) !== JournalEntryStatus::Draft) {
+                throw new DomainException('سند پس از ثبت قابل ویرایش نیست؛ برای اصلاح سند برگشتی ثبت کنید.');
+            }
+
+            if ($entry->isDirty('status')
+                && (! $entry->postingTransitionAuthorized
+                    || $entry->status !== JournalEntryStatus::Posted)) {
+                throw new DomainException('تغییر وضعیت سند فقط از مسیر تأیید PostingService مجاز است.');
             }
         });
 

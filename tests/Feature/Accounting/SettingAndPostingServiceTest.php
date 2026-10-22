@@ -1,9 +1,11 @@
 <?php
 
 use App\Enums\AccountingPeriodStatus;
+use App\Enums\DocumentType;
 use App\Enums\JournalEntryStatus;
 use App\Enums\UserRole;
 use App\Models\AccountingPeriod;
+use App\Models\DocumentSequence;
 use App\Models\FiscalYear;
 use App\Models\Store;
 use App\Models\User;
@@ -48,6 +50,39 @@ it('resolves default accounts through the setting service', function () {
         ->and($service->defaultAccount('sales', $store->id)->code)->toBe('4101')
         ->and($service->defaultAccountId('cogs', $store->id))
         ->toBe($service->defaultAccount('cogs', $store->id)->id);
+});
+
+it('allocates a journal number from the configured sequence', function () {
+    ['store' => $store, 'branch' => $branch, 'fiscalYear' => $fiscalYear, 'period' => $period] = createPostingContext();
+    $cash = app(SettingService::class)->defaultAccount('cash', $store->id);
+    $sales = app(SettingService::class)->defaultAccount('sales', $store->id);
+    DocumentSequence::query()->create([
+        'store_id' => $store->id,
+        'branch_id' => $branch->id,
+        'fiscal_year_id' => $fiscalYear->id,
+        'document_type' => DocumentType::JournalEntry,
+        'prefix' => 'JE-1405-',
+        'next_number' => 1,
+        'padding' => 6,
+    ]);
+
+    $entry = app(PostingService::class)->createDraft(
+        [
+            'store_id' => $store->id,
+            'branch_id' => $branch->id,
+            'fiscal_year_id' => $fiscalYear->id,
+            'accounting_period_id' => $period->id,
+            'entry_date' => '2026-03-22',
+            'description' => 'سند شماره‌گذاری خودکار',
+        ],
+        [
+            ['account_id' => $cash->id, 'debit' => 100_000, 'credit' => 0],
+            ['account_id' => $sales->id, 'debit' => 0, 'credit' => 100_000],
+        ],
+    );
+
+    expect($entry->entry_number)->toBe('JE-1405-000001')
+        ->and(DocumentSequence::query()->first()->next_number)->toBe(2);
 });
 
 it('posts a balanced entry only with an authorized role and open period', function () {

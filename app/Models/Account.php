@@ -81,6 +81,10 @@ class Account extends Model
     protected static function booted(): void
     {
         static::saving(function (Account $account): void {
+            if ($account->store_id === null) {
+                throw new DomainException('هر حساب باید به یک فروشگاه متصل باشد.');
+            }
+
             if ($account->level === AccountLevel::General && $account->parent_id !== null) {
                 throw new DomainException('حساب کل نمی‌تواند حساب والد داشته باشد.');
             }
@@ -107,9 +111,7 @@ class Account extends Model
                 throw new DomainException('نوع حساب معین باید با حساب کل والد یکسان باشد.');
             }
 
-            if ($parent->store_id !== null
-                && $account->store_id !== null
-                && (int) $parent->store_id !== (int) $account->store_id) {
+            if ((int) $parent->store_id !== (int) $account->store_id) {
                 throw new DomainException('حساب کل و معین باید متعلق به یک فروشگاه باشند.');
             }
 
