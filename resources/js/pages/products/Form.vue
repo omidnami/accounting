@@ -15,6 +15,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+import { normalizeNumber } from '@/lib/number';
 import {
     index as productsIndex,
     store as storeProduct,
@@ -60,13 +61,6 @@ const money = new Intl.NumberFormat('fa-IR', {
 });
 const fieldError = (key: string) =>
     (form.errors as Record<string, string>)[key];
-const normalizeNumber = (value: string) =>
-    value
-        .replace(/[۰-۹]/g, (digit) => `${'۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)}`)
-        .replace(/[٠-٩]/g, (digit) => `${'٠١٢٣٤٥٦٧٨٩'.indexOf(digit)}`)
-        .replace(/[٫]/g, '.')
-        .replace(/[٬,،\s]/g, '');
-
 type NumericField =
     | 'purchase_price'
     | 'sale_price'

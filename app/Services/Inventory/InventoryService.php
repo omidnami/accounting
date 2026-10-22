@@ -201,7 +201,11 @@ class InventoryService
         $laterMovement = InventoryMovement::query()
             ->where('warehouse_id', $warehouse->id)
             ->where('product_id', $product->id)
-            ->where('movement_date', '>', $normalizedMovementDate)
+            ->where(
+                'movement_date',
+                '>=',
+                CarbonImmutable::parse($normalizedMovementDate)->addDay()->toDateString(),
+            )
             ->orderBy('movement_date')
             ->lockForUpdate()
             ->first();

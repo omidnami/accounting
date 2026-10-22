@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property InvoiceType $type
  * @property InvoiceStatus $status
  * @property CarbonImmutable $invoice_date
+ * @property CarbonImmutable|null $due_date
  */
 class Invoice extends Model
 {
@@ -36,6 +37,8 @@ class Invoice extends Model
         'branch_id',
         'fiscal_year_id',
         'invoice_number',
+        'idempotency_key',
+        'idempotency_request_hash',
         'type',
         'invoice_date',
         'due_date',

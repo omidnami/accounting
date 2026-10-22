@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
-import { BarChart3, LayoutGrid, PackageSearch, UsersRound } from '@lucide/vue';
+import {
+    BarChart3,
+    LayoutGrid,
+    PackageSearch,
+    ShoppingCart,
+    UsersRound,
+} from '@lucide/vue';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavMain from '@/components/NavMain.vue';
@@ -18,6 +24,7 @@ import { dashboard } from '@/routes';
 import { index as parties } from '@/routes/parties';
 import { index as products } from '@/routes/products';
 import { index as reports } from '@/routes/reports';
+import { index as sales } from '@/routes/sales';
 import type { NavItem } from '@/types';
 
 const user = computed(() => usePage().props.auth.user);
@@ -45,6 +52,17 @@ const mainNavItems = computed<NavItem[]>(() => {
             title: 'گزارش‌های مالی',
             href: reports(),
             icon: BarChart3,
+        });
+    }
+
+    if (
+        user.value &&
+        ['manager', 'accountant', 'cashier'].includes(user.value.role)
+    ) {
+        items.push({
+            title: 'فروش و صندوق',
+            href: sales(),
+            icon: ShoppingCart,
         });
     }
 
