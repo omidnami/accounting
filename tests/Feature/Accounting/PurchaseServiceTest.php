@@ -28,6 +28,7 @@ function createPurchaseContext(): array
     $warehouse = Warehouse::query()->where('branch_id', $branch->id)->where('is_default', true)->firstOrFail();
     $fiscalYear = app(FiscalYearSetupService::class)->setupJalaliYear($store, 1405);
     $party = Party::query()->create([
+        'store_id' => $store->id,
         'code' => 'SUP-PARTY-001',
         'name' => 'تأمین‌کننده آزمایشی',
     ]);
@@ -146,4 +147,86 @@ it('rolls back inventory when an unauthorized user confirms a purchase', functio
     expect($invoice->fresh()->status)->toBe(InvoiceStatus::Draft)
         ->and(InventoryMovement::query()->count())->toBe(0)
         ->and(JournalEntry::query()->count())->toBe(0);
+});
+
+it('rejects receiving a purchase into another store warehouse', function () {
+    $context = createPurchaseContext();
+    $manager = purchaseUser(UserRole::Manager);
+    $product = Product::query()->create([
+        'code' => 'PURCHASE-WRONG-WH',
+        'name' => 'کالای انبار اشتباه',
+        'purchase_price' => 10_000,
+    ]);
+    $service = app(PurchaseService::class);
+    $invoice = $service->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_date' => '2026-05-01',
+        ],
+        [['product_id' => $product->id, 'quantity' => 1, 'unit_price' => 10_000]],
+    );
+    $otherStore = Store::query()->create([
+        'code' => 'OTHER-INVENTORY-STORE',
+        'name' => 'فروشگاه انبار اشتباه',
+    ]);
+    $otherBranch = $otherStore->branches()->create([
+        'code' => 'OB',
+        'name' => 'شعبه اشتباه',
+    ]);
+    $wrongWarehouse = Warehouse::query()->create([
+        'store_id' => $otherStore->id,
+        'branch_id' => $otherBranch->id,
+        'code' => 'WRONG',
+        'name' => 'انبار اشتباه',
+    ]);
+
+    expect(fn () => $service->confirm($invoice, $wrongWarehouse->id, $manager))
+        ->toThrow(DomainException::class)
+        ->and(InventoryMovement::query()->count())->toBe(0)
+        ->and($invoice->fresh()->status)->toBe(InvoiceStatus::Draft);
+});
+
+it('rejects negative discounts and tax rates outside zero to one hundred', function () {
+    $context = createPurchaseContext();
+    $product = Product::query()->create([
+        'code' => 'PURCHASE-INVALID-AMOUNT',
+        'name' => 'کالای محاسبات نامعتبر',
+        'purchase_price' => 100_000,
+    ]);
+    $service = app(PurchaseService::class);
+
+    expect(fn () => $service->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_date' => '2026-05-01',
+        ],
+        [[
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'unit_price' => 100_000,
+            'discount_amount' => -10_000,
+        ]],
+    ))->toThrow(DomainException::class);
+
+    expect(fn () => $service->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_date' => '2026-05-01',
+        ],
+        [[
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'unit_price' => 100_000,
+            'tax_rate' => 101,
+        ]],
+    ))->toThrow(DomainException::class);
 });

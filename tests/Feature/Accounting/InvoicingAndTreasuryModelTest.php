@@ -13,10 +13,20 @@ use App\Models\Party;
 use App\Models\Payment;
 use App\Models\Product;
 use App\Models\Receipt;
+use App\Models\Store;
 use App\Models\Supplier;
+use Database\Seeders\StoreSeeder;
+
+function storeForTreasuryTest(): Store
+{
+    app(StoreSeeder::class)->run();
+
+    return Store::query()->where('code', 'MAIN')->firstOrFail();
+}
 
 it('connects sales invoices, items, products, and customers', function () {
     $party = Party::query()->create([
+        'store_id' => storeForTreasuryTest()->id,
         'code' => 'C-001',
         'name' => 'مشتری آزمایشی',
     ]);
@@ -63,6 +73,7 @@ it('connects sales invoices, items, products, and customers', function () {
 
 it('links a received check to its customer and receipt', function () {
     $party = Party::query()->create([
+        'store_id' => storeForTreasuryTest()->id,
         'code' => 'C-002',
         'name' => 'مشتری چک',
     ]);
@@ -99,6 +110,7 @@ it('links a received check to its customer and receipt', function () {
 
 it('links a payable check to its supplier and payment', function () {
     $party = Party::query()->create([
+        'store_id' => storeForTreasuryTest()->id,
         'code' => 'S-002',
         'name' => 'تأمین‌کننده چک',
     ]);
@@ -134,6 +146,7 @@ it('links a payable check to its supplier and payment', function () {
 
 it('rejects a sales invoice connected to a supplier', function () {
     $party = Party::query()->create([
+        'store_id' => storeForTreasuryTest()->id,
         'code' => 'S-003',
         'name' => 'تأمین‌کننده نامعتبر',
     ]);

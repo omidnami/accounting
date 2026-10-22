@@ -189,3 +189,32 @@ it('rejects a warehouse whose branch belongs to another store', function () {
         'name' => 'انبار نامعتبر',
     ]);
 })->throws(DomainException::class);
+
+it('rejects a backdated movement after later inventory activity', function () {
+    ['warehouse' => $warehouse, 'product' => $product] = createInventoryContext();
+    $service = app(InventoryService::class);
+    $service->receive(
+        warehouseId: $warehouse->id,
+        productId: $product->id,
+        quantity: 5,
+        unitCost: 100,
+        movementDate: '2026-10-20',
+        idempotencyKey: 'chronology-first',
+        movementType: InventoryMovementType::Opening,
+    );
+
+    expect(fn () => $service->receive(
+        warehouseId: $warehouse->id,
+        productId: $product->id,
+        quantity: 5,
+        unitCost: 200,
+        movementDate: '2026-10-10',
+        idempotencyKey: 'chronology-backdated',
+    ))->toThrow(DomainException::class);
+
+    $balance = InventoryBalance::query()->firstOrFail();
+
+    expect($balance->quantity)->toBe('5.000')
+        ->and($balance->inventory_value)->toBe('500.00')
+        ->and(InventoryMovement::query()->count())->toBe(1);
+});

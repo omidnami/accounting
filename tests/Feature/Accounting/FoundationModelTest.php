@@ -107,6 +107,7 @@ it('attaches operational documents to a store, branch, and fiscal year', functio
 it('exposes store and branch relations on invoices', function () {
     ['store' => $store, 'branch' => $branch, 'fiscalYear' => $fiscalYear] = createFoundation();
     $party = Party::query()->create([
+        'store_id' => $store->id,
         'code' => 'C-BRANCH-001',
         'name' => 'مشتری شعبه',
     ]);

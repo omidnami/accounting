@@ -10,6 +10,7 @@ use App\Models\AccountingPeriod;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
@@ -64,6 +65,10 @@ class PurchaseReturnService
 
             if (! $original->supplier?->party?->is_active) {
                 throw new DomainException('طرف‌حساب فاکتور خرید فعال نیست.');
+            }
+
+            if ((int) $original->supplier->party->store_id !== (int) $original->store_id) {
+                throw new DomainException('طرف‌حساب باید متعلق به فروشگاه فاکتور باشد.');
             }
 
             $returnInvoice = Invoice::query()->create([
@@ -194,6 +199,10 @@ class PurchaseReturnService
                 throw new DomainException('طرف‌حساب برگشت خرید فعال نیست.');
             }
 
+            if ((int) $supplier->party->store_id !== (int) $return->store_id) {
+                throw new DomainException('طرف‌حساب باید متعلق به فروشگاه برگشت باشد.');
+            }
+
             $period = AccountingPeriod::query()
                 ->where('store_id', $return->store_id)
                 ->where('fiscal_year_id', $return->fiscal_year_id)
@@ -203,6 +212,13 @@ class PurchaseReturnService
 
             if (! $period) {
                 throw new DomainException('برای تاریخ برگشت، دوره مالی پیدا نشد.');
+            }
+
+            $warehouse = Warehouse::query()->findOrFail($warehouseId);
+
+            if ((int) $warehouse->store_id !== (int) $return->store_id
+                || (int) $warehouse->branch_id !== (int) $return->branch_id) {
+                throw new DomainException('انبار باید متعلق به فروشگاه و شعبه سند برگشت باشد.');
             }
 
             $inventoryCost = '0.00';

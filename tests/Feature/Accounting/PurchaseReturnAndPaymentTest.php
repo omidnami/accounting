@@ -36,6 +36,7 @@ function createReturnPaymentContext(): array
         ->first()
         ?? app(FiscalYearSetupService::class)->setupJalaliYear($store, 1405);
     $party = Party::query()->create([
+        'store_id' => $store->id,
         'code' => 'RETURN-PAY-PARTY',
         'name' => 'تأمین‌کننده برگشت و پرداخت',
     ]);

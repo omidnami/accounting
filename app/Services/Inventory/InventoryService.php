@@ -9,6 +9,7 @@ use App\Models\InventoryMovement;
 use App\Models\Product;
 use App\Models\Warehouse;
 use App\Support\Decimal;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
@@ -174,6 +175,7 @@ class InventoryService
         }
 
         $normalizedQuantity = Decimal::normalize($quantity, Decimal::QUANTITY_SCALE);
+        $normalizedMovementDate = CarbonImmutable::parse($movementDate)->toDateString();
 
         if (! Decimal::isPositive($normalizedQuantity)) {
             throw new DomainException('مقدار حرکت انبار باید بزرگ‌تر از صفر باشد.');
@@ -194,6 +196,18 @@ class InventoryService
             );
 
             return $existing;
+        }
+
+        $laterMovement = InventoryMovement::query()
+            ->where('warehouse_id', $warehouse->id)
+            ->where('product_id', $product->id)
+            ->where('movement_date', '>', $normalizedMovementDate)
+            ->orderBy('movement_date')
+            ->lockForUpdate()
+            ->first();
+
+        if ($laterMovement) {
+            throw new DomainException('حرکت انبار نمی‌تواند عقب‌تر از آخرین گردش همان کالا ثبت شود.');
         }
 
         InventoryBalance::query()->insertOrIgnore([
@@ -244,7 +258,7 @@ class InventoryService
             'quantity_after' => $quantityAfter,
             'average_cost_after' => $averageCostAfter,
             'value_after' => $valueAfter,
-            'movement_date' => $movementDate,
+            'movement_date' => $normalizedMovementDate,
             'source_type' => $source?->getMorphClass(),
             'source_id' => $source?->getKey(),
             'idempotency_key' => $idempotencyKey,

@@ -6,6 +6,7 @@ use App\Enums\PartyEntityType;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -18,6 +19,7 @@ class Party extends Model
     use HasFactory;
 
     protected $fillable = [
+        'store_id',
         'code',
         'entity_type',
         'name',
@@ -35,6 +37,14 @@ class Party extends Model
             'entity_type' => PartyEntityType::class,
             'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * @return BelongsTo<Store, $this>
+     */
+    public function store(): BelongsTo
+    {
+        return $this->belongsTo(Store::class);
     }
 
     /**

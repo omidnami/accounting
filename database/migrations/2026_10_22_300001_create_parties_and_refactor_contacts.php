@@ -9,9 +9,14 @@ return new class extends Migration
 {
     public function up(): void
     {
+        $storeId = $this->resolveLegacyStoreId();
+
         Schema::create('parties', function (Blueprint $table) {
             $table->id();
-            $table->string('code', 30)->unique();
+            $table->foreignId('store_id')
+                ->constrained()
+                ->restrictOnDelete();
+            $table->string('code', 30);
             $table->enum('entity_type', ['individual', 'organization'])
                 ->default('individual');
             $table->string('name', 180);
@@ -23,6 +28,7 @@ return new class extends Migration
             $table->boolean('is_active')->default(true);
             $table->timestamps();
 
+            $table->unique(['store_id', 'code']);
             $table->index(['is_active', 'name']);
             $table->index('national_id');
             $table->index('tax_id');
@@ -49,8 +55,8 @@ return new class extends Migration
             $table->text('purchasing_notes')->nullable();
         });
 
-        $this->backfillParties('customers');
-        $this->backfillParties('suppliers');
+        $this->backfillParties('customers', $storeId);
+        $this->backfillParties('suppliers', $storeId);
 
         Schema::table('customers', function (Blueprint $table) {
             $table->unique('party_id');
@@ -127,14 +133,20 @@ return new class extends Migration
         Schema::dropIfExists('parties');
     }
 
-    private function backfillParties(string $table): void
+    private function backfillParties(string $table, int $storeId): void
     {
         DB::table($table)
             ->whereNull('party_id')
             ->orderBy('id')
-            ->each(function (object $contact) use ($table): void {
+            ->each(function (object $contact) use ($table, $storeId): void {
                 $partyId = DB::table('parties')->insertGetId([
-                    'code' => $contact->code,
+                    'store_id' => $storeId,
+                    'code' => $this->uniquePartyCode(
+                        $storeId,
+                        (string) $contact->code,
+                        $table === 'customers' ? 'C' : 'S',
+                        (int) $contact->id,
+                    ),
                     'entity_type' => 'individual',
                     'name' => $contact->name,
                     'phone' => $contact->phone,
@@ -179,5 +191,53 @@ return new class extends Migration
                         'address' => $party->address,
                     ]);
             });
+    }
+
+    private function resolveLegacyStoreId(): int
+    {
+        $hasContacts = DB::table('customers')->exists() || DB::table('suppliers')->exists();
+        $storeId = DB::table('stores')->where('code', 'MAIN')->value('id')
+            ?? DB::table('stores')->orderBy('id')->value('id');
+
+        if ($storeId !== null) {
+            return (int) $storeId;
+        }
+
+        if ($hasContacts) {
+            throw new RuntimeException('برای انتقال طرف‌حساب‌های موجود، ابتدا فروشگاه پیش‌فرض را بسازید.');
+        }
+
+        return DB::table('stores')->insertGetId([
+            'code' => 'MAIN',
+            'name' => 'فروشگاه اصلی',
+            'currency' => 'IRR',
+            'timezone' => 'Asia/Tehran',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function uniquePartyCode(
+        int $storeId,
+        string $baseCode,
+        string $typeSuffix,
+        int $recordId,
+    ): string {
+        if (! DB::table('parties')->where('store_id', $storeId)->where('code', $baseCode)->exists()) {
+            return $baseCode;
+        }
+
+        $suffix = '-'.$typeSuffix.$recordId;
+        $candidate = mb_substr($baseCode, 0, 30 - mb_strlen($suffix)).$suffix;
+        $counter = 1;
+
+        while (DB::table('parties')->where('store_id', $storeId)->where('code', $candidate)->exists()) {
+            $counterSuffix = $suffix.'-'.$counter;
+            $candidate = mb_substr($baseCode, 0, 30 - mb_strlen($counterSuffix)).$counterSuffix;
+            $counter++;
+        }
+
+        return $candidate;
     }
 };

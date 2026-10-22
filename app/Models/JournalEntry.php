@@ -296,6 +296,7 @@ class JournalEntry extends Model
 
         $activeParties = Party::query()
             ->whereIn('id', $partyIds)
+            ->where('store_id', $this->store_id)
             ->where('is_active', true)
             ->lockForUpdate()
             ->pluck('id');

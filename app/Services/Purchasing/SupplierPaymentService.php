@@ -74,6 +74,10 @@ class SupplierPaymentService
                 throw new DomainException('تأمین‌کننده پرداخت فعال نیست.');
             }
 
+            if ((int) $supplier->party->store_id !== $storeId) {
+                throw new DomainException('تأمین‌کننده باید متعلق به فروشگاه پرداخت باشد.');
+            }
+
             $branch = Branch::query()->findOrFail($branchId);
             $fiscalYear = FiscalYear::query()->findOrFail($fiscalYearId);
 

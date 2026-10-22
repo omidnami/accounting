@@ -13,6 +13,7 @@ use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Supplier;
 use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
@@ -49,6 +50,10 @@ class PurchaseService
 
             if (! $supplier->is_active || ! $supplier->party?->is_active) {
                 throw new DomainException('تأمین‌کننده انتخاب‌شده فعال نیست.');
+            }
+
+            if ((int) $supplier->party->store_id !== (int) $attributes['store_id']) {
+                throw new DomainException('تأمین‌کننده باید متعلق به فروشگاه فاکتور باشد.');
             }
 
             $branch = Branch::query()->findOrFail((int) $attributes['branch_id']);
@@ -109,6 +114,10 @@ class PurchaseService
                     Decimal::MONEY_SCALE,
                 );
 
+                if (Decimal::compare($discount, '0', Decimal::MONEY_SCALE) < 0) {
+                    throw new DomainException('تخفیف ردیف نمی‌تواند منفی باشد.');
+                }
+
                 if (Decimal::compare($discount, $gross, Decimal::MONEY_SCALE) > 0) {
                     throw new DomainException('تخفیف ردیف نمی‌تواند از مبلغ ردیف بیشتر باشد.');
                 }
@@ -117,6 +126,12 @@ class PurchaseService
                     $item['tax_rate'] ?? $product->tax_rate,
                     Decimal::MONEY_SCALE,
                 );
+
+                if (Decimal::compare($taxRate, '0', Decimal::MONEY_SCALE) < 0
+                    || Decimal::compare($taxRate, '100', Decimal::MONEY_SCALE) > 0) {
+                    throw new DomainException('نرخ مالیات باید بین صفر و صد درصد باشد.');
+                }
+
                 $taxable = Decimal::subtract($gross, $discount, Decimal::MONEY_SCALE);
                 $taxAmount = Decimal::divide(
                     Decimal::multiply($taxable, $taxRate, 4),
@@ -179,6 +194,10 @@ class PurchaseService
                 throw new DomainException('تأمین‌کننده فاکتور معتبر و فعال نیست.');
             }
 
+            if ((int) $supplier->party->store_id !== (int) $lockedInvoice->store_id) {
+                throw new DomainException('تأمین‌کننده باید متعلق به فروشگاه فاکتور باشد.');
+            }
+
             $period = AccountingPeriod::query()
                 ->where('store_id', $lockedInvoice->store_id)
                 ->where('fiscal_year_id', $lockedInvoice->fiscal_year_id)
@@ -188,6 +207,13 @@ class PurchaseService
 
             if (! $period) {
                 throw new DomainException('برای تاریخ فاکتور دوره مالی باز پیدا نشد.');
+            }
+
+            $warehouse = Warehouse::query()->findOrFail($warehouseId);
+
+            if ((int) $warehouse->store_id !== (int) $lockedInvoice->store_id
+                || (int) $warehouse->branch_id !== (int) $lockedInvoice->branch_id) {
+                throw new DomainException('انبار باید متعلق به فروشگاه و شعبه فاکتور خرید باشد.');
             }
 
             $inventoryTotal = '0.00';

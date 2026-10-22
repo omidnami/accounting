@@ -90,6 +90,10 @@ class JournalEntryLine extends Model
                 if (! $party || ! $party->is_active) {
                     throw new DomainException('طرف‌حساب ردیف سند باید فعال و معتبر باشد.');
                 }
+
+                if ($entry && (int) $party->store_id !== (int) $entry->store_id) {
+                    throw new DomainException('طرف‌حساب ردیف باید متعلق به فروشگاه سند باشد.');
+                }
             }
 
             $debit = Decimal::normalize($line->debit, Decimal::MONEY_SCALE);
