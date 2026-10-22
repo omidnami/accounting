@@ -33,11 +33,13 @@ const handleRegisterSuccess = () => {
     <div v-if="canManagePasskeys" class="space-y-6">
         <Heading
             variant="small"
-            title="Passkeys"
-            description="Manage your passkeys for passwordless sign-in"
+            title="کلیدهای عبور"
+            description="ورود بدون رمز عبور را با کلیدهای عبور امن کنید."
         />
 
-        <div class="overflow-hidden rounded-lg border border-border">
+        <div
+            class="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm"
+        >
             <template v-if="passkeys.length">
                 <PasskeyItem
                     v-for="passkey in passkeys"
@@ -53,9 +55,10 @@ const handleRegisterSuccess = () => {
                 >
                     <KeyRound class="h-7 w-7 text-muted-foreground" />
                 </div>
-                <p class="font-medium">No passkeys yet</p>
+                <p class="font-medium">هنوز کلید عبوری ثبت نشده است</p>
                 <p class="mt-1 text-sm text-muted-foreground">
-                    Add a passkey to sign in without a password
+                    با افزودن کلید عبور، بدون واردکردن رمز هم می‌توانید وارد
+                    شوید.
                 </p>
             </div>
         </div>

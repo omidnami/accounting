@@ -14,24 +14,24 @@ import PasskeyVerify from '@/components/PasskeyVerify.vue';
 
 defineOptions({
     layout: {
-        title: 'Confirm password',
+        title: 'تأیید رمز عبور',
         description:
-            'This is a secure area of the application. Please confirm your password before continuing.',
+            'برای ورود به بخش امن حساب، لطفاً رمز عبور خود را دوباره وارد کنید.',
     },
 });
 </script>
 
 <template>
-    <Head title="Confirm password" />
+    <Head title="تأیید رمز عبور" />
 
     <PasskeyVerify
         :routes="{
             options: confirmOptions(),
             submit: confirmStore(),
         }"
-        label="Confirm with passkey"
-        loading-label="Confirming..."
-        separator="Or confirm with password"
+        label="تأیید با کلید عبور"
+        loading-label="در حال تأیید..."
+        separator="یا با رمز عبور تأیید کنید"
     />
 
     <Form
@@ -41,11 +41,11 @@ defineOptions({
     >
         <div class="space-y-6">
             <div class="grid gap-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">رمز عبور</Label>
                 <PasswordInput
                     id="password"
                     name="password"
-                    class="mt-1 block w-full"
+                    class="mt-1 block h-11 w-full rounded-xl"
                     required
                     autocomplete="current-password"
                     autofocus
@@ -56,12 +56,12 @@ defineOptions({
 
             <div class="flex items-center">
                 <Button
-                    class="w-full"
+                    class="h-11 w-full rounded-xl"
                     :disabled="processing"
                     data-test="confirm-password-button"
                 >
                     <Spinner v-if="processing" />
-                    Confirm password
+                    تأیید رمز عبور
                 </Button>
             </div>
         </div>

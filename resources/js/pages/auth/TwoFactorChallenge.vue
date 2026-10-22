@@ -18,18 +18,18 @@ const code = ref<string>('');
 const authConfigContent = computed<TwoFactorConfigContent>(() => {
     if (showRecoveryInput.value) {
         return {
-            title: 'Recovery code',
+            title: 'کد بازیابی',
             description:
-                'Please confirm access to your account by entering one of your emergency recovery codes.',
-            buttonText: 'login using an authentication code',
+                'برای تأیید دسترسی، یکی از کدهای بازیابی اضطراری خود را وارد کنید.',
+            buttonText: 'ورود با کد احراز هویت',
         };
     }
 
     return {
-        title: 'Authentication code',
+        title: 'کد احراز هویت',
         description:
-            'Enter the authentication code provided by your authenticator application.',
-        buttonText: 'login using a recovery code',
+            'کد شش‌رقمی نمایش‌داده‌شده در برنامه احراز هویت را وارد کنید.',
+        buttonText: 'ورود با کد بازیابی',
     };
 });
 
@@ -48,7 +48,7 @@ const toggleRecoveryMode = (clearErrors: () => void): void => {
 </script>
 
 <template>
-    <Head title="Two-factor authentication" />
+    <Head title="احراز هویت دومرحله‌ای" />
 
     <div class="space-y-6">
         <template v-if="!showRecoveryInput">
@@ -70,6 +70,7 @@ const toggleRecoveryMode = (clearErrors: () => void): void => {
                             :maxlength="6"
                             :disabled="processing"
                             autofocus
+                            dir="ltr"
                         >
                             <InputOTPGroup>
                                 <InputOTPSlot
@@ -83,10 +84,10 @@ const toggleRecoveryMode = (clearErrors: () => void): void => {
                     <InputError :message="errors.code" />
                 </div>
                 <Button type="submit" class="w-full" :disabled="processing"
-                    >Continue</Button
+                    >ادامه</Button
                 >
                 <div class="text-center text-sm text-muted-foreground">
-                    <span>or you can </span>
+                    <span>یا می‌توانید </span>
                     <button
                         type="button"
                         class="text-foreground underline decoration-neutral-300 underline-offset-4 transition-colors duration-300 ease-out hover:decoration-current! dark:decoration-neutral-500"
@@ -108,17 +109,19 @@ const toggleRecoveryMode = (clearErrors: () => void): void => {
                 <Input
                     name="recovery_code"
                     type="text"
-                    placeholder="Enter recovery code"
+                    placeholder="کد بازیابی را وارد کنید"
                     v-focus
                     required
+                    dir="ltr"
+                    class="text-left"
                 />
                 <InputError :message="errors.recovery_code" />
                 <Button type="submit" class="w-full" :disabled="processing"
-                    >Continue</Button
+                    >ادامه</Button
                 >
 
                 <div class="text-center text-sm text-muted-foreground">
-                    <span>or you can </span>
+                    <span>یا می‌توانید </span>
                     <button
                         type="button"
                         class="text-foreground underline decoration-neutral-300 underline-offset-4 transition-colors duration-300 ease-out hover:decoration-current! dark:decoration-neutral-500"

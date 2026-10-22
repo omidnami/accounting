@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
+import { Palette, ShieldCheck, UserRound } from '@lucide/vue';
 import Heading from '@/components/Heading.vue';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -12,16 +13,19 @@ import type { NavItem } from '@/types';
 
 const sidebarNavItems: NavItem[] = [
     {
-        title: 'Profile',
+        title: 'پروفایل',
         href: editProfile(),
+        icon: UserRound,
     },
     {
-        title: 'Security',
+        title: 'امنیت',
         href: editSecurity(),
+        icon: ShieldCheck,
     },
     {
-        title: 'Appearance',
+        title: 'ظاهر',
         href: editAppearance(),
+        icon: Palette,
     },
 ];
 
@@ -29,25 +33,28 @@ const { isCurrentOrParentUrl } = useCurrentUrl();
 </script>
 
 <template>
-    <div class="px-4 py-6">
+    <div class="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 lg:py-10">
         <Heading
-            title="Settings"
-            description="Manage your profile and account settings"
+            title="تنظیمات حساب"
+            description="اطلاعات، امنیت و ظاهر فضای کاری خود را مدیریت کنید."
         />
 
-        <div class="flex flex-col lg:flex-row lg:space-x-12">
-            <aside class="w-full max-w-xl lg:w-48">
+        <div class="mt-8 flex flex-col gap-7 lg:flex-row">
+            <aside class="w-full max-w-xl lg:w-56">
                 <nav
-                    class="flex flex-col space-y-1 space-x-0"
-                    aria-label="Settings"
+                    class="flex flex-col gap-1 rounded-2xl border border-border/70 bg-card p-2 shadow-sm"
+                    aria-label="تنظیمات"
                 >
                     <Button
                         v-for="item in sidebarNavItems"
                         :key="toUrl(item.href)"
                         variant="ghost"
                         :class="[
-                            'w-full justify-start',
-                            { 'bg-muted': isCurrentOrParentUrl(item.href) },
+                            'h-10 w-full justify-start rounded-xl px-3',
+                            {
+                                'bg-primary/10 text-primary hover:bg-primary/12':
+                                    isCurrentOrParentUrl(item.href),
+                            },
                         ]"
                         as-child
                     >
@@ -59,10 +66,10 @@ const { isCurrentOrParentUrl } = useCurrentUrl();
                 </nav>
             </aside>
 
-            <Separator class="my-6 lg:hidden" />
+            <Separator class="lg:hidden" />
 
             <div class="flex-1 md:max-w-2xl">
-                <section class="max-w-xl space-y-12">
+                <section class="max-w-2xl space-y-10">
                     <slot />
                 </section>
             </div>

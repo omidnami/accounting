@@ -11,8 +11,9 @@ import { email } from '@/routes/password';
 
 defineOptions({
     layout: {
-        title: 'Forgot password',
-        description: 'Enter your email to receive a password reset link',
+        title: 'بازیابی رمز عبور',
+        description:
+            'ایمیل حساب خود را وارد کنید تا لینک تنظیم رمز جدید ارسال شود.',
     },
 });
 
@@ -22,11 +23,11 @@ defineProps<{
 </script>
 
 <template>
-    <Head title="Forgot password" />
+    <Head title="بازیابی رمز عبور" />
 
     <div
         v-if="status"
-        class="mb-4 text-center text-sm font-medium text-green-600"
+        class="mb-4 rounded-xl border border-primary/15 bg-primary/8 px-4 py-3 text-center text-sm font-medium text-primary"
     >
         {{ status }}
     </div>
@@ -34,33 +35,35 @@ defineProps<{
     <div class="space-y-6">
         <Form v-bind="email.form()" v-slot="{ errors, processing }">
             <div class="grid gap-2">
-                <Label for="email">Email address</Label>
+                <Label for="email">ایمیل</Label>
                 <Input
                     id="email"
                     type="email"
                     name="email"
                     autocomplete="off"
                     v-focus
-                    placeholder="email@example.com"
+                    placeholder="you@example.com"
+                    dir="ltr"
+                    class="h-11 rounded-xl bg-background px-4 text-left"
                 />
                 <InputError :message="errors.email" />
             </div>
 
             <div class="my-6 flex items-center justify-start">
                 <Button
-                    class="w-full"
+                    class="h-11 w-full rounded-xl"
                     :disabled="processing"
                     data-test="email-password-reset-link-button"
                 >
                     <Spinner v-if="processing" />
-                    Email password reset link
+                    ارسال لینک بازیابی
                 </Button>
             </div>
         </Form>
 
         <div class="space-x-1 text-center text-sm text-muted-foreground">
-            <span>Or, return to</span>
-            <TextLink :href="login()">log in</TextLink>
+            <span>یا برگردید به</span>
+            <TextLink :href="login()">صفحه ورود</TextLink>
         </div>
     </div>
 </template>

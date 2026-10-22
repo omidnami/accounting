@@ -8,7 +8,7 @@ defineOptions({
     layout: {
         breadcrumbs: [
             {
-                title: 'Appearance settings',
+                title: 'تنظیمات ظاهر',
                 href: edit(),
             },
         ],
@@ -17,15 +17,17 @@ defineOptions({
 </script>
 
 <template>
-    <Head title="Appearance settings" />
+    <Head title="تنظیمات ظاهر" />
 
-    <h1 class="sr-only">Appearance settings</h1>
+    <h1 class="sr-only">تنظیمات ظاهر</h1>
 
-    <div class="space-y-6">
+    <div
+        class="space-y-6 rounded-2xl border border-border/70 bg-card p-5 shadow-sm sm:p-6"
+    >
         <Heading
             variant="small"
-            title="Appearance settings"
-            description="Update the appearance settings for your account"
+            title="ظاهر فضای کاری"
+            description="حالت نمایش مناسب خود را انتخاب کنید."
         />
         <AppearanceTabs />
     </div>

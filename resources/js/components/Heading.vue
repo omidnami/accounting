@@ -11,11 +11,11 @@ withDefaults(defineProps<Props>(), {
 </script>
 
 <template>
-    <header :class="variant === 'small' ? '' : 'mb-8 space-y-0.5'">
+    <header :class="variant === 'small' ? '' : 'mb-8 space-y-1.5'">
         <h2
             :class="
                 variant === 'small'
-                    ? 'mb-0.5 text-base font-medium'
+                    ? 'mb-1 text-base font-bold'
                     : 'text-xl font-semibold tracking-tight'
             "
         >

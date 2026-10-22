@@ -55,7 +55,7 @@ const activeItemStyles =
 
 const mainNavItems: NavItem[] = [
     {
-        title: 'Dashboard',
+        title: 'داشبورد',
         href: dashboard(),
         icon: LayoutGrid,
     },
@@ -63,12 +63,12 @@ const mainNavItems: NavItem[] = [
 
 const rightNavItems: NavItem[] = [
     {
-        title: 'Repository',
+        title: 'مخزن پروژه',
         href: 'https://github.com/laravel/vue-starter-kit',
         icon: Folder,
     },
     {
-        title: 'Documentation',
+        title: 'مستندات',
         href: 'https://laravel.com/docs/starter-kits#vue',
         icon: BookOpen,
     },
@@ -92,9 +92,7 @@ const rightNavItems: NavItem[] = [
                             </Button>
                         </SheetTrigger>
                         <SheetContent side="left" class="w-[300px] p-6">
-                            <SheetTitle class="sr-only"
-                                >Navigation menu</SheetTitle
-                            >
+                            <SheetTitle class="sr-only">منوی پیمایش</SheetTitle>
                             <SheetHeader class="flex justify-start text-left">
                                 <AppLogoIcon
                                     class="size-6 fill-current text-black dark:text-white"
@@ -198,6 +196,7 @@ const rightNavItems: NavItem[] = [
                             <Search
                                 class="size-5 opacity-80 group-hover:opacity-100"
                             />
+                            <span class="sr-only">جست‌وجو</span>
                         </Button>
 
                         <div class="hidden space-x-1 lg:flex">

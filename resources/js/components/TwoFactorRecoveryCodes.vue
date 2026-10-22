@@ -42,11 +42,11 @@ onMounted(async () => {
     <Card class="w-full">
         <CardHeader>
             <CardTitle class="flex gap-3">
-                <LockKeyhole class="size-4" />2FA recovery codes
+                <LockKeyhole class="size-4" />کدهای بازیابی احراز هویت
             </CardTitle>
             <CardDescription>
-                Recovery codes let you regain access if you lose your 2FA
-                device. Store them in a secure password manager.
+                اگر به دستگاه احراز هویت دسترسی نداشتید، با این کدها می‌توانید
+                دوباره وارد شوید. آن‌ها را در جای امن نگهداری کنید.
             </CardDescription>
         </CardHeader>
         <CardContent>
@@ -58,8 +58,8 @@ onMounted(async () => {
                         :is="isRecoveryCodesVisible ? EyeOff : Eye"
                         class="size-4"
                     />
-                    {{ isRecoveryCodesVisible ? 'Hide' : 'View' }} recovery
-                    codes
+                    {{ isRecoveryCodesVisible ? 'پنهان‌کردن' : 'نمایش' }} کدهای
+                    بازیابی
                 </Button>
 
                 <Form
@@ -75,7 +75,7 @@ onMounted(async () => {
                         type="submit"
                         :disabled="processing"
                     >
-                        <RefreshCw /> Regenerate codes
+                        <RefreshCw /> ساخت مجدد کدها
                     </Button>
                 </Form>
             </div>
@@ -111,10 +111,9 @@ onMounted(async () => {
                         </div>
                     </div>
                     <p class="text-xs text-muted-foreground select-none">
-                        Each recovery code can be used once to access your
-                        account and will be removed after use. If you need more,
-                        click
-                        <span class="font-bold">Regenerate codes</span> above.
+                        هر کد بازیابی فقط یک‌بار قابل استفاده است. در صورت نیاز،
+                        با گزینه <span class="font-bold">ساخت مجدد کدها</span>
+                        کدهای تازه بسازید.
                     </p>
                 </div>
             </div>

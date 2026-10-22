@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { BookOpen, FolderGit2, LayoutGrid } from '@lucide/vue';
+import { LayoutGrid } from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
-import NavFooter from '@/components/NavFooter.vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
 import {
@@ -19,22 +18,9 @@ import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
     {
-        title: 'Dashboard',
+        title: 'داشبورد',
         href: dashboard(),
         icon: LayoutGrid,
-    },
-];
-
-const footerNavItems: NavItem[] = [
-    {
-        title: 'Repository',
-        href: 'https://github.com/laravel/vue-starter-kit',
-        icon: FolderGit2,
-    },
-    {
-        title: 'Documentation',
-        href: 'https://laravel.com/docs/starter-kits#vue',
-        icon: BookOpen,
     },
 ];
 </script>
@@ -58,7 +44,16 @@ const footerNavItems: NavItem[] = [
         </SidebarContent>
 
         <SidebarFooter>
-            <NavFooter :items="footerNavItems" />
+            <div
+                class="mx-2 mb-2 rounded-xl border border-sidebar-border/70 bg-sidebar-accent/40 px-3 py-2.5 group-data-[collapsible=icon]:hidden"
+            >
+                <p class="text-[11px] font-semibold text-sidebar-foreground/85">
+                    حساب‌یار، نسخه ۱.۰
+                </p>
+                <p class="mt-1 text-[10px] text-sidebar-foreground/45">
+                    پایه‌گذاری یک مدیریت مالی دقیق
+                </p>
+            </div>
             <NavUser />
         </SidebarFooter>
     </Sidebar>

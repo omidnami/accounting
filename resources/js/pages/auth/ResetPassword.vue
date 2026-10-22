@@ -11,8 +11,8 @@ import { update } from '@/routes/password';
 
 defineOptions({
     layout: {
-        title: 'Reset password',
-        description: 'Please enter your new password below',
+        title: 'تنظیم رمز عبور جدید',
+        description: 'یک رمز عبور جدید و امن برای حساب خود انتخاب کنید.',
     },
 });
 
@@ -26,7 +26,7 @@ const inputEmail = ref(props.email);
 </script>
 
 <template>
-    <Head title="Reset password" />
+    <Head title="تنظیم رمز عبور جدید" />
 
     <Form
         v-bind="update.form()"
@@ -36,41 +36,42 @@ const inputEmail = ref(props.email);
     >
         <div class="grid gap-6">
             <div class="grid gap-2">
-                <Label for="email">Email</Label>
+                <Label for="email">ایمیل</Label>
                 <Input
                     id="email"
                     type="email"
                     name="email"
                     autocomplete="email"
                     v-model="inputEmail"
-                    class="mt-1 block w-full"
+                    class="mt-1 block h-11 w-full rounded-xl bg-muted/60 px-4 text-left"
+                    dir="ltr"
                     readonly
                 />
                 <InputError :message="errors.email" class="mt-2" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="password">Password</Label>
+                <Label for="password">رمز عبور جدید</Label>
                 <PasswordInput
                     id="password"
                     name="password"
                     autocomplete="new-password"
-                    class="mt-1 block w-full"
+                    class="mt-1 block h-11 w-full rounded-xl"
                     autofocus
-                    placeholder="Password"
+                    placeholder="رمز عبور جدید"
                     :passwordrules="passwordRules"
                 />
                 <InputError :message="errors.password" />
             </div>
 
             <div class="grid gap-2">
-                <Label for="password_confirmation"> Confirm password </Label>
+                <Label for="password_confirmation">تکرار رمز عبور</Label>
                 <PasswordInput
                     id="password_confirmation"
                     name="password_confirmation"
                     autocomplete="new-password"
-                    class="mt-1 block w-full"
-                    placeholder="Confirm password"
+                    class="mt-1 block h-11 w-full rounded-xl"
+                    placeholder="تکرار رمز عبور جدید"
                     :passwordrules="passwordRules"
                 />
                 <InputError :message="errors.password_confirmation" />
@@ -78,12 +79,12 @@ const inputEmail = ref(props.email);
 
             <Button
                 type="submit"
-                class="mt-4 w-full"
+                class="mt-4 h-11 w-full rounded-xl"
                 :disabled="processing"
                 data-test="reset-password-button"
             >
                 <Spinner v-if="processing" />
-                Reset password
+                ذخیره رمز عبور
             </Button>
         </div>
     </Form>

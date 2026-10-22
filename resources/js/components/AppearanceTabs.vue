@@ -5,9 +5,9 @@ import { useAppearance } from '@/composables/useAppearance';
 const { appearance, updateAppearance } = useAppearance();
 
 const tabs = [
-    { value: 'light', Icon: Sun, label: 'Light' },
-    { value: 'dark', Icon: Moon, label: 'Dark' },
-    { value: 'system', Icon: Monitor, label: 'System' },
+    { value: 'light', Icon: Sun, label: 'روشن' },
+    { value: 'dark', Icon: Moon, label: 'تاریک' },
+    { value: 'system', Icon: Monitor, label: 'هماهنگ با سیستم' },
 ] as const;
 </script>
 
@@ -26,8 +26,8 @@ const tabs = [
                     : 'text-neutral-500 hover:bg-neutral-200/60 hover:text-black dark:text-neutral-400 dark:hover:bg-neutral-700/60',
             ]"
         >
-            <component :is="Icon" class="-ml-1 h-4 w-4" />
-            <span class="ml-1.5 text-sm">{{ label }}</span>
+            <component :is="Icon" class="me-1.5 h-4 w-4" />
+            <span class="text-sm">{{ label }}</span>
         </button>
     </div>
 </template>

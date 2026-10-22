@@ -25,22 +25,22 @@ const passwordInput = useTemplateRef('passwordInput');
     <div class="space-y-6">
         <Heading
             variant="small"
-            title="Delete account"
-            description="Delete your account and all of its resources"
+            title="حذف حساب"
+            description="حساب کاربری و همه اطلاعات مرتبط با آن را حذف کنید."
         />
         <div
             class="space-y-4 rounded-lg border border-red-100 bg-red-50 p-4 dark:border-red-200/10 dark:bg-red-700/10"
         >
             <div class="relative space-y-0.5 text-red-600 dark:text-red-100">
-                <p class="font-medium">Warning</p>
+                <p class="font-medium">هشدار</p>
                 <p class="text-sm">
-                    Please proceed with caution, this cannot be undone.
+                    این عملیات قابل بازگشت نیست؛ با احتیاط ادامه دهید.
                 </p>
             </div>
             <Dialog>
                 <DialogTrigger as-child>
                     <Button variant="destructive" data-test="delete-user-button"
-                        >Delete account</Button
+                        >حذف حساب</Button
                     >
                 </DialogTrigger>
                 <DialogContent>
@@ -56,27 +56,24 @@ const passwordInput = useTemplateRef('passwordInput');
                     >
                         <DialogHeader class="space-y-3">
                             <DialogTitle
-                                >Are you sure you want to delete your
-                                account?</DialogTitle
+                                >آیا از حذف حساب خود مطمئن هستید؟</DialogTitle
                             >
                             <DialogDescription>
-                                Once your account is deleted, all of its
-                                resources and data will also be permanently
-                                deleted. Please enter your password to confirm
-                                you would like to permanently delete your
-                                account.
+                                پس از حذف حساب، همه اطلاعات و منابع آن برای
+                                همیشه پاک می‌شوند. برای تأیید، رمز عبور خود را
+                                وارد کنید.
                             </DialogDescription>
                         </DialogHeader>
 
                         <div class="grid gap-2">
                             <Label for="password" class="sr-only"
-                                >Password</Label
+                                >رمز عبور</Label
                             >
                             <PasswordInput
                                 id="password"
                                 name="password"
                                 ref="passwordInput"
-                                placeholder="Password"
+                                placeholder="رمز عبور"
                             />
                             <InputError :message="errors.password" />
                         </div>
@@ -92,7 +89,7 @@ const passwordInput = useTemplateRef('passwordInput');
                                         }
                                     "
                                 >
-                                    Cancel
+                                    انصراف
                                 </Button>
                             </DialogClose>
 
@@ -102,7 +99,7 @@ const passwordInput = useTemplateRef('passwordInput');
                                 :disabled="processing"
                                 data-test="confirm-delete-user-button"
                             >
-                                Delete account
+                                حذف حساب
                             </Button>
                         </DialogFooter>
                     </Form>

@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use App\Enums\UserRole;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
@@ -44,7 +46,39 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'role' => UserRole::class,
             'two_factor_confirmed_at' => 'datetime',
         ];
+    }
+
+    public function journalEntries(): HasMany
+    {
+        return $this->hasMany(JournalEntry::class, 'created_by');
+    }
+
+    public function invoices(): HasMany
+    {
+        return $this->hasMany(Invoice::class, 'created_by');
+    }
+
+    public function receipts(): HasMany
+    {
+        return $this->hasMany(Receipt::class, 'created_by');
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class, 'created_by');
+    }
+
+    public function checks(): HasMany
+    {
+        return $this->hasMany(Check::class, 'created_by');
+    }
+
+    public function canApproveJournalEntries(): bool
+    {
+        return $this->role instanceof UserRole
+            && $this->role->canApproveJournalEntries();
     }
 }
