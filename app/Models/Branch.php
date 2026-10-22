@@ -40,6 +40,11 @@ class Branch extends Model
         return $this->hasMany(DocumentSequence::class);
     }
 
+    public function warehouses(): HasMany
+    {
+        return $this->hasMany(Warehouse::class);
+    }
+
     public function journalEntries(): HasMany
     {
         return $this->hasMany(JournalEntry::class);
@@ -63,6 +68,16 @@ class Branch extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function inventoryMovements(): HasMany
+    {
+        return $this->hasMany(InventoryMovement::class);
+    }
+
+    public function inventoryBalances(): HasMany
+    {
+        return $this->hasMany(InventoryBalance::class);
     }
 
     public function scopeActive(Builder $query): Builder

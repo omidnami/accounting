@@ -52,6 +52,11 @@ class Store extends Model
         return $this->hasMany(AccountingPeriod::class);
     }
 
+    public function warehouses(): HasMany
+    {
+        return $this->hasMany(Warehouse::class);
+    }
+
     public function accounts(): HasMany
     {
         return $this->hasMany(Account::class);
@@ -85,5 +90,15 @@ class Store extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function inventoryMovements(): HasMany
+    {
+        return $this->hasMany(InventoryMovement::class);
+    }
+
+    public function inventoryBalances(): HasMany
+    {
+        return $this->hasMany(InventoryBalance::class);
     }
 }

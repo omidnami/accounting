@@ -76,6 +76,11 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return $this->hasMany(Check::class, 'created_by');
     }
 
+    public function inventoryMovements(): HasMany
+    {
+        return $this->hasMany(InventoryMovement::class, 'created_by');
+    }
+
     public function canApproveJournalEntries(): bool
     {
         return $this->role instanceof UserRole

@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Branch;
 use App\Models\Store;
+use App\Models\Warehouse;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 
@@ -22,13 +23,26 @@ class StoreSeeder extends Seeder
                 ],
             );
 
-            Branch::query()->updateOrCreate(
+            $branch = Branch::query()->updateOrCreate(
                 [
                     'store_id' => $store->id,
                     'code' => 'MAIN',
                 ],
                 [
                     'name' => 'شعبه اصلی',
+                    'is_default' => true,
+                    'is_active' => true,
+                ],
+            );
+
+            Warehouse::query()->updateOrCreate(
+                [
+                    'branch_id' => $branch->id,
+                    'code' => 'MAIN',
+                ],
+                [
+                    'store_id' => $store->id,
+                    'name' => 'انبار اصلی',
                     'is_default' => true,
                     'is_active' => true,
                 ],

@@ -47,6 +47,9 @@
 - نقش‌های کاربری اضافه شده‌اند و تأیید سند در `PostingService` فقط برای مدیر و حسابدار مجاز است.
 - `SettingService`، `DocumentNumberService` و `PostingService` پیاده‌سازی اولیه دارند.
 - تعداد تست‌های موفق پس از تکمیل زیرساخت مشترک: ۶۵ تست با ۲۱۵ assertion.
+- `warehouses`، `inventory_movements` و `inventory_balances` ساخته شده‌اند.
+- `InventoryService` ورود، خروج، انتقال، میانگین موزون متحرک، idempotency و عدم موجودی منفی را کنترل می‌کند.
+- محاسبات مقداری و پولی انبار با `bcmath` انجام می‌شود و خروجی اعشاری snapshot می‌شود.
 
 ## نقشه روابط دیتابیس
 
@@ -82,9 +85,12 @@ checks *-1 branches
 receipts 1-* receipt_allocations *-1 invoices    (فاز خزانه)
 payments 1-* payment_allocations *-1 invoices    (فاز خزانه)
 
-products 1-* inventory_movements *-1 warehouses  (فاز انبار)
-warehouses *-1 branches                         (فاز انبار)
-inventory_movements 1-* inventory_cost_layers   (فاز انبار)
+products 1-* inventory_movements *-1 warehouses
+warehouses *-1 branches
+warehouses 1-* inventory_balances *-1 products
+
+inventory_movements = دفتر غیرقابل‌تغییر ورود/خروج و snapshot میانگین موزون
+inventory_balances  = وضعیت جاری مقدار، میانگین و ارزش هر کالا در انبار
 ```
 
 نکات طراحی:
