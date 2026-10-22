@@ -7,6 +7,12 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property string $purchase_price
+ * @property string $sale_price
+ * @property string $tax_rate
+ * @property string $reorder_level
+ */
 class Product extends Model
 {
     /** @use HasFactory<Factory<static>> */
@@ -15,11 +21,15 @@ class Product extends Model
     protected $fillable = [
         'code',
         'name',
+        'barcode',
         'unit',
         'purchase_price',
         'sale_price',
         'tax_rate',
+        'reorder_level',
+        'description',
         'is_active',
+        'version',
     ];
 
     protected function casts(): array
@@ -28,7 +38,9 @@ class Product extends Model
             'purchase_price' => 'decimal:2',
             'sale_price' => 'decimal:2',
             'tax_rate' => 'decimal:2',
+            'reorder_level' => 'decimal:3',
             'is_active' => 'boolean',
+            'version' => 'integer',
         ];
     }
 

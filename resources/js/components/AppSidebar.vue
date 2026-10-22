@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link, usePage } from '@inertiajs/vue3';
-import { BarChart3, LayoutGrid, UsersRound } from '@lucide/vue';
+import { BarChart3, LayoutGrid, PackageSearch, UsersRound } from '@lucide/vue';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavMain from '@/components/NavMain.vue';
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import { index as parties } from '@/routes/parties';
+import { index as products } from '@/routes/products';
 import { index as reports } from '@/routes/reports';
 import type { NavItem } from '@/types';
 
@@ -34,6 +35,11 @@ const mainNavItems = computed<NavItem[]>(() => {
             title: 'طرف‌حساب‌ها',
             href: parties(),
             icon: UsersRound,
+        });
+        items.push({
+            title: 'کالا و موجودی',
+            href: products(),
+            icon: PackageSearch,
         });
         items.push({
             title: 'گزارش‌های مالی',

@@ -24,4 +24,9 @@ enum UserRole: string
     {
         return in_array($this, [self::Manager, self::Accountant], true);
     }
+
+    public function canManageProducts(): bool
+    {
+        return in_array($this, [self::Manager, self::Accountant], true);
+    }
 }
