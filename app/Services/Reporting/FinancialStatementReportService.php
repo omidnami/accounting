@@ -7,7 +7,7 @@ use App\Enums\AccountType;
 use App\Models\Account;
 use App\Models\JournalEntryLine;
 use App\Support\Decimal;
-use Carbon\CarbonImmutable;
+use App\Support\ReportDateRange;
 use Illuminate\Support\Collection;
 
 class FinancialStatementReportService
@@ -27,9 +27,8 @@ class FinancialStatementReportService
         string $to,
         ?int $branchId = null,
     ): array {
-        $fromDate = CarbonImmutable::parse($from)->toDateString();
-        $toDate = CarbonImmutable::parse($to)->toDateString();
-        $accounts = $this->amountsByAccount($storeId, $fromDate, $toDate, $branchId);
+        $range = ReportDateRange::between($from, $to);
+        $accounts = $this->amountsByAccount($storeId, $range->from, $range->to, $branchId);
         $revenues = collect();
         $expenses = collect();
         $totalRevenue = '0.00';
@@ -83,7 +82,7 @@ class FinancialStatementReportService
         string $asOf,
         ?int $branchId = null,
     ): array {
-        $asOfDate = CarbonImmutable::parse($asOf)->toDateString();
+        $asOfDate = ReportDateRange::through($asOf);
         $accounts = $this->amountsByAccount($storeId, null, $asOfDate, $branchId);
         $assets = collect();
         $liabilities = collect();

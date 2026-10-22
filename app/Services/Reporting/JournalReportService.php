@@ -3,9 +3,10 @@
 namespace App\Services\Reporting;
 
 use App\Models\JournalEntry;
-use Carbon\CarbonImmutable;
+use App\Support\ReportDateRange;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
-use InvalidArgumentException;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class JournalReportService
 {
@@ -18,13 +19,37 @@ class JournalReportService
         string $to,
         ?int $branchId = null,
     ): Collection {
-        $fromDate = CarbonImmutable::parse($from)->toDateString();
-        $toDate = CarbonImmutable::parse($to)->toDateString();
+        $range = ReportDateRange::between($from, $to);
 
-        if ($fromDate > $toDate) {
-            throw new InvalidArgumentException('تاریخ شروع گزارش نمی‌تواند بعد از تاریخ پایان باشد.');
-        }
+        return $this->query($storeId, $range->from, $range->to, $branchId)->get();
+    }
 
+    /**
+     * @return LengthAwarePaginator<int, JournalEntry>
+     */
+    public function paginate(
+        int $storeId,
+        string $from,
+        string $to,
+        ?int $branchId = null,
+        int $perPage = 25,
+        int $page = 1,
+    ): LengthAwarePaginator {
+        $range = ReportDateRange::between($from, $to);
+        $perPage = max(1, min($perPage, 100));
+
+        return $this->query($storeId, $range->from, $range->to, $branchId)
+            ->paginate($perPage, ['*'], 'page', max(1, $page))
+            ->withQueryString();
+    }
+
+    /** @return Builder<JournalEntry> */
+    private function query(
+        int $storeId,
+        string $fromDate,
+        string $toDate,
+        ?int $branchId,
+    ): Builder {
         return JournalEntry::query()
             ->posted()
             ->where('store_id', $storeId)
@@ -32,7 +57,6 @@ class JournalReportService
             ->whereBetween('entry_date', [$fromDate, $toDate])
             ->with(['lines.account', 'branch', 'creator'])
             ->orderBy('entry_date')
-            ->orderBy('entry_number')
-            ->get();
+            ->orderBy('entry_number');
     }
 }

@@ -6,6 +6,7 @@ use App\Enums\AccountLevel;
 use App\Models\Account;
 use App\Models\JournalEntryLine;
 use App\Support\Decimal;
+use App\Support\ReportDateRange;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -18,14 +19,13 @@ class TrialBalanceReportService
         string $to,
         ?int $branchId = null,
     ): array {
-        $fromDate = CarbonImmutable::parse($from)->toDateString();
-        $toDate = CarbonImmutable::parse($to)->toDateString();
+        $range = ReportDateRange::between($from, $to);
         $accounts = Account::query()
             ->where('store_id', $storeId)
             ->orderBy('code')
             ->get();
-        $opening = $this->totals($storeId, null, CarbonImmutable::parse($fromDate)->subDay()->toDateString(), $branchId);
-        $movements = $this->totals($storeId, $fromDate, $toDate, $branchId);
+        $opening = $this->totals($storeId, null, CarbonImmutable::parse($range->from)->subDay()->toDateString(), $branchId);
+        $movements = $this->totals($storeId, $range->from, $range->to, $branchId);
         $nodes = $accounts->mapWithKeys(fn (Account $account): array => [
             $account->id => [
                 'account' => $account,

@@ -77,6 +77,30 @@ it('returns posted journal entries within the report range', function () {
         ->and($entries->first()->entry_number)->toBe('REP-001');
 });
 
+it('paginates the journal report', function () {
+    $context = createReportContext();
+    $service = app(JournalReportService::class);
+    $firstPage = $service->paginate(
+        $context['store']->id,
+        '2026-05-01',
+        '2026-05-31',
+        $context['branch']->id,
+        2,
+    );
+    $secondPage = $service->paginate(
+        $context['store']->id,
+        '2026-05-01',
+        '2026-05-31',
+        $context['branch']->id,
+        2,
+        page: 2,
+    );
+
+    expect($firstPage->total())->toBe(3)
+        ->and($firstPage->items())->toHaveCount(2)
+        ->and($secondPage->items())->toHaveCount(1);
+});
+
 it('builds an account ledger with opening and running balances', function () {
     $context = createReportContext();
     $ledger = app(AccountLedgerReportService::class)->report(
@@ -92,6 +116,22 @@ it('builds an account ledger with opening and running balances', function () {
         ->and($ledger['credit_total'])->toBe('200.00')
         ->and($ledger['closing_balance'])->toBe('1300.00')
         ->and($ledger['rows'])->toHaveCount(1);
+});
+
+it('aggregates subsidiary activity for a general account ledger', function () {
+    $context = createReportContext();
+    $assets = $context['cash']->parent;
+    $ledger = app(AccountLedgerReportService::class)->report(
+        $assets,
+        $context['store']->id,
+        '2026-05-10',
+        '2026-05-31',
+        $context['branch']->id,
+    );
+
+    expect($ledger['opening_balance'])->toBe('1500.00')
+        ->and($ledger['credit_total'])->toBe('200.00')
+        ->and($ledger['closing_balance'])->toBe('1300.00');
 });
 
 it('builds a balanced trial balance', function () {
@@ -131,4 +171,22 @@ it('builds income statement and balanced balance sheet', function () {
         ->and($balance['total_assets'])->toBe('1300.00')
         ->and($balance['total_equity'])->toBe('1300.00')
         ->and($balance['balanced'])->toBeTrue();
+});
+
+it('rejects invalid date ranges in financial reports', function () {
+    $context = createReportContext();
+    $trial = app(TrialBalanceReportService::class);
+    $statements = app(FinancialStatementReportService::class);
+
+    expect(fn () => $trial->report(
+        $context['store']->id,
+        '2026-05-31',
+        '2026-05-01',
+    ))->toThrow(InvalidArgumentException::class);
+
+    expect(fn () => $statements->incomeStatement(
+        $context['store']->id,
+        '2026-05-31',
+        '2026-05-01',
+    ))->toThrow(InvalidArgumentException::class);
 });

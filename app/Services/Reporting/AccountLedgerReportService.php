@@ -5,9 +5,8 @@ namespace App\Services\Reporting;
 use App\Models\Account;
 use App\Models\JournalEntryLine;
 use App\Support\Decimal;
-use Carbon\CarbonImmutable;
+use App\Support\ReportDateRange;
 use DomainException;
-use InvalidArgumentException;
 
 class AccountLedgerReportService
 {
@@ -23,29 +22,27 @@ class AccountLedgerReportService
             throw new DomainException('حساب گزارش متعلق به فروشگاه درخواستی نیست.');
         }
 
-        $fromDate = CarbonImmutable::parse($from)->toDateString();
-        $toDate = CarbonImmutable::parse($to)->toDateString();
-
-        if ($fromDate > $toDate) {
-            throw new InvalidArgumentException('تاریخ شروع گزارش نامعتبر است.');
-        }
+        $range = ReportDateRange::between($from, $to);
+        $accountIds = $account->isGeneral()
+            ? $account->children()->pluck('id')
+            : collect([$account->id]);
 
         $baseQuery = fn () => JournalEntryLine::query()
-            ->where('account_id', $account->id)
+            ->whereIn('account_id', $accountIds)
             ->whereHas('journalEntry', function ($query) use ($storeId, $branchId): void {
                 $query->posted()
                     ->where('store_id', $storeId)
                     ->when($branchId !== null, fn ($query) => $query->where('branch_id', $branchId));
             });
         $openingDebit = (string) $baseQuery()
-            ->whereHas('journalEntry', fn ($query) => $query->where('entry_date', '<', $fromDate))
+            ->whereHas('journalEntry', fn ($query) => $query->where('entry_date', '<', $range->from))
             ->sum('debit');
         $openingCredit = (string) $baseQuery()
-            ->whereHas('journalEntry', fn ($query) => $query->where('entry_date', '<', $fromDate))
+            ->whereHas('journalEntry', fn ($query) => $query->where('entry_date', '<', $range->from))
             ->sum('credit');
         $lines = $baseQuery()
-            ->whereHas('journalEntry', fn ($query) => $query->whereBetween('entry_date', [$fromDate, $toDate]))
-            ->with(['journalEntry'])
+            ->whereHas('journalEntry', fn ($query) => $query->whereBetween('entry_date', [$range->from, $range->to]))
+            ->with(['journalEntry', 'account'])
             ->get()
             ->sortBy([
                 fn ($line) => $line->journalEntry->entry_date->toDateString(),
@@ -65,6 +62,8 @@ class AccountLedgerReportService
             return [
                 'entry_id' => $line->journalEntry->id,
                 'entry_number' => $line->journalEntry->entry_number,
+                'account_code' => $line->account->code,
+                'account_name' => $line->account->name,
                 'date' => $line->journalEntry->entry_date->toDateString(),
                 'description' => $line->description ?: $line->journalEntry->description,
                 'debit' => $line->debit,
