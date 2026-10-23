@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\CheckController;
 use App\Http\Controllers\CustomerReceiptController;
 use App\Http\Controllers\FinancialReportsController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\SalesInvoiceController;
 use App\Http\Controllers\SalesLookupController;
 use App\Http\Controllers\SupplierPaymentController;
 use App\Http\Controllers\TreasuryAccountController;
+use App\Http\Controllers\UserManagementController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
@@ -19,6 +21,9 @@ Route::inertia('/', 'Welcome')->name('home');
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');
     Route::get('reports', FinancialReportsController::class)->name('reports.index');
+    Route::get('audit-logs', AuditLogController::class)->name('audit-logs.index');
+    Route::resource('users', UserManagementController::class)
+        ->except(['show', 'destroy']);
     Route::resource('treasury-accounts', TreasuryAccountController::class)
         ->parameters(['treasury-accounts' => 'treasuryAccount'])
         ->except(['show', 'destroy']);

@@ -4,12 +4,14 @@ import {
     BarChart3,
     CircleDollarSign,
     HandCoins,
+    History,
     LayoutGrid,
     Landmark,
     PackageSearch,
     ShoppingBag,
     ShoppingCart,
     UsersRound,
+    UserCog,
     WalletCards,
 } from '@lucide/vue';
 import { computed } from 'vue';
@@ -28,6 +30,8 @@ import {
 import { dashboard } from '@/routes';
 import { index as checks } from '@/routes/checks';
 import { index as treasuryAccounts } from '@/routes/treasury-accounts';
+import { index as auditLogs } from '@/routes/audit-logs';
+import { index as users } from '@/routes/users';
 import { index as parties } from '@/routes/parties';
 import { index as products } from '@/routes/products';
 import { index as payments } from '@/routes/payments';
@@ -101,6 +105,19 @@ const mainNavItems = computed<NavItem[]>(() => {
             title: 'حساب‌های خزانه',
             href: treasuryAccounts(),
             icon: Landmark,
+        });
+    }
+
+    if (user.value?.role === 'manager') {
+        items.push({
+            title: 'کاربران',
+            href: users(),
+            icon: UserCog,
+        });
+        items.push({
+            title: 'گزارش رویدادها',
+            href: auditLogs(),
+            icon: History,
         });
     }
 

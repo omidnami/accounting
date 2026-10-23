@@ -64,4 +64,14 @@ enum UserRole: string
     {
         return in_array($this, [self::Manager, self::Accountant], true);
     }
+
+    public function canManageUsers(): bool
+    {
+        return $this === self::Manager;
+    }
+
+    public function canViewAuditLogs(): bool
+    {
+        return $this === self::Manager;
+    }
 }

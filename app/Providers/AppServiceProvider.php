@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Observers\AuditObserver;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +25,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+        $this->registerAuditObservers();
     }
 
     /**
@@ -46,5 +48,12 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    private function registerAuditObservers(): void
+    {
+        foreach (config('audit.models', []) as $model) {
+            $model::observe(AuditObserver::class);
+        }
     }
 }

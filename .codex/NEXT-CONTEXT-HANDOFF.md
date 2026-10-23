@@ -1,6 +1,6 @@
 # Store Accounting System - Context Handoff
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 10A)
+آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 11A)
 
 ## شروع کانتکست جدید
 
@@ -16,9 +16,9 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `ff0cb86`
-- پیام: `fix(returns): harden confirmation and financial allocation`
-- شاخه با `origin/main` هم‌سطح بود؛ Phase 10A هنوز commit نشده است.
+- آخرین کامیت محلی: `eb0c03f`
+- پیام: `fix(treasury): harden account management and check integration`
+- شاخه با `origin/main` هم‌سطح بود؛ Phase 11A هنوز commit نشده است.
 
 ## استک و محیط
 
@@ -35,7 +35,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `213 tests`, `1487 assertions`
+- Pest: `220 tests`, `1554 assertions`
 - PHPStan: صفر خطا
 - Pint: موفق
 - Vue type-check: موفق
@@ -137,6 +137,8 @@ npm run build
 - `/receipts`
 - `/checks`
 - `/treasury-accounts`
+- `/users`
+- `/audit-logs`
 - `/purchases`
 - `/payments`
 - `/reports`
@@ -162,6 +164,7 @@ npm run build
 - `phase-8a`: رابط خزانه و مدیریت چک‌ها
 - `phase-9a`: رابط برگشت خرید و فروش
 - `phase-10a`: مدیریت حساب‌های خزانه
+- `phase-11a`: Audit Log و مدیریت کاربران
 
 ## فایل‌های کلیدی
 
@@ -180,6 +183,8 @@ npm run build
 - `app/Services/Sales/CustomerReceiptService.php`
 - `app/Services/Treasury/CheckRegistrationService.php`
 - `app/Services/Treasury/TreasuryAccountService.php`
+- `app/Services/Users/UserManagementService.php`
+- `app/Services/Audit/AuditLogService.php`
 - `app/Services/Treasury/CheckSettlementService.php`
 
 ### Controllers
@@ -193,6 +198,8 @@ npm run build
 - `CheckController`
 - `InvoiceReturnController`
 - `TreasuryAccountController`
+- `UserManagementController`
+- `AuditLogController`
 - `FinancialReportsController`
 
 ### UI
@@ -204,6 +211,8 @@ npm run build
 - `resources/js/pages/checks`
 - `resources/js/pages/returns`
 - `resources/js/pages/treasury-accounts`
+- `resources/js/pages/users`
+- `resources/js/pages/audit`
 - `resources/js/pages/purchases`
 - `resources/js/pages/payments`
 - `resources/js/pages/reports`
@@ -235,21 +244,23 @@ npm run build
 - هزینه‌های جانبی خرید و حمل پیاده‌سازی نشده‌اند.
 - دسته‌بندی، تنوع کالا، سریال، Batch، تاریخ انقضا و PriceHistory وجود ندارند.
 - موجودی‌گیری فیزیکی، StockAdjustment و صفحه Cardex اختصاصی وجود ندارند.
-- Audit Log و مدیریت کاربران/نقش‌ها از UI وجود ندارد.
+- Audit Log و مدیریت کاربران/نقش‌ها وجود دارد؛ غیرفعال‌سازی کاربر، retention و
+  alerting برای Audit هنوز پیاده‌سازی نشده‌اند.
 - داشبورد فعلی داده واقعی تحلیلی ندارد.
 - سامانه مودیان خارج از MVP است.
 - بررسی دستی مرورگر و acceptance نهایی انجام نشده است.
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی Phase 10A در دسکتاپ و موبایل
-2. commit و push مدیریت خزانه توسط کاربر و سپس تأیید CI روی commit جدید
-3. شروع فاز Audit Log و مدیریت کاربران/نقش‌ها
+1. بررسی دستی Phase 11A در دسکتاپ و موبایل
+2. commit و push مدیریت کاربران و Audit توسط کاربر و سپس تأیید CI
+3. تکمیل Dashboard تحلیلی واقعی یا Datepicker شمسی
 
 جزئیات Phase 8A در `.codex/phase-8a-treasury-checks-ui.md` ثبت شده است.
 اصلاحات بازبینی آن در `.codex/phase-8a-check-hardening.md` آمده است.
 جزئیات Phase 9A در `.codex/phase-9a-return-ui.md` آمده است.
 جزئیات Phase 10A در `.codex/phase-10a-treasury-account-ui.md` آمده است.
+جزئیات Phase 11A در `.codex/phase-11a-audit-users.md` آمده است.
 
 ## الگوی درخواست از Agent بعدی
 
