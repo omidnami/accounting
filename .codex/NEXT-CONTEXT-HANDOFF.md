@@ -1,6 +1,6 @@
 # Store Accounting System - Context Handoff
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 15A)
+آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 15B)
 
 ## شروع کانتکست جدید
 
@@ -16,10 +16,10 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `349212c`
-- پیام: `fix(inventory): harden cardex validation and role-aware UX`
-- شاخه با `origin/main` هم‌سطح است.
-- تغییرات Phase 15A در worktree آماده‌اند و commit آن‌ها بر عهده
+- آخرین کامیت محلی: `80d65d1`
+- پیام: `feat(accounting): add fiscal year lifecycle management`
+- شاخه یک commit از `origin/main` جلوتر است.
+- تغییرات Phase 15B در worktree آماده‌اند و commit آن‌ها بر عهده
   کاربر است.
 
 ## استک و محیط
@@ -37,7 +37,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `245 tests`, `1879 assertions`
+- Pest: `256 tests`, `1939 assertions`
 - Node calendar: `3 tests`
 - PHPStan: صفر خطا
 - Pint: موفق
@@ -138,6 +138,14 @@ npm run build
 - تعیین سال جاری فقط برای مدیر و فقط روی سال باز مجاز است.
 - صفحه `/fiscal-years` سال‌ها و وضعیت دوره‌ها را نمایش می‌دهد.
 
+### اسناد دستی
+
+- سند دستی چندردیفی با پیش‌نویس، ویرایش، حذف و تأیید وجود دارد.
+- مانده افتتاحیه دارایی، بدهی و سرمایه یک‌بار در ابتدای سال ثبت می‌شود.
+- نوع سند `entry_kind` و ثبت نهایی از `PostingService` کنترل می‌شود.
+- حساب موجودی از سند دستی مسدود است تا از دفتر حرکت انبار جدا نشود.
+- ثبت همه اسناد، قفل هم‌ترتیب سال و دوره را رعایت می‌کند.
+
 ## مسیرهای UI موجود
 
 - `/dashboard`
@@ -154,6 +162,7 @@ npm run build
 - `/reports`
 - `/inventory/cardex`
 - `/fiscal-years`
+- `/journals`
 - `/settings/profile`
 - `/settings/security`
 
@@ -181,6 +190,7 @@ npm run build
 - `phase-13a`: Datepicker شمسی و نمودار ماهانه
 - `phase-14a`: گزارش کاردکس تعدادی/ریالی و دسترسی انباردار
 - `phase-15a`: مدیریت سال مالی، دوره‌ها و rollover
+- `phase-15b`: سند دستی و مانده افتتاحیه
 
 ## فایل‌های کلیدی
 
@@ -205,6 +215,8 @@ npm run build
 - `app/Services/Treasury/CheckSettlementService.php`
 - `app/Services/Inventory/InventoryCardexReportService.php`
 - `app/Services/Accounting/FiscalYearSetupService.php`
+- `app/Services/Accounting/ManualJournalService.php`
+- `app/Services/Accounting/PostingService.php`
 
 ### Controllers
 
@@ -223,6 +235,7 @@ npm run build
 - `FinancialReportsController`
 - `InventoryCardexController`
 - `FiscalYearController`
+- `ManualJournalController`
 
 ### UI
 
@@ -241,6 +254,7 @@ npm run build
 - `resources/js/pages/reports`
 - `resources/js/pages/inventory/cardex`
 - `resources/js/pages/fiscal-years`
+- `resources/js/pages/journals`
 
 ## قواعد اجباری ادامه کار
 
@@ -274,8 +288,8 @@ npm run build
 - خروجی PDF/Excel گزارش کاردکس هنوز وجود ندارد.
 - Audit Log و مدیریت کاربران/نقش‌ها وجود دارد؛ غیرفعال‌سازی کاربر، retention و
   alerting برای Audit هنوز پیاده‌سازی نشده‌اند.
-- سند دستی، مانده افتتاحیه، بستن دوره و اسناد اختتامیه/افتتاحیه هنوز وجود
-  ندارند.
+- بستن دوره و اسناد اختتامیه/افتتاحیه سالانه هنوز وجود ندارند.
+- موجودی افتتاحیه کالا باید در Phase 15D همراه با حرکت انبار پیاده‌سازی شود.
 - Dashboard برای Manager/Accountant داده واقعی و نمودار هفت‌روزه/شش‌ماهه دارد؛
   cache و پاک‌سازی فایل Dashboard قدیمی باقی مانده است.
 - سامانه مودیان خارج از MVP است.
@@ -283,9 +297,9 @@ npm run build
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی و commit تغییرات Phase 15A توسط کاربر
-2. Phase 15B: سند دستی و مانده افتتاحیه
-3. Phase 15C: بستن و بازگشایی دوره
+1. بررسی دستی و commit تغییرات Phase 15B توسط کاربر
+2. Phase 15C: بستن و بازگشایی دوره
+3. Phase 15D: موجودی‌گیری، تعدیل و انتقال انبار
 4. ادامه طبق `.codex/phase-15-roadmap.md`
 
 جزئیات Phase 8A در `.codex/phase-8a-treasury-checks-ui.md` ثبت شده است.
@@ -297,6 +311,7 @@ npm run build
 جزئیات Phase 13A در `.codex/phase-13a-jalali-datepicker-monthly-chart.md` آمده است.
 جزئیات Phase 14A در `.codex/phase-14a-inventory-cardex.md` آمده است.
 جزئیات Phase 15A در `.codex/phase-15a-fiscal-year-management.md` آمده است.
+جزئیات Phase 15B در `.codex/phase-15b-manual-journals-opening-balance.md` آمده است.
 نقشه مراحل تکمیل در `.codex/phase-15-roadmap.md` آمده است.
 
 ## الگوی درخواست از Agent بعدی

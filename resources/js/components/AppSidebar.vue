@@ -2,6 +2,7 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import {
     BarChart3,
+    BookOpen,
     CalendarDays,
     CircleDollarSign,
     HandCoins,
@@ -41,6 +42,7 @@ import { cardex as inventoryCardex } from '@/routes/inventory';
 import { index as payments } from '@/routes/payments';
 import { index as purchases } from '@/routes/purchases';
 import { index as reports } from '@/routes/reports';
+import { index as journals } from '@/routes/journals';
 import { index as receipts } from '@/routes/receipts';
 import { index as sales } from '@/routes/sales';
 import type { NavItem } from '@/types';
@@ -75,6 +77,11 @@ const mainNavItems = computed<NavItem[]>(() => {
             title: 'گزارش‌های مالی',
             href: reports(),
             icon: BarChart3,
+        });
+        items.push({
+            title: 'اسناد دستی',
+            href: journals(),
+            icon: BookOpen,
         });
     }
 

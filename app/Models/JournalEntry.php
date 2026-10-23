@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\AccountingPeriodStatus;
 use App\Enums\FiscalYearStatus;
+use App\Enums\JournalEntryKind;
 use App\Enums\JournalEntryStatus;
 use App\Support\Decimal;
 use Carbon\CarbonImmutable;
@@ -22,6 +23,7 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * @property JournalEntryStatus $status
+ * @property JournalEntryKind $entry_kind
  * @property CarbonImmutable $entry_date
  */
 class JournalEntry extends Model
@@ -37,6 +39,7 @@ class JournalEntry extends Model
         'fiscal_year_id',
         'accounting_period_id',
         'description',
+        'entry_kind',
         'source_type',
         'source_id',
         'reversal_of_id',
@@ -50,6 +53,7 @@ class JournalEntry extends Model
         return [
             'entry_date' => 'immutable_date',
             'status' => JournalEntryStatus::class,
+            'entry_kind' => JournalEntryKind::class,
             'posted_at' => 'datetime',
         ];
     }
@@ -316,6 +320,10 @@ class JournalEntry extends Model
 
         static::updating(function (JournalEntry $entry): void {
             $originalStatus = $entry->getRawOriginal('status');
+
+            if ($entry->isDirty('entry_kind')) {
+                throw new DomainException('نوع سند پس از ایجاد قابل تغییر نیست.');
+            }
 
             if ($originalStatus !== null
                 && JournalEntryStatus::from($originalStatus) !== JournalEntryStatus::Draft) {

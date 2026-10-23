@@ -8,6 +8,7 @@ use App\Http\Controllers\FinancialReportsController;
 use App\Http\Controllers\FiscalYearController;
 use App\Http\Controllers\InventoryCardexController;
 use App\Http\Controllers\InvoiceReturnController;
+use App\Http\Controllers\ManualJournalController;
 use App\Http\Controllers\PartyController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseInvoiceController;
@@ -30,6 +31,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('fiscal-years.store');
     Route::patch('fiscal-years/{fiscalYear}/current', [FiscalYearController::class, 'setCurrent'])
         ->name('fiscal-years.current');
+    Route::get('journals', [ManualJournalController::class, 'index'])
+        ->name('journals.index');
+    Route::get('journals/create', [ManualJournalController::class, 'create'])
+        ->name('journals.create');
+    Route::post('journals', [ManualJournalController::class, 'store'])
+        ->name('journals.store');
+    Route::get('journals/{journalEntry}', [ManualJournalController::class, 'show'])
+        ->name('journals.show');
+    Route::get('journals/{journalEntry}/edit', [ManualJournalController::class, 'edit'])
+        ->name('journals.edit');
+    Route::put('journals/{journalEntry}', [ManualJournalController::class, 'update'])
+        ->name('journals.update');
+    Route::post('journals/{journalEntry}/post', [ManualJournalController::class, 'post'])
+        ->name('journals.post');
+    Route::delete('journals/{journalEntry}', [ManualJournalController::class, 'destroy'])
+        ->name('journals.destroy');
     Route::get('inventory/cardex', InventoryCardexController::class)->name('inventory.cardex');
     Route::get('audit-logs', AuditLogController::class)->name('audit-logs.index');
     Route::resource('users', UserManagementController::class)

@@ -5,6 +5,8 @@ namespace App\Services\Accounting;
 use App\Enums\AccountingPeriodStatus;
 use App\Enums\DocumentType;
 use App\Enums\FiscalYearStatus;
+use App\Models\AccountingPeriod;
+use App\Models\FiscalYear;
 use App\Models\JournalEntry;
 use App\Models\User;
 use DomainException;
@@ -69,20 +71,31 @@ class PostingService
             throw new AuthorizationException('تأیید و ثبت سند فقط برای مدیر و حسابدار مجاز است.');
         }
 
-        $entry->loadMissing(['accountingPeriod', 'fiscalYear']);
+        return DB::transaction(function () use ($entry, $approver): JournalEntry {
+            $entry->loadMissing(['accountingPeriod', 'fiscalYear']);
 
-        if (! $entry->accountingPeriod) {
-            throw new DomainException('برای ثبت سند، دوره مالی الزامی است.');
-        }
+            if (! $entry->accountingPeriod || ! $entry->fiscalYear) {
+                throw new DomainException('برای ثبت سند، دوره و سال مالی الزامی هستند.');
+            }
 
-        if ($entry->accountingPeriod->status !== AccountingPeriodStatus::Open) {
-            throw new DomainException('ثبت سند در دوره بسته یا نیمه‌بسته مجاز نیست.');
-        }
+            $fiscalYear = FiscalYear::query()
+                ->whereKey($entry->fiscal_year_id)
+                ->lockForUpdate()
+                ->first();
+            $period = AccountingPeriod::query()
+                ->whereKey($entry->accounting_period_id)
+                ->lockForUpdate()
+                ->first();
 
-        if ($entry->fiscalYear && $entry->fiscalYear->status !== FiscalYearStatus::Open) {
-            throw new DomainException('ثبت سند در سال مالی غیرفعال مجاز نیست.');
-        }
+            if (! $period || $period->status !== AccountingPeriodStatus::Open) {
+                throw new DomainException('ثبت سند در دوره بسته یا نیمه‌بسته مجاز نیست.');
+            }
 
-        return $entry->finalizePosting($approver);
+            if (! $fiscalYear || $fiscalYear->status !== FiscalYearStatus::Open) {
+                throw new DomainException('ثبت سند در سال مالی غیرفعال مجاز نیست.');
+            }
+
+            return $entry->finalizePosting($approver);
+        }, attempts: 3);
     }
 }
