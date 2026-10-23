@@ -85,6 +85,26 @@ enum UserRole: string
         return $this === self::Manager;
     }
 
+    public function canCloseAccountingPeriods(): bool
+    {
+        return in_array($this, [self::Manager, self::Accountant], true);
+    }
+
+    public function canReopenAccountingPeriods(): bool
+    {
+        return $this === self::Manager;
+    }
+
+    public function canCloseFiscalYears(): bool
+    {
+        return $this === self::Manager;
+    }
+
+    public function canReopenFiscalYears(): bool
+    {
+        return $this === self::Manager;
+    }
+
     public function canViewAuditLogs(): bool
     {
         return $this === self::Manager;

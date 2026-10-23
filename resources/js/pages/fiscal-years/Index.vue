@@ -9,16 +9,24 @@ import {
     CircleDot,
     Clock3,
     Landmark,
+    LockKeyhole,
+    LockOpen,
     Sparkles,
 } from '@lucide/vue';
 import { computed } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import {
+    close as closeFiscalYear,
     current as setCurrentFiscalYear,
     index as fiscalYearsIndex,
+    reopen as reopenFiscalYear,
     store as storeFiscalYear,
 } from '@/routes/fiscal-years';
+import {
+    close as closeAccountingPeriod,
+    reopen as reopenAccountingPeriod,
+} from '@/routes/fiscal-years/periods';
 
 type FiscalYearStatus = 'open' | 'closing' | 'closed';
 type PeriodStatus = 'open' | 'soft_closed' | 'closed';
@@ -50,10 +58,22 @@ const props = defineProps<{
         closed_periods: number;
     };
     suggested_year: number;
+    permissions: {
+        manage_years: boolean;
+        close_periods: boolean;
+        reopen_periods: boolean;
+        close_year: boolean;
+        reopen_year: boolean;
+    };
 }>();
 
 const page = usePage();
 const errors = computed(() => page.props.errors);
+const actionError = computed(
+    () =>
+        (errors.value as Record<string, string | undefined>).period ??
+        (errors.value as Record<string, string | undefined>).fiscal_year,
+);
 const form = useForm({
     year: props.suggested_year.toString(),
 });
@@ -128,6 +148,85 @@ const markCurrent = (year: FiscalYear) => {
         {
             preserveScroll: true,
         },
+    );
+};
+const closePeriod = (
+    period: FiscalYear['periods'][number],
+    status: 'soft_closed' | 'closed',
+) => {
+    const label = status === 'closed' ? 'بسته نهایی' : 'نیمه‌بسته';
+    if (!window.confirm(`دوره «${period.name}» ${label} شود؟`)) {
+        return;
+    }
+
+    router.patch(
+        closeAccountingPeriod(period.id),
+        { status },
+        { preserveScroll: true },
+    );
+};
+const reopenPeriod = (period: FiscalYear['periods'][number]) => {
+    const reason = window.prompt(
+        `دلیل بازگشایی دوره «${period.name}» را وارد کنید:`,
+    );
+
+    if (reason === null) {
+        return;
+    }
+
+    if (reason.trim().length < 5) {
+        window.alert('دلیل بازگشایی باید حداقل پنج نویسه باشد.');
+        return;
+    }
+
+    router.patch(
+        reopenAccountingPeriod(period.id),
+        { reason: reason.trim() },
+        { preserveScroll: true },
+    );
+};
+const canCloseYear = (year: FiscalYear) =>
+    year.status === 'open' &&
+    year.periods.length > 0 &&
+    year.periods.every((period) => period.status === 'closed');
+const closeYear = (year: FiscalYear) => {
+    const reason = window.prompt(
+        `دلیل بستن سال مالی ${year.title} را وارد کنید:`,
+    );
+
+    if (reason === null) {
+        return;
+    }
+
+    if (reason.trim().length < 5) {
+        window.alert('دلیل بستن سال باید حداقل پنج نویسه باشد.');
+        return;
+    }
+
+    router.patch(
+        closeFiscalYear(year.id),
+        { reason: reason.trim() },
+        { preserveScroll: true },
+    );
+};
+const reopenYear = (year: FiscalYear) => {
+    const reason = window.prompt(
+        `دلیل بازگشایی سال مالی ${year.title} را وارد کنید:`,
+    );
+
+    if (reason === null) {
+        return;
+    }
+
+    if (reason.trim().length < 5) {
+        window.alert('دلیل بازگشایی سال باید حداقل پنج نویسه باشد.');
+        return;
+    }
+
+    router.patch(
+        reopenFiscalYear(year.id),
+        { reason: reason.trim() },
+        { preserveScroll: true },
     );
 };
 
@@ -225,7 +324,10 @@ defineOptions({
             </article>
         </section>
 
+        <InputError :message="actionError" />
+
         <form
+            v-if="permissions.manage_years"
             class="rounded-2xl border border-border/70 bg-card p-5 shadow-sm"
             @submit.prevent="createYear"
         >
@@ -311,16 +413,42 @@ defineOptions({
                             </p>
                         </div>
                     </div>
-                    <Button
-                        v-if="year.can_set_current"
-                        type="button"
-                        variant="outline"
-                        class="w-fit rounded-xl"
-                        @click="markCurrent(year)"
-                    >
-                        <Check class="size-4" />
-                        تعیین به‌عنوان سال جاری
-                    </Button>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <Button
+                            v-if="permissions.close_year && canCloseYear(year)"
+                            type="button"
+                            class="w-fit rounded-xl"
+                            @click="closeYear(year)"
+                        >
+                            <LockKeyhole class="size-4" />
+                            بستن سال مالی
+                        </Button>
+                        <Button
+                            v-if="
+                                permissions.reopen_year &&
+                                year.status === 'closed'
+                            "
+                            type="button"
+                            variant="outline"
+                            class="w-fit rounded-xl"
+                            @click="reopenYear(year)"
+                        >
+                            <LockOpen class="size-4" />
+                            بازگشایی سال
+                        </Button>
+                        <Button
+                            v-if="
+                                permissions.manage_years && year.can_set_current
+                            "
+                            type="button"
+                            variant="outline"
+                            class="w-fit rounded-xl"
+                            @click="markCurrent(year)"
+                        >
+                            <Check class="size-4" />
+                            تعیین به‌عنوان سال جاری
+                        </Button>
+                    </div>
                 </div>
 
                 <details
@@ -350,6 +478,15 @@ defineOptions({
                                     </th>
                                     <th class="px-5 py-3 font-semibold">
                                         وضعیت
+                                    </th>
+                                    <th
+                                        v-if="
+                                            permissions.close_periods ||
+                                            permissions.reopen_periods
+                                        "
+                                        class="px-5 py-3 text-left font-semibold"
+                                    >
+                                        عملیات
                                     </th>
                                 </tr>
                             </thead>
@@ -388,6 +525,107 @@ defineOptions({
                                                     .label
                                             }}
                                         </span>
+                                    </td>
+                                    <td
+                                        v-if="
+                                            year.status === 'open' &&
+                                            (permissions.close_periods ||
+                                                permissions.reopen_periods)
+                                        "
+                                        class="px-5 py-3 text-left"
+                                    >
+                                        <div
+                                            v-if="
+                                                period.status === 'open' &&
+                                                permissions.close_periods
+                                            "
+                                            class="flex justify-end gap-1"
+                                        >
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                class="rounded-lg"
+                                                @click="
+                                                    closePeriod(
+                                                        period,
+                                                        'soft_closed',
+                                                    )
+                                                "
+                                            >
+                                                بستن موقت
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                class="rounded-lg"
+                                                @click="
+                                                    closePeriod(
+                                                        period,
+                                                        'closed',
+                                                    )
+                                                "
+                                            >
+                                                بستن نهایی
+                                            </Button>
+                                        </div>
+                                        <div
+                                            v-else-if="
+                                                period.status ===
+                                                    'soft_closed' &&
+                                                permissions.close_periods
+                                            "
+                                            class="flex justify-end gap-1"
+                                        >
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                class="rounded-lg"
+                                                @click="
+                                                    closePeriod(
+                                                        period,
+                                                        'closed',
+                                                    )
+                                                "
+                                            >
+                                                بستن نهایی
+                                            </Button>
+                                            <Button
+                                                v-if="
+                                                    permissions.reopen_periods
+                                                "
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                class="rounded-lg"
+                                                @click="reopenPeriod(period)"
+                                            >
+                                                بازگشایی
+                                            </Button>
+                                        </div>
+                                        <Button
+                                            v-else-if="
+                                                period.status === 'closed' &&
+                                                permissions.reopen_periods
+                                            "
+                                            type="button"
+                                            variant="ghost"
+                                            size="sm"
+                                            class="rounded-lg"
+                                            @click="reopenPeriod(period)"
+                                        >
+                                            <LockOpen class="size-4" />
+                                            بازگشایی
+                                        </Button>
+                                    </td>
+                                    <td
+                                        v-else-if="
+                                            permissions.close_periods ||
+                                            permissions.reopen_periods
+                                        "
+                                        class="px-5 py-3 text-center text-xs text-muted-foreground"
+                                    >
+                                        —
                                     </td>
                                 </tr>
                             </tbody>

@@ -79,6 +79,11 @@ const mainNavItems = computed<NavItem[]>(() => {
             icon: BarChart3,
         });
         items.push({
+            title: 'سال‌های مالی',
+            href: fiscalYears(),
+            icon: CalendarDays,
+        });
+        items.push({
             title: 'اسناد دستی',
             href: journals(),
             icon: BookOpen,
@@ -131,11 +136,6 @@ const mainNavItems = computed<NavItem[]>(() => {
     }
 
     if (user.value?.role === 'manager') {
-        items.push({
-            title: 'سال‌های مالی',
-            href: fiscalYears(),
-            icon: CalendarDays,
-        });
         items.push({
             title: 'کاربران',
             href: users(),

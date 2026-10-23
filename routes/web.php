@@ -31,6 +31,22 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('fiscal-years.store');
     Route::patch('fiscal-years/{fiscalYear}/current', [FiscalYearController::class, 'setCurrent'])
         ->name('fiscal-years.current');
+    Route::patch('fiscal-years/periods/{accountingPeriod}/close', [
+        FiscalYearController::class,
+        'closePeriod',
+    ])->name('fiscal-years.periods.close');
+    Route::patch('fiscal-years/periods/{accountingPeriod}/reopen', [
+        FiscalYearController::class,
+        'reopenPeriod',
+    ])->name('fiscal-years.periods.reopen');
+    Route::patch('fiscal-years/{fiscalYear}/close', [
+        FiscalYearController::class,
+        'closeYear',
+    ])->name('fiscal-years.close');
+    Route::patch('fiscal-years/{fiscalYear}/reopen', [
+        FiscalYearController::class,
+        'reopenYear',
+    ])->name('fiscal-years.reopen');
     Route::get('journals', [ManualJournalController::class, 'index'])
         ->name('journals.index');
     Route::get('journals/create', [ManualJournalController::class, 'create'])

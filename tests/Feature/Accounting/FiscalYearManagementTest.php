@@ -132,7 +132,6 @@ it('allows managers and forbids other roles from fiscal year management', functi
         ->get(route('fiscal-years.index'))
         ->assertForbidden();
 })->with([
-    'accountant' => [UserRole::Accountant],
     'cashier' => [UserRole::Cashier],
     'warehouse' => [UserRole::Warehouse],
     'viewer' => [UserRole::Viewer],

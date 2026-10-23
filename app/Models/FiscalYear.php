@@ -17,6 +17,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property CalendarType $calendar
  * @property CarbonImmutable $starts_on
  * @property CarbonImmutable $ends_on
+ * @property CarbonImmutable|null $closed_at
  */
 class FiscalYear extends Model
 {

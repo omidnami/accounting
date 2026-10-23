@@ -1,6 +1,6 @@
 # Store Accounting System - Context Handoff
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 15B)
+آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 15C)
 
 ## شروع کانتکست جدید
 
@@ -16,10 +16,10 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `80d65d1`
-- پیام: `feat(accounting): add fiscal year lifecycle management`
+- آخرین کامیت محلی: `27e31a9`
+- پیام: `feat(accounting): add manual journals and opening balances`
 - شاخه یک commit از `origin/main` جلوتر است.
-- تغییرات Phase 15B در worktree آماده‌اند و commit آن‌ها بر عهده
+- تغییرات Phase 15C در worktree آماده‌اند و commit آن‌ها بر عهده
   کاربر است.
 
 ## استک و محیط
@@ -37,7 +37,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `256 tests`, `1939 assertions`
+- Pest: `260 tests`, `1981 assertions`
 - Node calendar: `3 tests`
 - PHPStan: صفر خطا
 - Pint: موفق
@@ -146,6 +146,16 @@ npm run build
 - حساب موجودی از سند دستی مسدود است تا از دفتر حرکت انبار جدا نشود.
 - ثبت همه اسناد، قفل هم‌ترتیب سال و دوره را رعایت می‌کند.
 
+### بستن دوره و سال
+
+- دوره می‌تواند نیمه‌بسته یا بسته نهایی شود.
+- سند، فاکتور، دریافت و پرداخت باز مانع بستن هستند.
+- بازگشایی دوره فقط برای مدیر و با دلیل Audit انجام می‌شود.
+- سال مالی پس از بستن نهایی همه دوره‌ها بسته می‌شود.
+- بستن سال جاری نیازمند سال بعد باز است و سال جاری را خودکار منتقل
+  می‌کند.
+- بازگشایی سال، دوره‌ها را خودکار باز نمی‌کند.
+
 ## مسیرهای UI موجود
 
 - `/dashboard`
@@ -191,12 +201,14 @@ npm run build
 - `phase-14a`: گزارش کاردکس تعدادی/ریالی و دسترسی انباردار
 - `phase-15a`: مدیریت سال مالی، دوره‌ها و rollover
 - `phase-15b`: سند دستی و مانده افتتاحیه
+- `phase-15c`: قفل عملیاتی دوره و سال
 
 ## فایل‌های کلیدی
 
 ### Backend
 
 - `app/Services/Accounting/PostingService.php`
+- `app/Services/Accounting/PeriodClosingService.php`
 - `app/Services/Inventory/InventoryService.php`
 - `app/Services/Purchasing/PurchaseService.php`
 - `app/Services/Purchasing/PurchaseReturnService.php`
@@ -288,7 +300,8 @@ npm run build
 - خروجی PDF/Excel گزارش کاردکس هنوز وجود ندارد.
 - Audit Log و مدیریت کاربران/نقش‌ها وجود دارد؛ غیرفعال‌سازی کاربر، retention و
   alerting برای Audit هنوز پیاده‌سازی نشده‌اند.
-- بستن دوره و اسناد اختتامیه/افتتاحیه سالانه هنوز وجود ندارند.
+- صدور سند اختتامیه/افتتاحیه سالانه و انتقال سود به سود انباشته هنوز وجود
+  ندارد و در Phase 15C2 انجام می‌شود.
 - موجودی افتتاحیه کالا باید در Phase 15D همراه با حرکت انبار پیاده‌سازی شود.
 - Dashboard برای Manager/Accountant داده واقعی و نمودار هفت‌روزه/شش‌ماهه دارد؛
   cache و پاک‌سازی فایل Dashboard قدیمی باقی مانده است.
@@ -297,8 +310,8 @@ npm run build
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی و commit تغییرات Phase 15B توسط کاربر
-2. Phase 15C: بستن و بازگشایی دوره
+1. بررسی دستی و commit تغییرات Phase 15C توسط کاربر
+2. Phase 15C2: اسناد اختتامیه و افتتاحیه سالانه
 3. Phase 15D: موجودی‌گیری، تعدیل و انتقال انبار
 4. ادامه طبق `.codex/phase-15-roadmap.md`
 
@@ -312,6 +325,7 @@ npm run build
 جزئیات Phase 14A در `.codex/phase-14a-inventory-cardex.md` آمده است.
 جزئیات Phase 15A در `.codex/phase-15a-fiscal-year-management.md` آمده است.
 جزئیات Phase 15B در `.codex/phase-15b-manual-journals-opening-balance.md` آمده است.
+جزئیات Phase 15C در `.codex/phase-15c-period-year-closing.md` آمده است.
 نقشه مراحل تکمیل در `.codex/phase-15-roadmap.md` آمده است.
 
 ## الگوی درخواست از Agent بعدی
