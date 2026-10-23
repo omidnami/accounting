@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import {
     ArrowDownToLine,
     ArrowLeft,
@@ -13,7 +13,8 @@ import {
     PackageSearch,
     Warehouse,
 } from '@lucide/vue';
-import { reactive } from 'vue';
+import { computed, reactive } from 'vue';
+import InputError from '@/components/InputError.vue';
 import JalaliDatePicker from '@/components/JalaliDatePicker.vue';
 import { Button } from '@/components/ui/button';
 import { cardex as cardexIndex } from '@/routes/inventory';
@@ -112,6 +113,8 @@ type Props = {
 };
 
 const props = defineProps<Props>();
+const page = usePage();
+const errors = computed(() => page.props.errors);
 const filters = reactive({
     from: props.filters.from,
     to: props.filters.to,
@@ -160,6 +163,9 @@ const directionMeta = {
 } as const;
 const paginationLabel = (label: string) =>
     /^\d+$/.test(label) ? count.format(Number(label)) : '…';
+const reportTitle = computed(() =>
+    props.can_view_costs ? 'کاردکس تعدادی و ریالی' : 'کاردکس تعدادی',
+);
 const formatDate = (value: string) =>
     date.format(new Date(`${value}T12:00:00Z`));
 
@@ -223,7 +229,7 @@ defineOptions({
 </script>
 
 <template>
-    <Head title="کاردکس موجودی" />
+    <Head :title="reportTitle" />
 
     <div class="mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
         <section
@@ -241,7 +247,7 @@ defineOptions({
                         <span class="text-xs font-bold">گردش حساب موجودی</span>
                     </div>
                     <h1 class="text-2xl font-black tracking-tight sm:text-3xl">
-                        کاردکس تعدادی و ریالی
+                        {{ reportTitle }}
                     </h1>
                     <p
                         class="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground"
@@ -275,12 +281,14 @@ defineOptions({
                     >از تاریخ</span
                 >
                 <JalaliDatePicker v-model="filters.from" required />
+                <InputError :message="errors.from" />
             </label>
             <label class="space-y-1.5">
                 <span class="text-xs font-semibold text-muted-foreground"
                     >تا تاریخ</span
                 >
                 <JalaliDatePicker v-model="filters.to" required />
+                <InputError :message="errors.to" />
             </label>
             <label class="space-y-1.5">
                 <span class="text-xs font-semibold text-muted-foreground"
@@ -306,6 +314,7 @@ defineOptions({
                         </option>
                     </select>
                 </span>
+                <InputError :message="errors.product_id" />
             </label>
             <label class="space-y-1.5">
                 <span class="text-xs font-semibold text-muted-foreground"
@@ -331,6 +340,7 @@ defineOptions({
                         </option>
                     </select>
                 </span>
+                <InputError :message="errors.warehouse_id" />
             </label>
             <label class="space-y-1.5">
                 <span class="text-xs font-semibold text-muted-foreground"
@@ -349,6 +359,7 @@ defineOptions({
                         {{ label }}
                     </option>
                 </select>
+                <InputError :message="errors.movement_type" />
             </label>
             <label class="space-y-1.5">
                 <span class="text-xs font-semibold text-muted-foreground"
@@ -362,6 +373,7 @@ defineOptions({
                     <option value="in">فقط ورود</option>
                     <option value="out">فقط خروج</option>
                 </select>
+                <InputError :message="errors.direction" />
             </label>
             <div class="flex items-end gap-2 xl:col-span-2">
                 <Button type="submit" class="h-11 flex-1 rounded-xl px-5">
@@ -514,7 +526,12 @@ defineOptions({
                     v-if="report.movements.data.length"
                     class="overflow-x-auto"
                 >
-                    <table class="w-full min-w-[980px] text-right text-sm">
+                    <table
+                        class="w-full text-right text-sm"
+                        :class="
+                            can_view_costs ? 'min-w-[980px]' : 'min-w-[680px]'
+                        "
+                    >
                         <thead
                             class="border-b bg-muted/40 text-[11px] text-muted-foreground"
                         >

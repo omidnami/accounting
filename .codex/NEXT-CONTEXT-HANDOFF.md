@@ -16,10 +16,11 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `fc8ae30`
-- پیام: `fix(calendar): harden Jalali picker and monthly trend UX`
+- آخرین کامیت محلی: `cfba7c3`
+- پیام: `feat(inventory): add role-aware inventory cardex report`
 - شاخه با `origin/main` هم‌سطح است.
-- تغییرات Phase 14A در worktree آماده‌اند و commit آن‌ها بر عهده کاربر است.
+- اصلاحات بازبینی Phase 14A در worktree آماده‌اند و commit آن‌ها بر عهده
+  کاربر است.
 
 ## استک و محیط
 
@@ -36,7 +37,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `235 tests`, `1834 assertions`
+- Pest: `236 tests`, `1841 assertions`
 - Node calendar: `3 tests`
 - PHPStan: صفر خطا
 - Pint: موفق

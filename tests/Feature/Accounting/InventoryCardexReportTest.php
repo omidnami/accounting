@@ -248,6 +248,22 @@ it('validates cardex dates and warehouse scope through the interface', function 
 
     $this->actingAs($manager)
         ->get(route('inventory.cardex', [
+            'from' => '2030-01-01',
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+        ]))
+        ->assertSessionHasErrors('to');
+
+    $this->actingAs($manager)
+        ->get(route('inventory.cardex', [
+            'to' => '2000-01-01',
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+        ]))
+        ->assertSessionHasErrors('to');
+
+    $this->actingAs($manager)
+        ->get(route('inventory.cardex', [
             'product_id' => $product->id,
             'warehouse_id' => $otherWarehouse->id,
         ]))
@@ -261,4 +277,32 @@ it('validates cardex dates and warehouse scope through the interface', function 
             ->where('report', null)
             ->where('filters.product_id', null)
             ->where('filters.warehouse_id', null));
+});
+
+it('rejects an incompatible cardex movement type and direction', function () {
+    ['warehouse' => $warehouse, 'product' => $product] = inventoryCardexContext();
+    $manager = User::factory()->create();
+    $manager->forceFill(['role' => UserRole::Manager])->save();
+
+    $this->actingAs($manager)
+        ->get(route('inventory.cardex', [
+            'from' => '2026-10-01',
+            'to' => '2026-10-31',
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'movement_type' => InventoryMovementType::Sale->value,
+            'direction' => InventoryDirection::In->value,
+        ]))
+        ->assertSessionHasErrors('movement_type');
+
+    $this->actingAs($manager)
+        ->get(route('inventory.cardex', [
+            'from' => '2026-10-01',
+            'to' => '2026-10-31',
+            'product_id' => $product->id,
+            'warehouse_id' => $warehouse->id,
+            'movement_type' => InventoryMovementType::Sale->value,
+            'direction' => InventoryDirection::Out->value,
+        ]))
+        ->assertOk();
 });
