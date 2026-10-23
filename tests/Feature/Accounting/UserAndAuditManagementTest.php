@@ -3,6 +3,8 @@
 use App\Enums\UserRole;
 use App\Models\AuditLog;
 use App\Models\User;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -93,6 +95,7 @@ it('updates user role and password with version protection and audit trail', fun
     $manager = userManagementUser(UserRole::Manager);
     $target = userManagementUser(UserRole::Viewer);
     $oldPassword = $target->password;
+    $initialVersion = $target->version;
 
     $this->actingAs($manager)
         ->put(route('users.update', $target), userManagementPayload([
@@ -113,7 +116,7 @@ it('updates user role and password with version protection and audit trail', fun
         ->firstOrFail();
 
     expect($target->role)->toBe(UserRole::Cashier)
-        ->and($target->version)->toBe(1)
+        ->and($target->version)->toBe($initialVersion + 1)
         ->and($target->password)->not->toBe($oldPassword)
         ->and($log->old_values['password'])->toBe('[redacted]')
         ->and($log->new_values['password'])->toBe('[redacted]')
@@ -174,4 +177,65 @@ it('keeps audit records immutable', function () {
         ->toThrow(DomainException::class)
         ->and(fn () => $log->delete())
         ->toThrow(DomainException::class);
+
+    expect(fn () => DB::table('audit_logs')
+        ->where('id', $log->id)
+        ->update(['description' => 'raw tamper']))
+        ->toThrow(QueryException::class);
+});
+
+it('increments user version for profile and password updates', function () {
+    $user = userManagementUser(UserRole::Manager);
+    $profileVersion = $user->version;
+
+    $this->actingAs($user)
+        ->patch(route('profile.update'), [
+            'name' => 'نام جدید مدیر',
+            'email' => $user->email,
+        ])
+        ->assertSessionHasNoErrors();
+
+    $user->refresh();
+    expect($user->version)->toBe($profileVersion + 1);
+    $passwordVersion = $user->version;
+
+    $this->actingAs($user)
+        ->put(route('user-password.update'), [
+            'current_password' => 'password',
+            'password' => 'New-Secure-Pass-789',
+            'password_confirmation' => 'New-Secure-Pass-789',
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($user->refresh()->version)->toBe($passwordVersion + 1);
+});
+
+it('preserves audit actor identity after the user is deleted', function () {
+    $manager = userManagementUser(UserRole::Manager);
+    $target = userManagementUser(UserRole::Viewer);
+
+    $this->actingAs($manager)
+        ->put(route('users.update', $target), userManagementPayload([
+            'name' => 'کاربر ویرایش‌شده',
+            'role' => 'viewer',
+            'password' => '',
+            'password_confirmation' => '',
+            'version' => $target->version,
+        ]))
+        ->assertSessionHasNoErrors();
+
+    $log = AuditLog::query()
+        ->where('user_id', $manager->id)
+        ->where('auditable_id', $target->id)
+        ->where('event', 'updated')
+        ->latest('id')
+        ->firstOrFail();
+    $managerId = $manager->id;
+    $managerName = $manager->name;
+    $managerEmail = $manager->email;
+    $manager->delete();
+
+    expect($log->refresh()->user_id)->toBe($managerId)
+        ->and($log->actor_name)->toBe($managerName)
+        ->and($log->actor_email)->toBe($managerEmail);
 });

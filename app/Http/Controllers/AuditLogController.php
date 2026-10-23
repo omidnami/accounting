@@ -66,10 +66,14 @@ class AuditLogController extends Controller
                 'entity' => class_basename($log->auditable_type),
                 'entity_id' => $log->auditable_id,
                 'description' => $log->description,
-                'actor' => $log->actor
+                'actor' => $log->actor || $log->actor_name
                     ? [
-                        'name' => $log->actor->name,
-                        'email' => $log->actor->email,
+                        'name' => $log->actor !== null
+                            ? $log->actor->name
+                            : $log->actor_name,
+                        'email' => $log->actor !== null
+                            ? $log->actor->email
+                            : $log->actor_email,
                     ]
                     : null,
                 'old_values' => $log->old_values,

@@ -39,6 +39,18 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, PasskeyAuthenticatable, TwoFactorAuthenticatable;
 
+    protected static function booted(): void
+    {
+        static::updating(function (User $user): void {
+            $versioned = ['name', 'email', 'password', 'role', 'email_verified_at'];
+
+            if (array_intersect($versioned, array_keys($user->getDirty())) !== []
+                && ! $user->isDirty('version')) {
+                $user->version = (int) $user->getOriginal('version') + 1;
+            }
+        });
+    }
+
     /**
      * Get the attributes that should be cast.
      *

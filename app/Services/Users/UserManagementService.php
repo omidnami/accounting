@@ -5,6 +5,7 @@ namespace App\Services\Users;
 use App\Enums\UserRole;
 use App\Models\User;
 use DomainException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 class UserManagementService
@@ -17,18 +18,22 @@ class UserManagementService
      */
     public function create(array $data): User
     {
-        return DB::transaction(function () use ($data): User {
-            $user = new User;
-            $user->name = trim($data['name']);
-            $user->email = strtolower(trim($data['email']));
-            $user->password = $data['password'];
-            $user->email_verified_at = now();
-            $user->role = UserRole::from($data['role']);
-            $user->version = 0;
-            $user->save();
+        try {
+            return DB::transaction(function () use ($data): User {
+                $user = new User;
+                $user->name = trim($data['name']);
+                $user->email = strtolower(trim($data['email']));
+                $user->password = $data['password'];
+                $user->email_verified_at = now();
+                $user->role = UserRole::from($data['role']);
+                $user->version = 0;
+                $user->save();
 
-            return $user->refresh();
-        }, attempts: 3);
+                return $user->refresh();
+            }, attempts: 3);
+        } catch (UniqueConstraintViolationException) {
+            throw new DomainException('این ایمیل قبلاً برای کاربر دیگری ثبت شده است.');
+        }
     }
 
     /**
@@ -39,44 +44,47 @@ class UserManagementService
      */
     public function update(User $target, array $data, User $actor): User
     {
-        return DB::transaction(function () use ($target, $data, $actor): User {
-            $locked = User::query()
-                ->whereKey($target->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-            $newRole = UserRole::from($data['role']);
-
-            if ((int) $locked->version !== (int) $data['version']) {
-                throw new DomainException('این کاربر هم‌زمان توسط مدیر دیگری تغییر کرده است.');
-            }
-
-            if ((int) $locked->id === (int) $actor->id && $locked->role !== $newRole) {
-                throw new DomainException('نقش حساب کاربری خودتان را نمی‌توانید تغییر دهید.');
-            }
-
-            if ($locked->role === UserRole::Manager && $newRole !== UserRole::Manager) {
-                $managerCount = User::query()
+        try {
+            return DB::transaction(function () use ($target, $data, $actor): User {
+                $managers = User::query()
                     ->where('role', UserRole::Manager)
+                    ->orderBy('id')
                     ->lockForUpdate()
-                    ->count();
+                    ->get(['id']);
+                $locked = User::query()
+                    ->whereKey($target->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                $newRole = UserRole::from($data['role']);
 
-                if ($managerCount <= 1) {
+                if ((int) $locked->version !== (int) $data['version']) {
+                    throw new DomainException('این کاربر هم‌زمان توسط مدیر دیگری تغییر کرده است.');
+                }
+
+                if ((int) $locked->id === (int) $actor->id && $locked->role !== $newRole) {
+                    throw new DomainException('نقش حساب کاربری خودتان را نمی‌توانید تغییر دهید.');
+                }
+
+                if ($locked->role === UserRole::Manager
+                    && $newRole !== UserRole::Manager
+                    && $managers->count() <= 1) {
                     throw new DomainException('آخرین مدیر سیستم را نمی‌توان به نقش دیگری تغییر داد.');
                 }
-            }
 
-            $locked->name = trim($data['name']);
-            $locked->email = strtolower(trim($data['email']));
-            $locked->role = $newRole;
-            $locked->version++;
+                $locked->name = trim($data['name']);
+                $locked->email = strtolower(trim($data['email']));
+                $locked->role = $newRole;
 
-            if (isset($data['password']) && $data['password'] !== '') {
-                $locked->password = $data['password'];
-            }
+                if (isset($data['password']) && $data['password'] !== '') {
+                    $locked->password = $data['password'];
+                }
 
-            $locked->save();
+                $locked->save();
 
-            return $locked->refresh();
-        }, attempts: 3);
+                return $locked->refresh();
+            }, attempts: 3);
+        } catch (UniqueConstraintViolationException) {
+            throw new DomainException('این ایمیل قبلاً برای کاربر دیگری ثبت شده است.');
+        }
     }
 }

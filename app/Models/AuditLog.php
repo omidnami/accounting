@@ -20,6 +20,8 @@ class AuditLog extends Model
         'store_id',
         'branch_id',
         'user_id',
+        'actor_name',
+        'actor_email',
         'event',
         'auditable_type',
         'auditable_id',

@@ -12,7 +12,7 @@ import {
 } from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
 import { Button } from '@/components/ui/button';
-import { dashboard, login, register } from '@/routes';
+import { dashboard, login } from '@/routes';
 
 const features = [
     {
@@ -70,9 +70,6 @@ const features = [
                         <Button variant="ghost" as-child>
                             <Link :href="login()">ورود</Link>
                         </Button>
-                        <Button as-child class="hidden sm:inline-flex">
-                            <Link :href="register()">شروع رایگان</Link>
-                        </Button>
                     </template>
                 </nav>
             </div>
@@ -127,18 +124,10 @@ const features = [
                             as-child
                             class="h-12 rounded-xl px-7 text-[15px] shadow-lg shadow-primary/15"
                         >
-                            <Link :href="register()">
-                                ساخت حساب فروشگاه
+                            <Link :href="login()">
+                                ورود به حساب
                                 <ArrowLeft class="size-4" />
                             </Link>
-                        </Button>
-                        <Button
-                            size="lg"
-                            variant="outline"
-                            as-child
-                            class="h-12 rounded-xl border-border/80 bg-card/60 px-7 text-[15px] backdrop-blur"
-                        >
-                            <Link :href="login()">حساب دارم، وارد می‌شوم</Link>
                         </Button>
                     </div>
 
