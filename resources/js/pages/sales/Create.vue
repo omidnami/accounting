@@ -3,7 +3,6 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import {
     ArrowRight,
     Boxes,
-    CalendarDays,
     Check,
     ChevronLeft,
     CircleAlert,
@@ -17,6 +16,7 @@ import {
 } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
+import JalaliDatePicker from '@/components/JalaliDatePicker.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -522,29 +522,21 @@ defineOptions({
                     <div class="grid gap-4 sm:grid-cols-3">
                         <div class="grid gap-2">
                             <Label for="invoice_date">تاریخ فاکتور *</Label>
-                            <div class="relative">
-                                <CalendarDays
-                                    class="absolute inset-y-0 right-3 my-auto size-4 text-muted-foreground"
-                                />
-                                <Input
-                                    id="invoice_date"
-                                    v-model="form.invoice_date"
-                                    type="date"
-                                    :min="defaults.fiscal_year.starts_on"
-                                    :max="defaults.fiscal_year.ends_on"
-                                    class="h-11 rounded-xl pr-9"
-                                />
-                            </div>
+                            <JalaliDatePicker
+                                id="invoice_date"
+                                v-model="form.invoice_date"
+                                :min="defaults.fiscal_year.starts_on"
+                                :max="defaults.fiscal_year.ends_on"
+                            />
                             <InputError :message="form.errors.invoice_date" />
                         </div>
                         <div class="grid gap-2">
                             <Label for="due_date">سررسید</Label>
-                            <Input
+                            <JalaliDatePicker
                                 id="due_date"
                                 v-model="form.due_date"
-                                type="date"
                                 :min="form.invoice_date"
-                                class="h-11 rounded-xl"
+                                placeholder="بدون سررسید"
                             />
                             <InputError :message="form.errors.due_date" />
                         </div>

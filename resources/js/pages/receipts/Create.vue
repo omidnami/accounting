@@ -3,7 +3,6 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import {
     ArrowRight,
     Banknote,
-    CalendarDays,
     Check,
     CircleAlert,
     CreditCard,
@@ -15,6 +14,7 @@ import {
 } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
+import JalaliDatePicker from '@/components/JalaliDatePicker.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -665,19 +665,12 @@ defineOptions({
                     <div class="mt-5 grid gap-5 sm:grid-cols-2">
                         <div class="grid gap-2">
                             <Label for="receipt_date">تاریخ دریافت *</Label>
-                            <div class="relative">
-                                <CalendarDays
-                                    class="absolute inset-y-0 right-3 my-auto size-4 text-muted-foreground"
-                                />
-                                <Input
-                                    id="receipt_date"
-                                    v-model="form.receipt_date"
-                                    type="date"
-                                    :min="fiscal_year.starts_on"
-                                    :max="fiscal_year.ends_on"
-                                    class="h-11 rounded-xl pr-9"
-                                />
-                            </div>
+                            <JalaliDatePicker
+                                id="receipt_date"
+                                v-model="form.receipt_date"
+                                :min="fiscal_year.starts_on"
+                                :max="fiscal_year.ends_on"
+                            />
                             <InputError :message="form.errors.receipt_date" />
                         </div>
                         <div class="grid gap-2">

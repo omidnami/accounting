@@ -17,6 +17,7 @@ use App\Models\Product;
 use App\Models\Receipt;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\Accounting\JalaliDateService;
 use App\Services\Purchasing\SupplierPayableService;
 use App\Services\Reporting\FinancialStatementReportService;
 use App\Services\Sales\CustomerReceivableService;
@@ -30,6 +31,7 @@ class DashboardService
         private readonly FinancialStatementReportService $statements,
         private readonly CustomerReceivableService $receivables,
         private readonly SupplierPayableService $payables,
+        private readonly JalaliDateService $dates,
     ) {}
 
     /**
@@ -77,6 +79,7 @@ class DashboardService
             ],
             'metrics' => [],
             'trend' => [],
+            'monthly_trend' => [],
             'low_stock' => ['count' => 0, 'items' => []],
             'recent_activity' => [],
             'setup_required' => false,
@@ -93,6 +96,11 @@ class DashboardService
         }
 
         $data['trend'] = $this->trend($store, $branch, includePurchases: $mode === 'financial');
+        $data['monthly_trend'] = $this->monthlyTrend(
+            $store,
+            $branch,
+            includePurchases: $mode === 'financial',
+        );
         $salesToday = $data['trend'][6]['sales'];
         $data['recent_activity'] = $this->recentActivity($store, $branch, $mode === 'financial');
 
@@ -161,6 +169,112 @@ class DashboardService
         $data['low_stock'] = $this->lowStock($store, $branch);
 
         return $data;
+    }
+
+    /**
+     * @return array<int, array{label: string, date: string, sales: string, purchases: string}>
+     */
+    private function monthlyTrend(
+        Store $store,
+        Branch $branch,
+        bool $includePurchases,
+    ): array {
+        $current = $this->dates->toJalali(today());
+        $months = [];
+        $currentSerial = $current->year * 12 + $current->month - 1;
+
+        for ($offset = 5; $offset >= 0; $offset--) {
+            $serial = $currentSerial - $offset;
+            $year = intdiv($serial, 12);
+            $month = ($serial % 12) + 1;
+            $period = collect($this->dates->periods($year))
+                ->firstWhere('period_number', $month);
+
+            if ($period) {
+                $months[] = $period;
+            }
+        }
+
+        $from = $months[0]['starts_on']->toDateString();
+        $to = today()->toDateString();
+        $sales = $this->invoiceTotalsByDate(
+            $store,
+            $branch,
+            InvoiceType::Sales,
+            $from,
+            $to,
+        );
+        $purchases = $includePurchases
+            ? $this->invoiceTotalsByDate(
+                $store,
+                $branch,
+                InvoiceType::Purchase,
+                $from,
+                $to,
+            )
+            : collect();
+        $salesReturns = $this->invoiceTotalsByDate(
+            $store,
+            $branch,
+            InvoiceType::SalesReturn,
+            $from,
+            $to,
+        );
+        $purchaseReturns = $includePurchases
+            ? $this->invoiceTotalsByDate(
+                $store,
+                $branch,
+                InvoiceType::PurchaseReturn,
+                $from,
+                $to,
+            )
+            : collect();
+
+        return collect($months)->map(function (array $period) use (
+            $sales,
+            $salesReturns,
+            $purchases,
+            $purchaseReturns,
+        ): array {
+            $periodFrom = $period['starts_on']->toDateString();
+            $periodTo = $period['ends_on']->toDateString();
+
+            return [
+                'label' => $period['name'],
+                'date' => $periodFrom,
+                'sales' => Decimal::subtract(
+                    $this->sumDateTotals($sales, $periodFrom, $periodTo),
+                    $this->sumDateTotals($salesReturns, $periodFrom, $periodTo),
+                    Decimal::MONEY_SCALE,
+                ),
+                'purchases' => Decimal::subtract(
+                    $this->sumDateTotals($purchases, $periodFrom, $periodTo),
+                    $this->sumDateTotals($purchaseReturns, $periodFrom, $periodTo),
+                    Decimal::MONEY_SCALE,
+                ),
+            ];
+        })->all();
+    }
+
+    /**
+     * @param  Collection<int|string, numeric-string>  $totals
+     */
+    private function sumDateTotals(
+        Collection $totals,
+        string $from,
+        string $to,
+    ): string {
+        $sum = '0.00';
+
+        foreach ($totals as $date => $total) {
+            $date = (string) $date;
+
+            if ($date >= $from && $date <= $to) {
+                $sum = Decimal::add($sum, $total, Decimal::MONEY_SCALE);
+            }
+        }
+
+        return $sum;
     }
 
     /**

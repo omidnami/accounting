@@ -216,6 +216,7 @@ it('shows real financial metrics to managers and accountants', function (UserRol
             ->where('dashboard.metrics.net_profit', $expectedProfit)
             ->where('dashboard.low_stock.count', 1)
             ->has('dashboard.trend', 7)
+            ->has('dashboard.monthly_trend', 6)
             ->where(
                 'dashboard.recent_activity',
                 fn ($activity) => collect($activity)->contains('kind', 'check'),

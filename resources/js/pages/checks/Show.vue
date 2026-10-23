@@ -18,6 +18,7 @@ import {
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
+import JalaliDatePicker from '@/components/JalaliDatePicker.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -590,11 +591,9 @@ defineOptions({
                             <Label for="settlement_date">
                                 تاریخ {{ actionLabel }} *
                             </Label>
-                            <Input
+                            <JalaliDatePicker
                                 id="settlement_date"
                                 v-model="settlementForm.settlement_date"
-                                type="date"
-                                class="h-11 rounded-xl"
                             />
                             <InputError
                                 :message="settlementForm.errors.settlement_date"
@@ -686,11 +685,9 @@ defineOptions({
                         @submit.prevent="submitBounce"
                     >
                         <Label for="bounce_date">تاریخ برگشت *</Label>
-                        <Input
+                        <JalaliDatePicker
                             id="bounce_date"
                             v-model="bounceForm.bounce_date"
-                            type="date"
-                            class="h-11 rounded-xl"
                         />
                         <InputError :message="bounceForm.errors.bounce_date" />
                         <InputError :message="bounceCheckError" />

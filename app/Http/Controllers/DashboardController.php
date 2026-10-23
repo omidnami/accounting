@@ -25,6 +25,7 @@ class DashboardController extends Controller
                     'fiscal_year' => null,
                     'metrics' => [],
                     'trend' => [],
+                    'monthly_trend' => [],
                     'low_stock' => ['count' => 0, 'items' => []],
                     'recent_activity' => [],
                     'setup_required' => true,

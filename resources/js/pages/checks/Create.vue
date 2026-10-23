@@ -3,7 +3,6 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import {
     ArrowRight,
     Building2,
-    CalendarDays,
     Check,
     CircleAlert,
     Landmark,
@@ -14,6 +13,7 @@ import {
 } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
+import JalaliDatePicker from '@/components/JalaliDatePicker.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -501,32 +501,20 @@ defineOptions({
                         </div>
                         <div class="grid gap-2">
                             <Label for="issue_date">تاریخ صدور</Label>
-                            <div class="relative">
-                                <CalendarDays
-                                    class="absolute inset-y-0 right-3 my-auto size-4 text-muted-foreground"
-                                />
-                                <Input
-                                    id="issue_date"
-                                    v-model="form.issue_date"
-                                    type="date"
-                                    class="h-11 rounded-xl pr-9"
-                                />
-                            </div>
+                            <JalaliDatePicker
+                                id="issue_date"
+                                v-model="form.issue_date"
+                                placeholder="بدون تاریخ صدور"
+                            />
                             <InputError :message="form.errors.issue_date" />
                         </div>
                         <div class="grid gap-2">
                             <Label for="due_date">تاریخ سررسید *</Label>
-                            <div class="relative">
-                                <CalendarDays
-                                    class="absolute inset-y-0 right-3 my-auto size-4 text-muted-foreground"
-                                />
-                                <Input
-                                    id="due_date"
-                                    v-model="form.due_date"
-                                    type="date"
-                                    class="h-11 rounded-xl pr-9"
-                                />
-                            </div>
+                            <JalaliDatePicker
+                                id="due_date"
+                                v-model="form.due_date"
+                                :min="form.issue_date"
+                            />
                             <InputError :message="form.errors.due_date" />
                         </div>
                     </div>

@@ -2,7 +2,6 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import {
     ArrowRight,
-    CalendarDays,
     Check,
     CircleAlert,
     PackageMinus,
@@ -10,6 +9,7 @@ import {
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
+import JalaliDatePicker from '@/components/JalaliDatePicker.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -223,19 +223,12 @@ defineOptions({
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div class="grid gap-2">
                             <Label for="return_date">تاریخ برگشت *</Label>
-                            <div class="relative">
-                                <CalendarDays
-                                    class="absolute inset-y-0 right-3 my-auto size-4 text-muted-foreground"
-                                />
-                                <Input
-                                    id="return_date"
-                                    v-model="form.return_date"
-                                    type="date"
-                                    :min="original.invoice_date"
-                                    :max="fiscal_year.ends_on"
-                                    class="h-11 rounded-xl pr-9"
-                                />
-                            </div>
+                            <JalaliDatePicker
+                                id="return_date"
+                                v-model="form.return_date"
+                                :min="original.invoice_date"
+                                :max="fiscal_year.ends_on"
+                            />
                             <InputError :message="form.errors.return_date" />
                         </div>
                         <div class="rounded-xl bg-muted/35 px-4 py-3">

@@ -4,7 +4,6 @@ import {
     ArrowRight,
     Banknote,
     Building2,
-    CalendarDays,
     Check,
     CircleAlert,
     CreditCard,
@@ -15,6 +14,7 @@ import {
 } from '@lucide/vue';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import InputError from '@/components/InputError.vue';
+import JalaliDatePicker from '@/components/JalaliDatePicker.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -555,19 +555,12 @@ defineOptions({
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div class="grid gap-2">
                             <Label for="payment_date">تاریخ پرداخت *</Label>
-                            <div class="relative">
-                                <CalendarDays
-                                    class="absolute inset-y-0 right-3 my-auto size-4 text-muted-foreground"
-                                />
-                                <Input
-                                    id="payment_date"
-                                    v-model="form.payment_date"
-                                    type="date"
-                                    :min="fiscal_year.starts_on"
-                                    :max="fiscal_year.ends_on"
-                                    class="h-11 pr-9"
-                                />
-                            </div>
+                            <JalaliDatePicker
+                                id="payment_date"
+                                v-model="form.payment_date"
+                                :min="fiscal_year.starts_on"
+                                :max="fiscal_year.ends_on"
+                            />
                             <InputError :message="form.errors.payment_date" />
                         </div>
                         <div class="grid gap-2">

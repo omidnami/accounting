@@ -1,6 +1,6 @@
 # Store Accounting System - Context Handoff
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 12A)
+آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 13A)
 
 ## شروع کانتکست جدید
 
@@ -16,9 +16,9 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `cd2964b`
-- پیام: `fix(audit): enforce immutable actor-safe audit and manager safeguards`
-- شاخه با `origin/main` هم‌سطح بود؛ Phase 12A هنوز commit نشده است.
+- آخرین کامیت محلی: `0dbb375`
+- پیام: `fixed pages`
+- شاخه با `origin/main` هم‌سطح بود؛ Phase 13A هنوز commit نشده است.
 
 ## استک و محیط
 
@@ -35,7 +35,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `226 tests`, `1677 assertions`
+- Pest: `226 tests`, `1681 assertions`
 - PHPStan: صفر خطا
 - Pint: موفق
 - Vue type-check: موفق
@@ -166,6 +166,7 @@ npm run build
 - `phase-10a`: مدیریت حساب‌های خزانه
 - `phase-11a`: Audit Log و مدیریت کاربران
 - `phase-12a`: Dashboard تحلیلی واقعی
+- `phase-13a`: Datepicker شمسی و نمودار ماهانه
 
 ## فایل‌های کلیدی
 
@@ -240,8 +241,8 @@ npm run build
 ## محدودیت‌های شناخته‌شده
 
 - محصولات هنوز `store_id` ندارند؛ کاتالوگ در MVP سراسری است.
-- تاریخ‌های UI هنوز با input میلادی وارد می‌شوند.
-- Datepicker شمسی پیاده‌سازی نشده است.
+- تاریخ‌های فرم‌های مالی از Datepicker شمسی استفاده می‌کنند؛ ورود تایپی مستقیم
+  و بررسی دستی تقویم در مرورگر باقی مانده است.
 - UI برگشت خرید و فروش اضافه شده است؛ ویرایش Draft مرجوعی هنوز وجود ندارد.
 - مدیریت حساب‌های صندوق، بانک و کارت از UI اضافه شده است؛ مدیریت چندشعبه
   همچنان خارج از MVP است.
@@ -250,16 +251,16 @@ npm run build
 - موجودی‌گیری فیزیکی، StockAdjustment و صفحه Cardex اختصاصی وجود ندارند.
 - Audit Log و مدیریت کاربران/نقش‌ها وجود دارد؛ غیرفعال‌سازی کاربر، retention و
   alerting برای Audit هنوز پیاده‌سازی نشده‌اند.
-- Dashboard برای Manager/Accountant داده واقعی دارد؛ نمودار ماهانه شمسی، cache
-  و پاک‌سازی فایل Dashboard قدیمی باقی مانده است.
+- Dashboard برای Manager/Accountant داده واقعی و نمودار هفت‌روزه/شش‌ماهه دارد؛
+  cache و پاک‌سازی فایل Dashboard قدیمی باقی مانده است.
 - سامانه مودیان خارج از MVP است.
 - بررسی دستی مرورگر و acceptance نهایی انجام نشده است.
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی Phase 12A در دسکتاپ و موبایل
-2. commit و push Dashboard توسط کاربر و سپس تأیید CI
-3. پیاده‌سازی Datepicker شمسی و نمودار ماهانه
+1. بررسی دستی Phase 13A در دسکتاپ و موبایل
+2. commit و push Datepicker و نمودار ماهانه توسط کاربر
+3. شروع فاز بعدی: گزارش‌های عملیاتی/انبار یا خروجی PDF/Excel
 
 جزئیات Phase 8A در `.codex/phase-8a-treasury-checks-ui.md` ثبت شده است.
 اصلاحات بازبینی آن در `.codex/phase-8a-check-hardening.md` آمده است.
@@ -267,6 +268,7 @@ npm run build
 جزئیات Phase 10A در `.codex/phase-10a-treasury-account-ui.md` آمده است.
 جزئیات Phase 11A در `.codex/phase-11a-audit-users.md` آمده است.
 جزئیات Phase 12A در `.codex/phase-12a-dashboard-analytics.md` آمده است.
+جزئیات Phase 13A در `.codex/phase-13a-jalali-datepicker-monthly-chart.md` آمده است.
 
 ## الگوی درخواست از Agent بعدی
 

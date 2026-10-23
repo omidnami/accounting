@@ -19,7 +19,7 @@ import {
     TrendingUp,
     Wallet,
 } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { create as createSale } from '@/routes/sales';
 import { index as productsIndex } from '@/routes/products';
@@ -51,6 +51,12 @@ const props = defineProps<{
         fiscal_year: { title: string; ends_on: string } | null;
         metrics: Record<string, string | number>;
         trend: Array<{ date: string; sales: string; purchases: string }>;
+        monthly_trend: Array<{
+            label: string;
+            date: string;
+            sales: string;
+            purchases: string;
+        }>;
         low_stock: {
             count: number;
             items: Array<{
@@ -76,6 +82,7 @@ const props = defineProps<{
 }>();
 
 const user = computed(() => usePage().props.auth.user);
+const trendPeriod = ref<'week' | 'month'>('week');
 const count = new Intl.NumberFormat('fa-IR');
 const money = new Intl.NumberFormat('fa-IR', {
     minimumFractionDigits: 0,
@@ -245,10 +252,15 @@ const secondaryMetrics = computed(() => {
         },
     ];
 });
+const trendPoints = computed(() =>
+    trendPeriod.value === 'week'
+        ? props.dashboard.trend
+        : props.dashboard.monthly_trend,
+);
 const maxTrend = computed(() =>
     Math.max(
         1,
-        ...props.dashboard.trend.flatMap((point) => [
+        ...trendPoints.value.flatMap((point) => [
             Number(point.sales),
             Number(point.purchases),
         ]),
@@ -470,10 +482,36 @@ defineOptions({
                             خرید
                         </span>
                     </div>
+                    <div class="flex rounded-lg bg-muted p-1">
+                        <button
+                            type="button"
+                            class="rounded-md px-2 py-1 text-[9px] font-semibold transition"
+                            :class="
+                                trendPeriod === 'week'
+                                    ? 'bg-background shadow-sm'
+                                    : 'text-muted-foreground'
+                            "
+                            @click="trendPeriod = 'week'"
+                        >
+                            ۷ روز
+                        </button>
+                        <button
+                            type="button"
+                            class="rounded-md px-2 py-1 text-[9px] font-semibold transition"
+                            :class="
+                                trendPeriod === 'month'
+                                    ? 'bg-background shadow-sm'
+                                    : 'text-muted-foreground'
+                            "
+                            @click="trendPeriod = 'month'"
+                        >
+                            ۶ ماه
+                        </button>
+                    </div>
                 </div>
                 <div class="mt-8 flex h-48 items-end gap-2 sm:gap-4">
                     <div
-                        v-for="point in dashboard.trend"
+                        v-for="point in trendPoints"
                         :key="point.date"
                         class="flex h-full flex-1 flex-col justify-end"
                     >
@@ -494,9 +532,11 @@ defineOptions({
                             class="mt-2 text-center text-[8px] text-muted-foreground"
                         >
                             {{
-                                shortDate.format(
-                                    new Date(`${point.date}T00:00:00`),
-                                )
+                                'label' in point
+                                    ? point.label
+                                    : shortDate.format(
+                                          new Date(`${point.date}T00:00:00`),
+                                      )
                             }}
                         </span>
                     </div>

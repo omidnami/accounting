@@ -5,13 +5,13 @@ import {
     BarChart3,
     BookOpen,
     Building2,
-    CalendarDays,
     Landmark,
     ReceiptText,
     Scale,
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
+import JalaliDatePicker from '@/components/JalaliDatePicker.vue';
 import { index as reports } from '@/routes/reports';
 
 type ReportRow = {
@@ -218,31 +218,13 @@ defineOptions({
                 <span class="text-xs font-semibold text-muted-foreground"
                     >از تاریخ</span
                 >
-                <span class="relative block">
-                    <CalendarDays
-                        class="absolute inset-y-0 right-3 my-auto size-4 text-muted-foreground"
-                    />
-                    <input
-                        v-model="from"
-                        type="date"
-                        class="h-10 w-full rounded-xl border border-input bg-background py-2 pr-9 pl-3 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"
-                    />
-                </span>
+                <JalaliDatePicker v-model="from" :max="to" />
             </label>
             <label class="space-y-1.5">
                 <span class="text-xs font-semibold text-muted-foreground"
                     >تا تاریخ</span
                 >
-                <span class="relative block">
-                    <CalendarDays
-                        class="absolute inset-y-0 right-3 my-auto size-4 text-muted-foreground"
-                    />
-                    <input
-                        v-model="to"
-                        type="date"
-                        class="h-10 w-full rounded-xl border border-input bg-background py-2 pr-9 pl-3 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"
-                    />
-                </span>
+                <JalaliDatePicker v-model="to" :min="from" />
             </label>
             <label class="space-y-1.5">
                 <span class="text-xs font-semibold text-muted-foreground"
