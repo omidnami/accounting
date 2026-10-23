@@ -60,6 +60,7 @@ type TreasuryOption = {
 
 type PendingCheck = {
     id: number;
+    document_number: string | null;
     check_number: string;
     bank_name: string;
     due_date: string;
@@ -82,14 +83,21 @@ const props = defineProps<{
     initial_invoices: OpenInvoice[];
     initial_checks: PendingCheck[];
     initial_invoice_id: number | null;
+    initial_invoice_ids: number[];
+    initial_check_id: number | null;
     treasury_accounts: TreasuryOption[];
 }>();
 
+const initialInvoiceIds = props.initial_invoice_ids.length
+    ? props.initial_invoice_ids
+    : props.initial_invoice_id === null
+      ? []
+      : [props.initial_invoice_id];
 const initialAllocations =
-    props.initial_invoice_id === null
+    initialInvoiceIds.length === 0
         ? []
         : props.initial_invoices
-              .filter((invoice) => invoice.id === props.initial_invoice_id)
+              .filter((invoice) => initialInvoiceIds.includes(invoice.id))
               .map((invoice) => ({
                   ...invoice,
                   amount: invoice.outstanding,
@@ -99,8 +107,10 @@ const form = useForm({
     submission_token: props.defaults.submission_token,
     customer_id: props.initial_customer?.id.toString() ?? '',
     receipt_date: props.defaults.receipt_date,
-    payment_method: 'cash' as PaymentMethod,
-    check_id: '',
+    payment_method: (props.initial_check_id === null
+        ? 'cash'
+        : 'check') as PaymentMethod,
+    check_id: props.initial_check_id?.toString() ?? '',
     treasury_account_id: '',
     reference: '',
     description: '',
@@ -246,6 +256,11 @@ onMounted(() => {
     if (!selectedCustomer.value) {
         void loadCustomers();
     }
+
+    if (form.payment_method === 'check') {
+        return;
+    }
+
     const defaultAccount = eligibleAccounts.value.find(
         (account) => account.is_default,
     );
@@ -745,6 +760,13 @@ defineOptions({
                                                 type: 'receivable',
                                                 customer_id:
                                                     selectedCustomer.id,
+                                                return_to: 'receipt',
+                                                invoice_ids: form.allocations
+                                                    .map(
+                                                        (allocation) =>
+                                                            allocation.id,
+                                                    )
+                                                    .join(','),
                                             },
                                         })
                                     "
@@ -764,6 +786,10 @@ defineOptions({
                                 :key="check.id"
                                 :value="check.id.toString()"
                             >
+                                {{
+                                    check.document_number ?? check.check_number
+                                }}
+                                ·
                                 {{ check.check_number }} ·
                                 {{ check.bank_name }} ·
                                 {{ money.format(Number(check.amount)) }} ریال

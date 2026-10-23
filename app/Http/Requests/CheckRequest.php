@@ -23,6 +23,13 @@ class CheckRequest extends FormRequest
 
         return [
             'submission_token' => ['required', 'uuid'],
+            'return_to' => ['nullable', 'string', 'in:receipt,payment'],
+            'invoice_ids' => [
+                'nullable',
+                'string',
+                'max:1000',
+                'regex:/^\d+(,\d+)*$/',
+            ],
             'type' => ['required', Rule::enum(CheckType::class)],
             'customer_id' => [
                 Rule::requiredIf($isReceivable),

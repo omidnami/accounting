@@ -18,6 +18,7 @@ import {
     create as createPayment,
     index as paymentsIndex,
 } from '@/routes/payments';
+import { show as showCheck } from '@/routes/checks';
 import { show as showPurchase } from '@/routes/purchases';
 
 type Method = 'cash' | 'bank' | 'card' | 'check';
@@ -34,6 +35,12 @@ const props = defineProps<{
         reference: string | null;
         description: string | null;
         treasury_account: string | null;
+        check: {
+            id: number;
+            document_number: string | null;
+            check_number: string;
+            status: string;
+        } | null;
         supplier: {
             id: number;
             name: string;
@@ -182,6 +189,17 @@ defineOptions({
                 <p class="mt-1 text-[10px] text-muted-foreground">
                     {{ payment.treasury_account ?? 'حساب پیش‌فرض' }}
                 </p>
+                <Link
+                    v-if="payment.check"
+                    :href="showCheck(payment.check.id)"
+                    class="mt-2 block text-[10px] font-semibold text-primary hover:underline"
+                >
+                    چک
+                    {{
+                        payment.check.document_number ??
+                        payment.check.check_number
+                    }}
+                </Link>
             </div>
             <div>
                 <p class="text-[10px] text-muted-foreground">مبلغ پرداخت</p>

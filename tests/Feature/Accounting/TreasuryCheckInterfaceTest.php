@@ -10,6 +10,7 @@ use App\Models\FiscalYear;
 use App\Models\JournalEntry;
 use App\Models\Party;
 use App\Models\Product;
+use App\Models\Receipt;
 use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\TreasuryAccount;
@@ -19,6 +20,7 @@ use App\Services\Accounting\JalaliDateService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Purchasing\PurchaseService;
 use App\Services\Sales\SalesService;
+use Carbon\CarbonImmutable;
 use Database\Seeders\AccountSeeder;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -263,6 +265,7 @@ it('registers a check idempotently and rejects a reused token with changed data'
     $check = Check::query()->firstOrFail();
 
     expect($check->status)->toBe(CheckStatus::Pending)
+        ->and($check->document_number)->toStartWith('CK-')
         ->and($check->type)->toBe(CheckType::Receivable)
         ->and($check->amount)->toBe('100.00')
         ->and($check->store_id)->toBe($context['store']->id)
@@ -283,6 +286,41 @@ it('registers a check idempotently and rejects a reused token with changed data'
     expect(Check::query()->count())->toBe(1);
 });
 
+it('allows the same external check number for different parties', function () {
+    $context = treasuryCheckUiContext();
+    $secondParty = Party::query()->create([
+        'store_id' => $context['store']->id,
+        'code' => 'CHECK-UI-CUSTOMER-2',
+        'name' => 'مشتری دوم چک',
+        'is_active' => true,
+    ]);
+    $secondCustomer = Customer::query()->create([
+        'party_id' => $secondParty->id,
+        'credit_limit' => 100_000_000,
+        'is_active' => true,
+    ]);
+    $payload = treasuryCheckPayload($context, CheckType::Receivable, [
+        'check_number' => 'SHARED-123',
+        'bank_name' => 'بانک مشترک',
+    ]);
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), $payload)
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), array_replace($payload, [
+            'submission_token' => fake()->uuid(),
+            'customer_id' => $secondCustomer->id,
+        ]))
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect(Check::query()->count())->toBe(2)
+        ->and(Check::query()->pluck('document_number')->unique())->toHaveCount(2);
+});
+
 it('links a pending customer check to a receipt and collects it once', function () {
     $context = treasuryCheckUiContext();
 
@@ -296,6 +334,25 @@ it('links a pending customer check to a receipt and collects it once', function 
         ->post(route('receipts.store'), treasuryCheckReceiptPayload($context, $check))
         ->assertRedirect()
         ->assertSessionHasNoErrors();
+
+    $this->actingAs($context['user'])
+        ->get(route('receipts.create', [
+            'customer_id' => $context['customer']->id,
+        ]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('initial_checks', 0));
+
+    $this->actingAs($context['user'])
+        ->post(route('receipts.store'), treasuryCheckReceiptPayload($context, $check))
+        ->assertSessionHasErrors('receipt');
+
+    expect(Receipt::query()->count())->toBe(1);
+
+    $this->actingAs($context['user'])
+        ->get(route('receipts.show', Receipt::query()->firstOrFail()))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('receipt.check.id', $check->id)
+            ->where('receipt.check.document_number', $check->document_number));
 
     $this->actingAs($context['user'])
         ->get(route('checks.show', $check))
@@ -319,6 +376,15 @@ it('links a pending customer check to a receipt and collects it once', function 
     $this->actingAs($context['user'])
         ->post(route('checks.settle', $check), $settlement)
         ->assertRedirect(route('checks.show', $check));
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.settle', $check), [
+            ...$settlement,
+            'settlement_date' => CarbonImmutable::parse($context['date'])
+                ->addDay()
+                ->toDateString(),
+        ])
+        ->assertSessionHasErrors('check');
 
     $entries = JournalEntry::query()
         ->where('source_type', Check::class)
@@ -405,4 +471,98 @@ it('rolls back a failed settlement and supports a controlled bounce', function (
             ->where('source_type', Check::class)
             ->where('source_id', $check->id)
             ->exists())->toBeTrue();
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.bounce', $check), [
+            'bounce_date' => CarbonImmutable::parse($context['date'])
+                ->addDay()
+                ->toDateString(),
+        ])
+        ->assertSessionHasErrors('check');
+});
+
+it('returns a validation error when settlement date has no fiscal period', function () {
+    $context = treasuryCheckUiContext();
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), treasuryCheckPayload($context))
+        ->assertRedirect();
+
+    $check = Check::query()->firstOrFail();
+
+    $this->actingAs($context['user'])
+        ->post(route('receipts.store'), treasuryCheckReceiptPayload($context, $check))
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.settle', $check), [
+            'settlement_date' => '2099-01-01',
+            'treasury_account_id' => null,
+        ])
+        ->assertSessionHasErrors('check');
+
+    expect($check->refresh()->status)->toBe(CheckStatus::Pending)
+        ->and(JournalEntry::query()
+            ->where('source_type', Check::class)
+            ->where('source_id', $check->id)
+            ->exists())->toBeFalse();
+});
+
+it('returns to the receipt form with selected invoices and check', function () {
+    $context = treasuryCheckUiContext();
+    $payload = treasuryCheckPayload($context, CheckType::Receivable, [
+        'return_to' => 'receipt',
+        'invoice_ids' => (string) $context['salesInvoice']->id,
+    ]);
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), $payload)
+        ->assertRedirect(route('receipts.create', [
+            'customer_id' => $context['customer']->id,
+            'check_id' => Check::query()->firstOrFail()->id,
+            'invoice_ids' => (string) $context['salesInvoice']->id,
+        ]));
+
+    $check = Check::query()->firstOrFail();
+
+    $this->actingAs($context['user'])
+        ->get(route('receipts.create', [
+            'customer_id' => $context['customer']->id,
+            'check_id' => $check->id,
+            'invoice_ids' => (string) $context['salesInvoice']->id,
+        ]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('initial_check_id', $check->id)
+            ->where('initial_invoice_ids', [$context['salesInvoice']->id])
+            ->has('initial_invoices', 1));
+});
+
+it('returns to the supplier payment form with selected invoices and check', function () {
+    $context = treasuryCheckUiContext();
+    $payload = treasuryCheckPayload($context, CheckType::Payable, [
+        'return_to' => 'payment',
+        'invoice_ids' => (string) $context['purchaseInvoice']->id,
+    ]);
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), $payload)
+        ->assertRedirect(route('payments.create', [
+            'supplier_id' => $context['supplier']->id,
+            'check_id' => Check::query()->firstOrFail()->id,
+            'invoice_ids' => (string) $context['purchaseInvoice']->id,
+        ]));
+
+    $check = Check::query()->firstOrFail();
+
+    $this->actingAs($context['user'])
+        ->get(route('payments.create', [
+            'supplier_id' => $context['supplier']->id,
+            'check_id' => $check->id,
+            'invoice_ids' => (string) $context['purchaseInvoice']->id,
+        ]))
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('initial_check_id', $check->id)
+            ->where('initial_invoice_ids', [$context['purchaseInvoice']->id])
+            ->has('initial_invoices', 1));
 });

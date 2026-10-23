@@ -183,6 +183,8 @@ class CustomerReceiptService
 
                 if ($check->type !== CheckType::Receivable
                     || $check->status !== CheckStatus::Pending
+                    || $check->receipt()->exists()
+                    || $check->payment()->exists()
                     || (int) $check->customer_id !== $customer->id
                     || (int) $check->store_id !== $storeId
                     || (int) $check->branch_id !== $branchId

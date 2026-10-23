@@ -35,6 +35,7 @@ type TreasuryDocument = {
 
 type CheckRow = {
     id: number;
+    document_number: string | null;
     check_number: string;
     bank_name: string;
     amount: string;
@@ -379,12 +380,16 @@ defineOptions({
                         >
                             <td class="px-5 py-4">
                                 <p class="font-mono text-xs font-black">
-                                    {{ check.check_number }}
+                                    {{
+                                        check.document_number ??
+                                        check.check_number
+                                    }}
                                 </p>
                                 <p
                                     class="mt-1 text-[10px] text-muted-foreground"
                                 >
-                                    {{ check.bank_name }}
+                                    {{ check.bank_name }} ·
+                                    {{ check.check_number }}
                                 </p>
                             </td>
                             <td class="px-4 py-4">

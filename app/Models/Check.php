@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
  * @property string $amount
+ * @property string|null $document_number
  * @property CarbonImmutable|null $issue_date
  * @property CarbonImmutable $due_date
  * @property CheckType $type
@@ -38,6 +39,7 @@ class Check extends Model
         'store_id',
         'branch_id',
         'check_number',
+        'document_number',
         'bank_name',
         'branch_name',
         'amount',

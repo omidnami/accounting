@@ -3,12 +3,14 @@
 namespace App\Services\Treasury;
 
 use App\Enums\CheckType;
+use App\Enums\DocumentType;
 use App\Models\Branch;
 use App\Models\Check;
 use App\Models\Customer;
 use App\Models\Party;
 use App\Models\Supplier;
 use App\Models\User;
+use App\Services\Accounting\DocumentNumberService;
 use App\Support\Decimal;
 use DomainException;
 use Illuminate\Database\QueryException;
@@ -16,9 +18,14 @@ use Illuminate\Support\Facades\DB;
 
 class CheckRegistrationService
 {
+    public function __construct(
+        private readonly DocumentNumberService $documentNumbers,
+    ) {}
+
     public function register(
         int $storeId,
         int $branchId,
+        int $fiscalYearId,
         CheckType $type,
         int $partyProfileId,
         string $checkNumber,
@@ -40,6 +47,7 @@ class CheckRegistrationService
         $requestHash = hash('sha256', json_encode([
             'store_id' => $storeId,
             'branch_id' => $branchId,
+            'fiscal_year_id' => $fiscalYearId,
             'type' => $type->value,
             'party_profile_id' => $partyProfileId,
             'check_number' => $checkNumber,
@@ -56,6 +64,7 @@ class CheckRegistrationService
             return DB::transaction(function () use (
                 $storeId,
                 $branchId,
+                $fiscalYearId,
                 $type,
                 $partyProfileId,
                 $checkNumber,
@@ -120,20 +129,15 @@ class CheckRegistrationService
                     $partyRelationship = ['customer_id' => null, 'supplier_id' => $supplier->id];
                 }
 
-                $duplicate = Check::query()
-                    ->where('store_id', $storeId)
-                    ->where('bank_name', $bankName)
-                    ->where('check_number', $checkNumber)
-                    ->where('type', $type)
-                    ->exists();
-
-                if ($duplicate) {
-                    throw new DomainException('شماره این چک قبلاً برای همین بانک و نوع ثبت شده است.');
-                }
-
                 return Check::query()->create([
                     'store_id' => $storeId,
                     'branch_id' => $branchId,
+                    'document_number' => $this->documentNumbers->next(
+                        $storeId,
+                        $branchId,
+                        $fiscalYearId,
+                        DocumentType::Check,
+                    ),
                     'idempotency_key' => $idempotencyKey,
                     'idempotency_request_hash' => $requestHash,
                     'check_number' => $checkNumber,
@@ -150,7 +154,20 @@ class CheckRegistrationService
             }, attempts: 3);
         } catch (QueryException $exception) {
             if ((string) $exception->getCode() === '23000') {
-                throw new DomainException('شماره این چک قبلاً ثبت شده است.');
+                $existing = Check::query()
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->first();
+
+                if ($existing) {
+                    if ($existing->idempotency_request_hash !== null
+                        && ! hash_equals($existing->idempotency_request_hash, $requestHash)) {
+                        throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+                    }
+
+                    return $existing;
+                }
+
+                throw new DomainException('شماره داخلی چک تکراری است. دوباره تلاش کنید.');
             }
 
             throw $exception;

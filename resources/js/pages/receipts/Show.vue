@@ -21,6 +21,7 @@ import {
     create as createReceipt,
     index as receiptsIndex,
 } from '@/routes/receipts';
+import { show as showCheck } from '@/routes/checks';
 import { show as showSale } from '@/routes/sales';
 
 type PaymentMethod = 'cash' | 'bank' | 'card' | 'check';
@@ -37,6 +38,12 @@ const props = defineProps<{
         reference: string | null;
         description: string | null;
         treasury_account: string | null;
+        check: {
+            id: number;
+            document_number: string | null;
+            check_number: string;
+            status: string;
+        } | null;
         customer: {
             id: number;
             name: string;
@@ -223,6 +230,17 @@ defineOptions({
                 <p class="mt-1 text-[10px] text-muted-foreground">
                     {{ receipt.treasury_account ?? 'حساب پیش‌فرض' }}
                 </p>
+                <Link
+                    v-if="receipt.check"
+                    :href="showCheck(receipt.check.id)"
+                    class="mt-2 block text-[10px] font-semibold text-primary hover:underline"
+                >
+                    چک
+                    {{
+                        receipt.check.document_number ??
+                        receipt.check.check_number
+                    }}
+                </Link>
             </div>
             <div>
                 <p class="text-[10px] text-muted-foreground">مبلغ دریافت</p>

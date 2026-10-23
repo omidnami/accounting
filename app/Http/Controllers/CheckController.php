@@ -11,6 +11,7 @@ use App\Http\Requests\CheckSettlementRequest;
 use App\Models\Branch;
 use App\Models\Check;
 use App\Models\Customer;
+use App\Models\FiscalYear;
 use App\Models\JournalEntry;
 use App\Models\Store;
 use App\Models\Supplier;
@@ -113,6 +114,13 @@ class CheckController extends Controller
             'type' => ['nullable', Rule::enum(CheckType::class)],
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
             'supplier_id' => ['nullable', 'integer', 'exists:suppliers,id'],
+            'return_to' => ['nullable', 'string', 'in:receipt,payment'],
+            'invoice_ids' => [
+                'nullable',
+                'string',
+                'max:1000',
+                'regex:/^\d+(,\d+)*$/',
+            ],
         ]);
         $store = $this->mainStore();
         $type = isset($validated['type'])
@@ -162,6 +170,12 @@ class CheckController extends Controller
                 'submission_token' => (string) Str::uuid(),
             ],
             'initial_party' => $initialParty,
+            'return_context' => isset($validated['return_to'])
+                ? [
+                    'kind' => $validated['return_to'],
+                    'invoice_ids' => $validated['invoice_ids'] ?? '',
+                ]
+                : null,
         ]);
     }
 
@@ -171,6 +185,7 @@ class CheckController extends Controller
     ): RedirectResponse {
         $store = $this->mainStore();
         $branch = $this->defaultBranch($store);
+        $fiscalYear = $this->currentFiscalYear($store);
         $data = $request->validated();
         $type = CheckType::from($data['type']);
         $partyProfileId = $type === CheckType::Receivable
@@ -181,6 +196,7 @@ class CheckController extends Controller
             $check = $checks->register(
                 storeId: $store->id,
                 branchId: $branch->id,
+                fiscalYearId: $fiscalYear->id,
                 type: $type,
                 partyProfileId: $partyProfileId,
                 checkNumber: $data['check_number'],
@@ -201,8 +217,26 @@ class CheckController extends Controller
 
         Inertia::flash('toast', [
             'type' => 'success',
-            'message' => "چک {$check->check_number} ثبت شد.",
+            'message' => "چک {$check->document_number} ثبت شد.",
         ]);
+
+        if (($data['return_to'] ?? null) === 'receipt'
+            && $type === CheckType::Receivable) {
+            return to_route('receipts.create', [
+                'customer_id' => $partyProfileId,
+                'check_id' => $check->id,
+                'invoice_ids' => $data['invoice_ids'] ?? null,
+            ]);
+        }
+
+        if (($data['return_to'] ?? null) === 'payment'
+            && $type === CheckType::Payable) {
+            return to_route('payments.create', [
+                'supplier_id' => $partyProfileId,
+                'check_id' => $check->id,
+                'invoice_ids' => $data['invoice_ids'] ?? null,
+            ]);
+        }
 
         return to_route('checks.show', $check);
     }
@@ -361,6 +395,7 @@ class CheckController extends Controller
 
         return [
             'id' => $check->id,
+            'document_number' => $check->document_number,
             'check_number' => $check->check_number,
             'bank_name' => $check->bank_name,
             'amount' => $check->amount,
@@ -441,6 +476,13 @@ class CheckController extends Controller
     {
         return $store->defaultBranch()
             ->where('is_active', true)
+            ->firstOrFail();
+    }
+
+    private function currentFiscalYear(Store $store): FiscalYear
+    {
+        return $store->fiscalYears()
+            ->where('is_current', true)
             ->firstOrFail();
     }
 }

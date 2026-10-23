@@ -43,10 +43,16 @@ const props = defineProps<{
         submission_token: string;
     };
     initial_party: PartyOption | null;
+    return_context: {
+        kind: 'receipt' | 'payment';
+        invoice_ids: string;
+    } | null;
 }>();
 
 const form = useForm({
     submission_token: props.defaults.submission_token,
+    return_to: props.return_context?.kind ?? '',
+    invoice_ids: props.return_context?.invoice_ids ?? '',
     type: props.defaults.type,
     customer_id: '',
     supplier_id: '',
@@ -93,6 +99,13 @@ const partyHint = computed(() =>
     form.type === 'receivable'
         ? 'چک دریافتی به مشتری متصل می‌شود و تا وصول در حساب چک‌های دریافتنی می‌ماند.'
         : 'چک پرداختی به تأمین‌کننده متصل می‌شود و تا خرج‌شدن بدهی بانکی ایجاد نمی‌کند.',
+);
+const returnLabel = computed(() =>
+    props.return_context?.kind === 'receipt'
+        ? 'دریافت مشتری'
+        : props.return_context?.kind === 'payment'
+          ? 'پرداخت تأمین‌کننده'
+          : null,
 );
 
 const getJson = async <T>(url: string): Promise<T> => {
@@ -264,6 +277,13 @@ defineOptions({
                         ثبت چک هنوز اثر نقدی ایجاد نمی‌کند. پس از اتصال به
                         دریافت یا پرداخت، وصول، خرج و برگشت از صفحه جزئیات چک
                         انجام می‌شود.
+                    </p>
+                    <p
+                        v-if="returnLabel"
+                        class="mt-3 rounded-xl bg-primary/10 px-3 py-2 text-[10px] leading-5 text-primary"
+                    >
+                        پس از ثبت، به فرم {{ returnLabel }} با همان فاکتورها و
+                        چک انتخاب‌شده بازمی‌گردید.
                     </p>
                 </div>
                 <Button as-child variant="outline" class="rounded-xl">

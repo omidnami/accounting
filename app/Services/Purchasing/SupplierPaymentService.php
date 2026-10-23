@@ -192,6 +192,8 @@ class SupplierPaymentService
 
                 if ($check->type !== CheckType::Payable
                     || $check->status !== CheckStatus::Pending
+                    || $check->receipt()->exists()
+                    || $check->payment()->exists()
                     || (int) $check->supplier_id !== $supplier->id
                     || (int) $check->store_id !== $storeId
                     || (int) $check->branch_id !== $branchId

@@ -4,7 +4,6 @@ namespace App\Services\Treasury;
 
 use App\Enums\CheckStatus;
 use App\Enums\CheckType;
-use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Enums\TreasuryAccountType;
 use App\Enums\TreasuryDocumentStatus;
@@ -15,6 +14,7 @@ use App\Models\TreasuryAccount;
 use App\Models\User;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -52,6 +52,8 @@ class CheckSettlementService
             $locked = Check::query()->lockForUpdate()->findOrFail($check->id);
 
             if ($locked->status === CheckStatus::Bounced) {
+                $this->assertBounceRequestMatches($locked, $bounceDate);
+
                 return $locked;
             }
 
@@ -162,6 +164,12 @@ class CheckSettlementService
             }
 
             if ($locked->status === CheckStatus::Collected || $locked->status === CheckStatus::Spent) {
+                $this->assertSettlementRequestMatches(
+                    $locked,
+                    $settlementDate,
+                    $treasuryAccountId,
+                );
+
                 return $locked;
             }
 
@@ -246,11 +254,17 @@ class CheckSettlementService
 
     private function periodFor(int $storeId, string $date): AccountingPeriod
     {
-        return AccountingPeriod::query()
+        $period = AccountingPeriod::query()
             ->where('store_id', $storeId)
             ->whereDate('starts_on', '<=', $date)
             ->whereDate('ends_on', '>=', $date)
-            ->firstOrFail();
+            ->first();
+
+        if (! $period) {
+            throw new DomainException('برای تاریخ عملیات چک، دوره مالی باز یا تعریف‌شده‌ای وجود ندارد.');
+        }
+
+        return $period;
     }
 
     private function refreshInvoiceStatus(Invoice $invoice): void
@@ -259,19 +273,45 @@ class CheckSettlementService
             return;
         }
 
-        $isSales = $invoice->type === InvoiceType::Sales;
-        $settled = $isSales
-            ? (string) $invoice->receiptAllocations()
-                ->whereHas('receipt', fn ($query) => $query->where('status', TreasuryDocumentStatus::Confirmed))
-                ->sum('amount')
-            : (string) $invoice->paymentAllocations()
-                ->whereHas('payment', fn ($query) => $query->where('status', TreasuryDocumentStatus::Confirmed))
-                ->sum('amount');
-        $returned = (string) Invoice::query()
-            ->where('parent_invoice_id', $invoice->id)
-            ->where('type', $isSales ? InvoiceType::SalesReturn : InvoiceType::PurchaseReturn)
-            ->where('status', InvoiceStatus::Confirmed)
-            ->sum('total');
         $invoice->syncSettlementStatus();
+    }
+
+    private function assertSettlementRequestMatches(
+        Check $check,
+        string $settlementDate,
+        ?int $treasuryAccountId,
+    ): void {
+        $entry = $check->settlementEntry()->first();
+        $requestedDate = CarbonImmutable::parse($settlementDate)->toDateString();
+
+        if (! $entry || $entry->entry_date->toDateString() !== $requestedDate) {
+            throw new DomainException('این چک قبلاً با تاریخ دیگری وصول یا خرج شده است.');
+        }
+
+        if ($treasuryAccountId === null) {
+            return;
+        }
+
+        $treasuryAccount = TreasuryAccount::query()
+            ->whereKey($treasuryAccountId)
+            ->where('store_id', $check->store_id)
+            ->where('branch_id', $check->branch_id)
+            ->where('type', TreasuryAccountType::Bank)
+            ->first();
+
+        if (! $treasuryAccount
+            || ! $entry->lines()->where('account_id', $treasuryAccount->gl_account_id)->exists()) {
+            throw new DomainException('این چک قبلاً با حساب بانکی دیگری وصول یا خرج شده است.');
+        }
+    }
+
+    private function assertBounceRequestMatches(Check $check, string $bounceDate): void
+    {
+        $entry = $check->bounceEntry()->first();
+        $requestedDate = CarbonImmutable::parse($bounceDate)->toDateString();
+
+        if (! $entry || $entry->entry_date->toDateString() !== $requestedDate) {
+            throw new DomainException('این چک قبلاً با تاریخ دیگری برگشت خورده است.');
+        }
     }
 }

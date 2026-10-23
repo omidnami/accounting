@@ -1,6 +1,6 @@
 # Store Accounting System - Context Handoff
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 8A)
+آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از hardening چک)
 
 ## شروع کانتکست جدید
 
@@ -16,10 +16,9 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `95ab9ca`
-- پیام: `Harden supplier payment locking and validation feedback`
-- شاخه یک کامیت جلوتر از `origin/main` است.
-- Phase 8A در worktree پیاده‌سازی شده و عمداً commit نشده است.
+- آخرین کامیت محلی: `94722c2`
+- پیام: `feat(treasury): add check management and lifecycle UI`
+- شاخه با `origin/main` هم‌سطح بود؛ اصلاحات hardening چک هنوز commit نشده‌اند.
 
 ## استک و محیط
 
@@ -36,7 +35,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `187 tests`, `1184 assertions`
+- Pest: `191 tests`, `1251 assertions`
 - PHPStan: صفر خطا
 - Pint: موفق
 - Vue type-check: موفق
@@ -117,7 +116,7 @@ npm run build
 - `TreasuryAccount` به حساب معین دفتر کل متصل است.
 - Cash/Bank/Card در UI دریافت/پرداخت استفاده می‌شوند.
 - چک دریافتی/پرداختی و lifecycle وصول/خرج/برگشت در Backend آماده است.
-- UI اختصاصی چک هنوز ساخته نشده است.
+- UI اختصاصی چک و اصلاحات جریان اتصال آن پیاده‌سازی شده است.
 
 ### گزارش‌ها
 
@@ -235,10 +234,11 @@ npm run build
 ## گام بعدی پیشنهادی
 
 1. بررسی دستی Phase 8A در دسکتاپ و موبایل
-2. commit و push توسط کاربر و سپس تأیید CI روی commit جدید
+2. commit و push hardening چک توسط کاربر و سپس تأیید CI روی commit جدید
 3. شروع یک فاز محدود برای رابط برگشت خرید/فروش یا مدیریت حساب‌های خزانه
 
 جزئیات Phase 8A در `.codex/phase-8a-treasury-checks-ui.md` ثبت شده است.
+اصلاحات بازبینی آن در `.codex/phase-8a-check-hardening.md` آمده است.
 
 ## الگوی درخواست از Agent بعدی
 

@@ -27,9 +27,15 @@ import {
     index as checksIndex,
     settle as settleCheck,
 } from '@/routes/checks';
-import { show as showPayment } from '@/routes/payments';
+import {
+    create as createPayment,
+    show as showPayment,
+} from '@/routes/payments';
 import { show as showPurchase } from '@/routes/purchases';
-import { show as showReceipt } from '@/routes/receipts';
+import {
+    create as createReceipt,
+    show as showReceipt,
+} from '@/routes/receipts';
 import { show as showSale } from '@/routes/sales';
 
 type CheckType = 'receivable' | 'payable';
@@ -61,6 +67,7 @@ type TreasuryDocument = {
 const props = defineProps<{
     check: {
         id: number;
+        document_number: string | null;
         check_number: string;
         bank_name: string;
         branch_name: string | null;
@@ -218,6 +225,17 @@ const invoiceUrl = (invoiceId: number) =>
     props.check.treasury_document?.kind === 'receipt'
         ? showSale(invoiceId)
         : showPurchase(invoiceId);
+const linkDocumentUrl = computed(() => {
+    const partyId = props.check.party.id;
+
+    if (partyId === null) {
+        return null;
+    }
+
+    return props.check.type === 'receivable'
+        ? createReceipt.url({ query: { customer_id: partyId } })
+        : createPayment.url({ query: { supplier_id: partyId } });
+});
 const submitSettlement = () => {
     settlementForm.post(settleCheck(props.check.id).url, {
         preserveScroll: true,
@@ -248,7 +266,7 @@ defineOptions({
 </script>
 
 <template>
-    <Head :title="`چک ${check.check_number}`" />
+    <Head :title="`چک ${check.document_number ?? check.check_number}`" />
 
     <div class="mx-auto w-full max-w-6xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
         <section
@@ -278,7 +296,7 @@ defineOptions({
                         dir="ltr"
                         class="text-right font-mono text-2xl font-black sm:text-3xl"
                     >
-                        {{ check.check_number }}
+                        {{ check.document_number ?? check.check_number }}
                     </h1>
                     <p
                         class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground"
@@ -286,6 +304,7 @@ defineOptions({
                         <span class="flex items-center gap-1.5">
                             <Landmark class="size-3.5" />
                             {{ check.bank_name }}
+                            · شماره بانکی {{ check.check_number }}
                             <template v-if="check.branch_name">
                                 · {{ check.branch_name }}
                             </template>
@@ -480,6 +499,19 @@ defineOptions({
                             در فرم دریافت یا پرداخت، روش «چکی» را انتخاب کنید و
                             این چک را به فاکتورهای باز همان طرف‌حساب تخصیص دهید.
                         </p>
+                        <Button
+                            v-if="linkDocumentUrl"
+                            as-child
+                            class="mt-4 rounded-xl"
+                        >
+                            <Link :href="linkDocumentUrl">
+                                {{
+                                    check.type === 'receivable'
+                                        ? 'ثبت دریافت چکی'
+                                        : 'ثبت پرداخت چکی'
+                                }}
+                            </Link>
+                        </Button>
                     </div>
                 </article>
 

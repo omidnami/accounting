@@ -110,10 +110,18 @@ class SupplierPaymentController extends Controller
         $validated = $request->validate([
             'supplier_id' => ['nullable', 'integer', 'exists:suppliers,id'],
             'invoice_id' => ['nullable', 'integer', 'exists:invoices,id'],
+            'invoice_ids' => [
+                'nullable',
+                'string',
+                'max:1000',
+                'regex:/^\d+(,\d+)*$/',
+            ],
+            'check_id' => ['nullable', 'integer', 'exists:checks,id'],
         ]);
         $initialSupplier = null;
         $initialInvoices = [];
         $initialChecks = [];
+        $initialInvoiceIds = [];
         $focusInvoiceId = null;
         $supplierId = isset($validated['supplier_id']) ? (int) $validated['supplier_id'] : null;
 
@@ -127,11 +135,24 @@ class SupplierPaymentController extends Controller
                     ->where('is_active', true))
                 ->firstOrFail();
             $focusInvoiceId = isset($validated['invoice_id']) ? (int) $validated['invoice_id'] : null;
+            $initialInvoiceIds = array_values(array_unique(array_map(
+                fn (string $id): int => (int) $id,
+                array_filter(explode(',', (string) ($validated['invoice_ids'] ?? ''))),
+            )));
+
+            if ($focusInvoiceId !== null && ! in_array($focusInvoiceId, $initialInvoiceIds, true)) {
+                array_unshift($initialInvoiceIds, $focusInvoiceId);
+            }
+
             $initialInvoices = $this->mapOpenInvoices(
                 $payables->openInvoices($supplier, $store->id, $focusInvoiceId),
                 $payables,
             );
             $initialChecks = $this->pendingChecks($supplier, $store->id, $branch->id);
+            $initialCheckId = isset($validated['check_id'])
+                && collect($initialChecks)->contains('id', (int) $validated['check_id'])
+                ? (int) $validated['check_id']
+                : null;
             $initialSupplier = $this->mapSupplier($supplier);
         }
 
@@ -149,6 +170,8 @@ class SupplierPaymentController extends Controller
             'initial_invoices' => $initialInvoices,
             'initial_checks' => $initialChecks,
             'initial_invoice_id' => $focusInvoiceId,
+            'initial_invoice_ids' => $initialInvoiceIds,
+            'initial_check_id' => $initialCheckId ?? null,
             'treasury_accounts' => $this->treasuryAccounts($store, $branch),
         ]);
     }
@@ -239,6 +262,7 @@ class SupplierPaymentController extends Controller
             'supplier.party',
             'allocations.invoice',
             'treasuryAccount',
+            'check',
         ]);
 
         return Inertia::render('payments/Show', [
@@ -252,6 +276,14 @@ class SupplierPaymentController extends Controller
                 'reference' => $payment->reference,
                 'description' => $payment->description,
                 'treasury_account' => $payment->treasuryAccount?->name,
+                'check' => $payment->check
+                    ? [
+                        'id' => $payment->check->id,
+                        'document_number' => $payment->check->document_number,
+                        'check_number' => $payment->check->check_number,
+                        'status' => $payment->check->status->value,
+                    ]
+                    : null,
                 'supplier' => [
                     'id' => $payment->supplier->id,
                     'name' => $payment->supplier->party->name,
@@ -311,7 +343,7 @@ class SupplierPaymentController extends Controller
 
     /**
      * @return array<int, array{
-     *     id: int, check_number: string, bank_name: string,
+     *     id: int, document_number: string|null, check_number: string, bank_name: string,
      *     due_date: string, amount: string
      * }>
      */
@@ -323,11 +355,14 @@ class SupplierPaymentController extends Controller
             ->where('supplier_id', $supplier->id)
             ->where('type', CheckType::Payable)
             ->where('status', CheckStatus::Pending)
+            ->whereDoesntHave('receipt')
+            ->whereDoesntHave('payment')
             ->orderBy('due_date')
             ->orderBy('id')
-            ->get(['id', 'check_number', 'bank_name', 'due_date', 'amount'])
+            ->get(['id', 'document_number', 'check_number', 'bank_name', 'due_date', 'amount'])
             ->map(fn (Check $check): array => [
                 'id' => $check->id,
+                'document_number' => $check->document_number,
                 'check_number' => $check->check_number,
                 'bank_name' => $check->bank_name,
                 'due_date' => $check->due_date->toDateString(),
