@@ -1,6 +1,6 @@
 # Store Accounting System - Context Handoff
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 15C)
+آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۴ (پس از Phase 15C2)
 
 ## شروع کانتکست جدید
 
@@ -16,10 +16,11 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `27e31a9`
-- پیام: `feat(accounting): add manual journals and opening balances`
-- شاخه یک commit از `origin/main` جلوتر است.
-- تغییرات Phase 15C در worktree آماده‌اند و commit آن‌ها بر عهده
+- آخرین کامیت محلی: `df2935e`
+- پیام: `feat(accounting): add period and fiscal year closing controls`
+- شاخه با `origin/main` هم‌سطح است؛ تغییرات hardening فاز 15C و Phase 15C2
+  اکنون در worktree آماده commit هستند.
+- commit تغییرات بر عهده
   کاربر است.
 
 ## استک و محیط
@@ -37,7 +38,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `260 tests`, `1981 assertions`
+- Pest: `268 tests`, `2012 assertions`
 - Node calendar: `3 tests`
 - PHPStan: صفر خطا
 - Pint: موفق
@@ -150,11 +151,25 @@ npm run build
 
 - دوره می‌تواند نیمه‌بسته یا بسته نهایی شود.
 - سند، فاکتور، دریافت و پرداخت باز مانع بستن هستند.
+- Draft فروش، خرید و مرجوعی فقط در دوره باز ساخته می‌شود.
+- ساخت Draft و بستن دوره قفل هم‌ترتیب سال/دوره دارند.
 - بازگشایی دوره فقط برای مدیر و با دلیل Audit انجام می‌شود.
 - سال مالی پس از بستن نهایی همه دوره‌ها بسته می‌شود.
 - بستن سال جاری نیازمند سال بعد باز است و سال جاری را خودکار منتقل
   می‌کند.
 - بازگشایی سال، دوره‌ها را خودکار باز نمی‌کند.
+- بستن سال فقط بعد از پایان بازه سال و با ۱۲ دوره پیوسته مجاز است.
+- فیلدهای وضعیت و بستن از تغییر مستقیم مدل محافظت می‌شوند.
+
+### اختتامیه سالانه
+
+- بستن سال سند اختتامیه هر شعبه دارای گردش را ایجاد می‌کند.
+- حساب‌های درآمد و هزینه صفر و سود/زیان خالص به حساب `3102` منتقل می‌شود.
+- سند اختتامیه از `PostingService` ثبت می‌شود.
+- بازگشایی سال، سند اختتامیه فعال را با سند معکوس بی‌اثر می‌کند.
+- گزارش سود و زیان، سند اختتامیه و معکوس آن را از محاسبه حذف می‌کند.
+- مانده ترازنامه با دفتر پیوسته منتقل می‌شود و سند افتتاحیه تکراری ساخته
+  نمی‌شود.
 
 ## مسیرهای UI موجود
 
@@ -202,6 +217,7 @@ npm run build
 - `phase-15a`: مدیریت سال مالی، دوره‌ها و rollover
 - `phase-15b`: سند دستی و مانده افتتاحیه
 - `phase-15c`: قفل عملیاتی دوره و سال
+- `phase-15c2`: اختتامیه سالانه و انتقال سود
 
 ## فایل‌های کلیدی
 
@@ -209,6 +225,8 @@ npm run build
 
 - `app/Services/Accounting/PostingService.php`
 - `app/Services/Accounting/PeriodClosingService.php`
+- `app/Services/Accounting/YearEndClosingService.php`
+- `app/Services/Accounting/AccountingPeriodLockService.php`
 - `app/Services/Inventory/InventoryService.php`
 - `app/Services/Purchasing/PurchaseService.php`
 - `app/Services/Purchasing/PurchaseReturnService.php`
@@ -300,8 +318,8 @@ npm run build
 - خروجی PDF/Excel گزارش کاردکس هنوز وجود ندارد.
 - Audit Log و مدیریت کاربران/نقش‌ها وجود دارد؛ غیرفعال‌سازی کاربر، retention و
   alerting برای Audit هنوز پیاده‌سازی نشده‌اند.
-- صدور سند اختتامیه/افتتاحیه سالانه و انتقال سود به سود انباشته هنوز وجود
-  ندارد و در Phase 15C2 انجام می‌شود.
+- سند افتتاحیه تکراری وجود ندارد؛ انتقال مانده ترازنامه با دفتر پیوسته انجام
+  می‌شود.
 - موجودی افتتاحیه کالا باید در Phase 15D همراه با حرکت انبار پیاده‌سازی شود.
 - Dashboard برای Manager/Accountant داده واقعی و نمودار هفت‌روزه/شش‌ماهه دارد؛
   cache و پاک‌سازی فایل Dashboard قدیمی باقی مانده است.
@@ -310,9 +328,9 @@ npm run build
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی و commit تغییرات Phase 15C توسط کاربر
-2. Phase 15C2: اسناد اختتامیه و افتتاحیه سالانه
-3. Phase 15D: موجودی‌گیری، تعدیل و انتقال انبار
+1. بررسی دستی و commit تغییرات 15C hardening و 15C2 توسط کاربر
+2. Phase 15D: موجودی‌گیری، تعدیل و انتقال انبار
+3. Phase 15E: دفتر معین، صورتحساب‌ها، Aging و گزارش‌های فروش
 4. ادامه طبق `.codex/phase-15-roadmap.md`
 
 جزئیات Phase 8A در `.codex/phase-8a-treasury-checks-ui.md` ثبت شده است.
@@ -326,6 +344,7 @@ npm run build
 جزئیات Phase 15A در `.codex/phase-15a-fiscal-year-management.md` آمده است.
 جزئیات Phase 15B در `.codex/phase-15b-manual-journals-opening-balance.md` آمده است.
 جزئیات Phase 15C در `.codex/phase-15c-period-year-closing.md` آمده است.
+جزئیات Phase 15C2 در `.codex/phase-15c2-year-end-closing.md` آمده است.
 نقشه مراحل تکمیل در `.codex/phase-15-roadmap.md` آمده است.
 
 ## الگوی درخواست از Agent بعدی

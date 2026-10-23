@@ -145,7 +145,7 @@ it('rejects journal approval by a cashier', function () {
 
 it('rejects posting into a closed accounting period', function () {
     ['store' => $store, 'branch' => $branch, 'fiscalYear' => $fiscalYear, 'period' => $period] = createPostingContext();
-    $period->forceFill(['status' => AccountingPeriodStatus::Closed])->save();
+    $period->transitionStatus(AccountingPeriodStatus::Closed);
     $cash = app(SettingService::class)->defaultAccount('cash', $store->id);
     $sales = app(SettingService::class)->defaultAccount('sales', $store->id);
     $accountant = User::factory()->create();

@@ -22,6 +22,8 @@ class AccountingPeriod extends Model
     /** @use HasFactory<Factory<static>> */
     use HasFactory;
 
+    private bool $statusTransitionAuthorized = false;
+
     protected $fillable = [
         'store_id',
         'fiscal_year_id',
@@ -81,6 +83,25 @@ class AccountingPeriod extends Model
         return $this->status === AccountingPeriodStatus::Open;
     }
 
+    public function transitionStatus(
+        AccountingPeriodStatus $status,
+        ?int $closedBy = null,
+    ): self {
+        $this->statusTransitionAuthorized = true;
+
+        try {
+            $this->forceFill([
+                'status' => $status,
+                'closed_by' => $status === AccountingPeriodStatus::Open ? null : $closedBy,
+                'closed_at' => $status === AccountingPeriodStatus::Open ? null : now(),
+            ])->save();
+        } finally {
+            $this->statusTransitionAuthorized = false;
+        }
+
+        return $this;
+    }
+
     protected static function booted(): void
     {
         static::saving(function (AccountingPeriod $period): void {
@@ -112,6 +133,16 @@ class AccountingPeriod extends Model
 
             if ($overlap) {
                 throw new DomainException('دوره مالی با یک دوره دیگر هم‌پوشانی دارد.');
+            }
+        });
+
+        static::updating(function (AccountingPeriod $period): void {
+            if (! $period->statusTransitionAuthorized
+                && array_intersect(
+                    ['status', 'closed_by', 'closed_at'],
+                    array_keys($period->getDirty()),
+                ) !== []) {
+                throw new DomainException('وضعیت و اطلاعات بستن دوره فقط از سرویس کنترل‌شده قابل تغییر است.');
             }
         });
     }

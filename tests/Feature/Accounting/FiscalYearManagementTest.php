@@ -77,7 +77,7 @@ it('rejects a closed fiscal year as the current year', function () {
     ['store' => $store, 'current_year' => $currentYear, 'service' => $service] =
         fiscalYearManagementContext();
     $future = $service->setupJalaliYear($store, $currentYear + 1);
-    $future->forceFill(['status' => FiscalYearStatus::Closed])->save();
+    $future->transitionStatus(FiscalYearStatus::Closed);
 
     expect(fn () => $service->setCurrent($store, $future))
         ->toThrow(DomainException::class);
@@ -124,7 +124,7 @@ it('renders fiscal years and creates a Persian-digit year from the interface', f
         ->and($future->periods()->count())->toBe(12);
 });
 
-it('allows managers and forbids other roles from fiscal year management', function (UserRole $role) {
+it('forbids roles without period reporting access', function (UserRole $role) {
     fiscalYearManagementContext();
     $user = fiscalYearManagementUser($role);
 

@@ -7,13 +7,12 @@ use App\Enums\InventoryMovementType;
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Models\AccountingPeriod;
-use App\Models\Branch;
 use App\Models\Customer;
-use App\Models\FiscalYear;
 use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\Accounting\AccountingPeriodLockService;
 use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
@@ -31,6 +30,7 @@ class SalesService
         private readonly PostingService $posting,
         private readonly SettingService $settings,
         private readonly CustomerReceivableService $receivables,
+        private readonly AccountingPeriodLockService $periods,
     ) {}
 
     /**
@@ -77,13 +77,12 @@ class SalesService
                     throw new DomainException('مشتری باید متعلق به فروشگاه فاکتور باشد.');
                 }
 
-                $branch = Branch::query()->findOrFail((int) $attributes['branch_id']);
-                $fiscalYear = FiscalYear::query()->findOrFail((int) $attributes['fiscal_year_id']);
-
-                if ((int) $branch->store_id !== (int) $attributes['store_id']
-                    || (int) $fiscalYear->store_id !== (int) $attributes['store_id']) {
-                    throw new DomainException('شعبه و سال مالی باید متعلق به فروشگاه فاکتور باشند.');
-                }
+                $this->periods->lockOpenPeriod(
+                    (int) $attributes['store_id'],
+                    (int) $attributes['branch_id'],
+                    (int) $attributes['fiscal_year_id'],
+                    (string) $attributes['invoice_date'],
+                );
 
                 if (empty($attributes['invoice_number'])) {
                     $attributes['invoice_number'] = $this->documentNumbers->next(

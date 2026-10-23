@@ -4,6 +4,7 @@ namespace App\Services\Reporting;
 
 use App\Enums\AccountLevel;
 use App\Enums\AccountType;
+use App\Enums\JournalEntryKind;
 use App\Models\Account;
 use App\Models\JournalEntryLine;
 use App\Support\Decimal;
@@ -28,7 +29,13 @@ class FinancialStatementReportService
         ?int $branchId = null,
     ): array {
         $range = ReportDateRange::between($from, $to);
-        $accounts = $this->amountsByAccount($storeId, $range->from, $range->to, $branchId);
+        $accounts = $this->amountsByAccount(
+            $storeId,
+            $range->from,
+            $range->to,
+            $branchId,
+            excludeAnnualClosing: true,
+        );
         $revenues = collect();
         $expenses = collect();
         $totalRevenue = '0.00';
@@ -157,16 +164,29 @@ class FinancialStatementReportService
         ?string $from,
         string $to,
         ?int $branchId,
+        bool $excludeAnnualClosing = false,
     ): Collection {
         $totals = JournalEntryLine::query()
             ->select('account_id')
             ->selectRaw('SUM(debit) as debit_total, SUM(credit) as credit_total')
-            ->whereHas('journalEntry', function ($query) use ($storeId, $from, $to, $branchId): void {
+            ->whereHas('journalEntry', function ($query) use (
+                $storeId,
+                $from,
+                $to,
+                $branchId,
+                $excludeAnnualClosing,
+            ): void {
                 $query->posted()
                     ->where('store_id', $storeId)
                     ->when($branchId !== null, fn ($query) => $query->where('branch_id', $branchId))
                     ->when($from !== null, fn ($query) => $query->whereDate('entry_date', '>=', $from))
-                    ->whereDate('entry_date', '<=', $to);
+                    ->whereDate('entry_date', '<=', $to)
+                    ->when($excludeAnnualClosing, fn ($query) => $query
+                        ->where('entry_kind', '!=', JournalEntryKind::Closing)
+                        ->whereDoesntHave(
+                            'reversalOf',
+                            fn ($query) => $query->where('entry_kind', JournalEntryKind::Closing),
+                        ));
             })
             ->groupBy('account_id')
             ->get()

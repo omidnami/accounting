@@ -16,6 +16,7 @@ use App\Models\Receipt;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\Audit\AuditLogService;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Support\Facades\DB;
 
@@ -23,6 +24,7 @@ class PeriodClosingService
 {
     public function __construct(
         private readonly AuditLogService $auditLogs,
+        private readonly YearEndClosingService $yearEndClosing,
     ) {}
 
     public function closePeriod(
@@ -77,11 +79,7 @@ class PeriodClosingService
                 'closed_by' => $lockedPeriod->closed_by,
                 'closed_at' => $lockedPeriod->closed_at?->toDateTimeString(),
             ];
-            $lockedPeriod->forceFill([
-                'status' => $targetStatus,
-                'closed_by' => $actor->id,
-                'closed_at' => now(),
-            ])->save();
+            $lockedPeriod->transitionStatus($targetStatus, $actor->id);
             $this->auditLogs->record(
                 'period_closed',
                 $lockedPeriod,
@@ -129,11 +127,7 @@ class PeriodClosingService
                 'closed_by' => $lockedPeriod->closed_by,
                 'closed_at' => $lockedPeriod->closed_at?->toDateTimeString(),
             ];
-            $lockedPeriod->forceFill([
-                'status' => AccountingPeriodStatus::Open,
-                'closed_by' => null,
-                'closed_at' => null,
-            ])->save();
+            $lockedPeriod->transitionStatus(AccountingPeriodStatus::Open);
             $this->auditLogs->record(
                 'period_reopened',
                 $lockedPeriod,
@@ -184,11 +178,35 @@ class PeriodClosingService
                 throw new DomainException('فقط سال مالی باز قابل بستن است.');
             }
 
+            $today = CarbonImmutable::now('Asia/Tehran')->startOfDay();
+
+            if (! $lockedYear->ends_on->lessThan($today)) {
+                throw new DomainException('سال مالی فقط پس از پایان بازه آن قابل بستن است.');
+            }
+
             $periods = AccountingPeriod::query()
                 ->where('fiscal_year_id', $lockedYear->id)
                 ->orderBy('period_number')
                 ->lockForUpdate()
                 ->get();
+
+            if ($periods->count() !== 12) {
+                throw new DomainException('سال مالی برای بستن باید دقیقاً دوازده دوره داشته باشد.');
+            }
+
+            $expectedStart = $lockedYear->starts_on;
+
+            foreach ($periods as $period) {
+                if (! $period->starts_on->isSameDay($expectedStart)) {
+                    throw new DomainException('دوره‌های سال مالی باید پیوسته و بدون فاصله باشند.');
+                }
+
+                $expectedStart = $period->ends_on->addDay();
+            }
+
+            if (! $expectedStart->subDay()->isSameDay($lockedYear->ends_on)) {
+                throw new DomainException('دوره‌های سال مالی باید کل بازه سال را پوشش دهند.');
+            }
 
             if ($periods->contains(
                 fn (AccountingPeriod $period): bool => $period->status !== AccountingPeriodStatus::Closed,
@@ -227,12 +245,17 @@ class PeriodClosingService
                 'closed_by' => $lockedYear->closed_by,
                 'closed_at' => $lockedYear->closed_at?->toDateTimeString(),
             ];
-            $lockedYear->forceFill([
-                'status' => FiscalYearStatus::Closed,
-                'is_current' => false,
-                'closed_by' => $actor->id,
-                'closed_at' => now(),
-            ])->save();
+            $closingEntries = $this->yearEndClosing->createClosingEntries(
+                $lockedStore,
+                $lockedYear,
+                $actor,
+                $reason,
+            );
+            $lockedYear->transitionStatus(
+                FiscalYearStatus::Closed,
+                $actor->id,
+                false,
+            );
 
             if ($nextYear) {
                 $nextYear->forceFill(['is_current' => true])->save();
@@ -248,6 +271,7 @@ class PeriodClosingService
                     'closed_by' => $actor->id,
                     'closed_at' => $lockedYear->closed_at?->toDateTimeString(),
                     'next_fiscal_year_id' => $nextYear?->id,
+                    'closing_entry_ids' => $closingEntries->pluck('id')->all(),
                     'reason' => trim($reason),
                 ],
                 trim($reason),
@@ -271,7 +295,7 @@ class PeriodClosingService
             throw new DomainException('دلیل بازگشایی سال مالی را وارد کنید.');
         }
 
-        return DB::transaction(function () use ($store, $fiscalYear, $reason): FiscalYear {
+        return DB::transaction(function () use ($store, $fiscalYear, $actor, $reason): FiscalYear {
             $lockedStore = Store::query()
                 ->whereKey($store->id)
                 ->lockForUpdate()
@@ -295,11 +319,13 @@ class PeriodClosingService
                 'closed_by' => $lockedYear->closed_by,
                 'closed_at' => $lockedYear->closed_at?->toDateTimeString(),
             ];
-            $lockedYear->forceFill([
-                'status' => FiscalYearStatus::Open,
-                'closed_by' => null,
-                'closed_at' => null,
-            ])->save();
+            $lockedYear->transitionStatus(FiscalYearStatus::Open);
+            $reversals = $this->yearEndClosing->reverseClosingEntries(
+                $lockedStore,
+                $lockedYear,
+                $actor,
+                $reason,
+            );
             $this->auditLogs->record(
                 'fiscal_year_reopened',
                 $lockedYear,
@@ -308,6 +334,7 @@ class PeriodClosingService
                     'status' => FiscalYearStatus::Open->value,
                     'closed_by' => null,
                     'closed_at' => null,
+                    'reversal_entry_ids' => $reversals->pluck('id')->all(),
                     'reason' => trim($reason),
                 ],
                 trim($reason),

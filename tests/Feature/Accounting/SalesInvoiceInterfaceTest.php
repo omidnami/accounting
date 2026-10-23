@@ -1,8 +1,10 @@
 <?php
 
+use App\Enums\AccountingPeriodStatus;
 use App\Enums\InventoryMovementType;
 use App\Enums\InvoiceStatus;
 use App\Enums\UserRole;
+use App\Models\AccountingPeriod;
 use App\Models\Customer;
 use App\Models\InventoryBalance;
 use App\Models\Invoice;
@@ -11,6 +13,7 @@ use App\Models\Party;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\Accounting\PeriodClosingService;
 use App\Services\Inventory\InventoryService;
 use Database\Seeders\AccountingSetupSeeder;
 use Database\Seeders\AccountSeeder;
@@ -126,6 +129,28 @@ it('allows sales roles into the checkout', function (UserRole $role) {
     'accountant' => [UserRole::Accountant],
     'cashier' => [UserRole::Cashier],
 ]);
+
+it('rejects a sales draft dated inside a closed accounting period', function () {
+    $context = salesUiContext(UserRole::Manager);
+    $period = AccountingPeriod::query()
+        ->where('fiscal_year_id', $context['fiscalYear']->id)
+        ->whereDate('starts_on', '<=', $context['date'])
+        ->whereDate('ends_on', '>=', $context['date'])
+        ->firstOrFail();
+    app(PeriodClosingService::class)->closePeriod(
+        $context['store'],
+        $period,
+        AccountingPeriodStatus::Closed,
+        $context['user'],
+        'بستن دوره برای آزمون جلوگیری از پیش‌نویس',
+    );
+
+    $this->actingAs($context['user'])
+        ->post(route('sales.store'), salesInvoicePayload($context))
+        ->assertSessionHasErrors('sale');
+
+    expect(Invoice::query()->count())->toBe(0);
+});
 
 it('looks up active customers inside the current store', function () {
     $context = salesUiContext();

@@ -38,6 +38,7 @@ type FiscalYear = {
     ends_on: string;
     status: FiscalYearStatus;
     is_current: boolean;
+    is_ended: boolean;
     can_set_current: boolean;
     periods: Array<{
         id: number;
@@ -187,6 +188,7 @@ const reopenPeriod = (period: FiscalYear['periods'][number]) => {
 };
 const canCloseYear = (year: FiscalYear) =>
     year.status === 'open' &&
+    year.is_ended &&
     year.periods.length > 0 &&
     year.periods.every((period) => period.status === 'closed');
 const closeYear = (year: FiscalYear) => {
@@ -200,6 +202,14 @@ const closeYear = (year: FiscalYear) => {
 
     if (reason.trim().length < 5) {
         window.alert('دلیل بستن سال باید حداقل پنج نویسه باشد.');
+        return;
+    }
+
+    if (
+        !window.confirm(
+            'با بستن سال، سند اختتامیه حساب‌های درآمد و هزینه صادر و سود یا زیان به سود انباشته منتقل می‌شود. ادامه می‌دهید؟',
+        )
+    ) {
         return;
     }
 
@@ -220,6 +230,14 @@ const reopenYear = (year: FiscalYear) => {
 
     if (reason.trim().length < 5) {
         window.alert('دلیل بازگشایی سال باید حداقل پنج نویسه باشد.');
+        return;
+    }
+
+    if (
+        !window.confirm(
+            'با بازگشایی سال، سند اختتامیه با سند معکوس کنترل‌شده بی‌اثر می‌شود. ادامه می‌دهید؟',
+        )
+    ) {
         return;
     }
 

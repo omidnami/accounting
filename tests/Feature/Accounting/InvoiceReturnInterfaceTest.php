@@ -1,9 +1,11 @@
 <?php
 
+use App\Enums\AccountingPeriodStatus;
 use App\Enums\InventoryMovementType;
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Enums\UserRole;
+use App\Models\AccountingPeriod;
 use App\Models\Customer;
 use App\Models\FiscalYear;
 use App\Models\InventoryBalance;
@@ -18,6 +20,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\Accounting\FiscalYearSetupService;
 use App\Services\Accounting\JalaliDateService;
+use App\Services\Accounting\PeriodClosingService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Purchasing\PurchaseReturnService;
 use App\Services\Purchasing\PurchaseService;
@@ -215,6 +218,31 @@ it('allows managers and accountants to open return forms', function (UserRole $r
     'manager' => [UserRole::Manager],
     'accountant' => [UserRole::Accountant],
 ]);
+
+it('rejects a sales return draft dated inside a closed period', function () {
+    $context = invoiceReturnUiContext();
+    $period = AccountingPeriod::query()
+        ->where('fiscal_year_id', $context['fiscalYear']->id)
+        ->whereDate('starts_on', '<=', $context['date'])
+        ->whereDate('ends_on', '>=', $context['date'])
+        ->firstOrFail();
+    app(PeriodClosingService::class)->closePeriod(
+        $context['store'],
+        $period,
+        AccountingPeriodStatus::Closed,
+        $context['user'],
+        'بستن دوره برای آزمون مرجوعی',
+    );
+
+    $this->actingAs($context['user'])
+        ->post(
+            route('sales.returns.store', $context['salesInvoice']),
+            salesReturnUiPayload($context),
+        )
+        ->assertSessionHasErrors('return');
+
+    expect(Invoice::query()->where('type', InvoiceType::SalesReturn)->count())->toBe(0);
+});
 
 it('creates an idempotent sales return draft and confirms it', function () {
     $context = invoiceReturnUiContext();

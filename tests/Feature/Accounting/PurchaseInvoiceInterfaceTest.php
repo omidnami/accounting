@@ -1,8 +1,10 @@
 <?php
 
+use App\Enums\AccountingPeriodStatus;
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Enums\UserRole;
+use App\Models\AccountingPeriod;
 use App\Models\FiscalYear;
 use App\Models\InventoryBalance;
 use App\Models\Invoice;
@@ -14,6 +16,7 @@ use App\Models\Supplier;
 use App\Models\User;
 use App\Services\Accounting\FiscalYearSetupService;
 use App\Services\Accounting\JalaliDateService;
+use App\Services\Accounting\PeriodClosingService;
 use Database\Seeders\AccountSeeder;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -113,6 +116,28 @@ it('allows managers and accountants into purchasing', function (UserRole $role) 
     'manager' => [UserRole::Manager],
     'accountant' => [UserRole::Accountant],
 ]);
+
+it('rejects a purchase draft dated inside a closed accounting period', function () {
+    $context = purchaseUiContext(UserRole::Manager);
+    $period = AccountingPeriod::query()
+        ->where('fiscal_year_id', $context['fiscalYear']->id)
+        ->whereDate('starts_on', '<=', $context['date'])
+        ->whereDate('ends_on', '>=', $context['date'])
+        ->firstOrFail();
+    app(PeriodClosingService::class)->closePeriod(
+        $context['store'],
+        $period,
+        AccountingPeriodStatus::Closed,
+        $context['user'],
+        'بستن دوره برای آزمون جلوگیری از پیش‌نویس',
+    );
+
+    $this->actingAs($context['user'])
+        ->post(route('purchases.store'), purchaseUiPayload($context))
+        ->assertSessionHasErrors('purchase');
+
+    expect(Invoice::query()->count())->toBe(0);
+});
 
 it('looks up active suppliers and products within the selected warehouse', function () {
     $context = purchaseUiContext();

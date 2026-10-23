@@ -126,6 +126,7 @@ class FiscalYearSetupService
             ->get();
         $currentYear = $years->firstWhere('is_current', true);
         $periods = $years->flatMap->periods;
+        $today = CarbonImmutable::now('Asia/Tehran')->startOfDay();
         $suggestedYear = $this->dates->currentYear();
         $usedYears = $years->pluck('title')->map(fn (string $title): string => $title)->all();
 
@@ -142,6 +143,7 @@ class FiscalYearSetupService
                 'ends_on' => $year->ends_on->toDateString(),
                 'status' => $year->status->value,
                 'is_current' => $year->is_current,
+                'is_ended' => $year->ends_on->lessThan($today),
                 'can_set_current' => $year->status === FiscalYearStatus::Open && ! $year->is_current,
                 'periods' => $year->periods
                     ->sortBy('period_number')

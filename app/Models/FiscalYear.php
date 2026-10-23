@@ -24,6 +24,8 @@ class FiscalYear extends Model
     /** @use HasFactory<Factory<static>> */
     use HasFactory;
 
+    private bool $statusTransitionAuthorized = false;
+
     protected $fillable = [
         'store_id',
         'title',
@@ -112,6 +114,32 @@ class FiscalYear extends Model
         return $this->belongsTo(User::class, 'closed_by');
     }
 
+    public function transitionStatus(
+        FiscalYearStatus $status,
+        ?int $closedBy = null,
+        ?bool $isCurrent = null,
+    ): self {
+        $this->statusTransitionAuthorized = true;
+
+        try {
+            $values = [
+                'status' => $status,
+                'closed_by' => $status === FiscalYearStatus::Open ? null : $closedBy,
+                'closed_at' => $status === FiscalYearStatus::Open ? null : now(),
+            ];
+
+            if ($isCurrent !== null) {
+                $values['is_current'] = $isCurrent;
+            }
+
+            $this->forceFill($values)->save();
+        } finally {
+            $this->statusTransitionAuthorized = false;
+        }
+
+        return $this;
+    }
+
     protected static function booted(): void
     {
         static::saving(function (FiscalYear $fiscalYear): void {
@@ -141,6 +169,16 @@ class FiscalYear extends Model
                 ->whereKeyNot($fiscalYear->getKey())
                 ->where('is_current', true)
                 ->update(['is_current' => false]);
+        });
+
+        static::updating(function (FiscalYear $fiscalYear): void {
+            if (! $fiscalYear->statusTransitionAuthorized
+                && array_intersect(
+                    ['status', 'closed_by', 'closed_at'],
+                    array_keys($fiscalYear->getDirty()),
+                ) !== []) {
+                throw new DomainException('وضعیت و اطلاعات بستن سال مالی فقط از سرویس کنترل‌شده قابل تغییر است.');
+            }
         });
     }
 }

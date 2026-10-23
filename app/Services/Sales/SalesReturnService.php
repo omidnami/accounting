@@ -12,6 +12,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\User;
 use App\Models\Warehouse;
+use App\Services\Accounting\AccountingPeriodLockService;
 use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
@@ -31,6 +32,7 @@ class SalesReturnService
         private readonly PostingService $posting,
         private readonly SettingService $settings,
         private readonly ReturnableQuantityService $returnableQuantities,
+        private readonly AccountingPeriodLockService $periods,
     ) {}
 
     /**
@@ -99,8 +101,14 @@ class SalesReturnService
                     throw new DomainException('فاکتور فروش معتبر و متعلق به فروشگاه برای برگشت یافت نشد.');
                 }
 
-                $fiscalYear = $original->fiscalYear()->firstOrFail();
                 $returnDateValue = CarbonImmutable::parse($returnDate);
+                $periodContext = $this->periods->lockOpenPeriod(
+                    $original->store_id,
+                    $original->branch_id,
+                    $original->fiscal_year_id,
+                    $returnDate,
+                );
+                $fiscalYear = $periodContext['fiscal_year'];
 
                 if ($returnDateValue->lessThan($fiscalYear->starts_on)
                     || $returnDateValue->greaterThan($fiscalYear->ends_on)) {

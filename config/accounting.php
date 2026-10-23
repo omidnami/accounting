@@ -25,6 +25,7 @@ return [
         'sales_discounts' => '4103',
         'cogs' => '5101',
         'purchase_return_difference' => '5106',
+        'retained_earnings' => '3102',
     ],
 
     'treasury_account_gl_codes' => [
