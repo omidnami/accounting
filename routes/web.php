@@ -5,6 +5,7 @@ use App\Http\Controllers\CheckController;
 use App\Http\Controllers\CustomerReceiptController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FinancialReportsController;
+use App\Http\Controllers\FiscalYearController;
 use App\Http\Controllers\InventoryCardexController;
 use App\Http\Controllers\InvoiceReturnController;
 use App\Http\Controllers\PartyController;
@@ -23,6 +24,12 @@ Route::inertia('/', 'Welcome')->name('home');
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
     Route::get('reports', FinancialReportsController::class)->name('reports.index');
+    Route::get('fiscal-years', [FiscalYearController::class, 'index'])
+        ->name('fiscal-years.index');
+    Route::post('fiscal-years', [FiscalYearController::class, 'store'])
+        ->name('fiscal-years.store');
+    Route::patch('fiscal-years/{fiscalYear}/current', [FiscalYearController::class, 'setCurrent'])
+        ->name('fiscal-years.current');
     Route::get('inventory/cardex', InventoryCardexController::class)->name('inventory.cardex');
     Route::get('audit-logs', AuditLogController::class)->name('audit-logs.index');
     Route::resource('users', UserManagementController::class)

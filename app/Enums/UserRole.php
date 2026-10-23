@@ -80,6 +80,11 @@ enum UserRole: string
         return $this === self::Manager;
     }
 
+    public function canManageFiscalYears(): bool
+    {
+        return $this === self::Manager;
+    }
+
     public function canViewAuditLogs(): bool
     {
         return $this === self::Manager;
