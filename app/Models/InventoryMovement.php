@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\InventoryDirection;
 use App\Enums\InventoryMovementType;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -14,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 /**
  * @property InventoryDirection $direction
  * @property InventoryMovementType $movement_type
+ * @property CarbonImmutable $movement_date
  */
 class InventoryMovement extends Model
 {

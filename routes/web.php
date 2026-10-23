@@ -5,6 +5,7 @@ use App\Http\Controllers\CheckController;
 use App\Http\Controllers\CustomerReceiptController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FinancialReportsController;
+use App\Http\Controllers\InventoryCardexController;
 use App\Http\Controllers\InvoiceReturnController;
 use App\Http\Controllers\PartyController;
 use App\Http\Controllers\ProductController;
@@ -22,6 +23,7 @@ Route::inertia('/', 'Welcome')->name('home');
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
     Route::get('reports', FinancialReportsController::class)->name('reports.index');
+    Route::get('inventory/cardex', InventoryCardexController::class)->name('inventory.cardex');
     Route::get('audit-logs', AuditLogController::class)->name('audit-logs.index');
     Route::resource('users', UserManagementController::class)
         ->except(['show', 'destroy']);

@@ -22,7 +22,7 @@ import {
 import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import { create as createSale } from '@/routes/sales';
-import { index as productsIndex } from '@/routes/products';
+import { cardex as inventoryCardex } from '@/routes/inventory';
 import { index as reportsIndex } from '@/routes/reports';
 
 type DashboardMode = 'financial' | 'sales' | 'inventory' | 'limited' | 'setup';
@@ -306,7 +306,7 @@ const primaryAction = computed(() => {
     }
 
     if (props.dashboard.mode === 'inventory') {
-        return { label: 'مدیریت موجودی', href: productsIndex() };
+        return { label: 'مشاهده کاردکس موجودی', href: inventoryCardex() };
     }
 
     if (props.dashboard.mode === 'financial') {
@@ -623,7 +623,7 @@ defineOptions({
                     </p>
                 </div>
                 <Button as-child variant="ghost" size="sm">
-                    <Link :href="productsIndex()">مدیریت کالا</Link>
+                    <Link :href="inventoryCardex()">کاردکس موجودی</Link>
                 </Button>
             </div>
             <div

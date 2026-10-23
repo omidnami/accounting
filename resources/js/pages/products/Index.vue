@@ -7,6 +7,7 @@ import {
     ChevronRight,
     CircleCheck,
     CircleOff,
+    ClipboardList,
     FilterX,
     PackagePlus,
     PencilLine,
@@ -20,6 +21,7 @@ import {
     edit as editProduct,
     index as productsIndex,
 } from '@/routes/products';
+import { cardex as inventoryCardex } from '@/routes/inventory';
 
 type StockStatus = 'in_stock' | 'low_stock' | 'out_of_stock';
 
@@ -115,7 +117,18 @@ const stockMeta: Record<
 };
 const paginationLabel = (label: string) =>
     /^\d+$/.test(label) ? count.format(Number(label)) : '…';
+const cardexHref = (productId: number) => {
+    const warehouseId =
+        filters.warehouse_id ||
+        props.warehouses.find((warehouse) => warehouse.is_active)?.id;
 
+    return inventoryCardex({
+        query: {
+            product_id: productId,
+            warehouse_id: warehouseId || undefined,
+        },
+    });
+};
 const applyFilters = () => {
     router.get(
         productsIndex(),
@@ -498,17 +511,32 @@ defineOptions({
                                 </p>
                             </td>
                             <td class="px-5 py-4 text-left">
-                                <Button
-                                    as-child
-                                    variant="ghost"
-                                    size="sm"
-                                    class="rounded-lg"
+                                <div
+                                    class="flex items-center justify-end gap-1"
                                 >
-                                    <Link :href="editProduct(product.id)">
-                                        <PencilLine class="size-4" />
-                                        ویرایش
-                                    </Link>
-                                </Button>
+                                    <Button
+                                        as-child
+                                        variant="ghost"
+                                        size="sm"
+                                        class="rounded-lg"
+                                    >
+                                        <Link :href="cardexHref(product.id)">
+                                            <ClipboardList class="size-4" />
+                                            کاردکس
+                                        </Link>
+                                    </Button>
+                                    <Button
+                                        as-child
+                                        variant="ghost"
+                                        size="sm"
+                                        class="rounded-lg"
+                                    >
+                                        <Link :href="editProduct(product.id)">
+                                            <PencilLine class="size-4" />
+                                            ویرایش
+                                        </Link>
+                                    </Button>
+                                </div>
                             </td>
                         </tr>
                     </tbody>

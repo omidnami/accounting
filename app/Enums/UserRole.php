@@ -30,6 +30,16 @@ enum UserRole: string
         return in_array($this, [self::Manager, self::Accountant], true);
     }
 
+    public function canViewInventoryReports(): bool
+    {
+        return in_array($this, [self::Manager, self::Accountant, self::Warehouse], true);
+    }
+
+    public function canViewInventoryCosts(): bool
+    {
+        return in_array($this, [self::Manager, self::Accountant], true);
+    }
+
     public function canManageSales(): bool
     {
         return in_array($this, [self::Manager, self::Accountant, self::Cashier], true);

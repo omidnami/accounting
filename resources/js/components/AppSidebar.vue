@@ -8,6 +8,7 @@ import {
     LayoutGrid,
     Landmark,
     PackageSearch,
+    ScrollText,
     ShoppingBag,
     ShoppingCart,
     UsersRound,
@@ -34,6 +35,7 @@ import { index as auditLogs } from '@/routes/audit-logs';
 import { index as users } from '@/routes/users';
 import { index as parties } from '@/routes/parties';
 import { index as products } from '@/routes/products';
+import { cardex as inventoryCardex } from '@/routes/inventory';
 import { index as payments } from '@/routes/payments';
 import { index as purchases } from '@/routes/purchases';
 import { index as reports } from '@/routes/reports';
@@ -71,6 +73,17 @@ const mainNavItems = computed<NavItem[]>(() => {
             title: 'گزارش‌های مالی',
             href: reports(),
             icon: BarChart3,
+        });
+    }
+
+    if (
+        user.value &&
+        ['manager', 'accountant', 'warehouse'].includes(user.value.role)
+    ) {
+        items.push({
+            title: 'کاردکس موجودی',
+            href: inventoryCardex(),
+            icon: ScrollText,
         });
     }
 

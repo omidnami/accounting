@@ -1,0 +1,61 @@
+# Phase 14A - گزارش کاردکس موجودی
+
+آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳
+
+## دامنه تکمیل‌شده
+
+- صفحه اختصاصی `/inventory/cardex`
+- انتخاب کالا، انبار، بازه شمسی، نوع حرکت و جهت
+- مانده اول و پایان دوره از snapshotهای `inventory_movements`
+- گردش تعدادی و ریالی با pagination
+- جمع ورود، خروج، تعداد حرکت و تغییر خالص دوره
+- لینک از مدیریت کالا، Sidebar و Dashboard
+
+## تصمیم‌های منطقی
+
+- منبع گزارش فقط دفتر غیرقابل‌تغییر حرکات انبار است.
+- مانده اول از آخرین حرکت پیش از شروع دوره و مانده پایان از آخرین
+  حرکت تا پایان دوره خوانده می‌شود.
+- مانده هر ردیف از `quantity_after` و `value_after` همان حرکت استفاده
+  می‌کند و با موجودی جاری یا قیمت‌های بعدی بازمحاسبه نمی‌شود.
+- فیلتر نوع و جهت فقط ردیف‌ها و جمع‌های ورود/خروج را محدود می‌کند؛ مانده
+  اول و پایان همیشه بر اساس تمام حرکات واقعی کالا و انبار است.
+- گزارش برای یک کالا در یک انبار ارائه می‌شود تا گردش محصولات مختلف با هم
+  اشتباه نشود.
+- تمام queryها با `store_id`، انبار، کالا و بازه تاریخ محدود می‌شوند.
+
+## دسترسی
+
+- `manager` و `accountant`: کاردکس تعدادی و ریالی
+- `warehouse`: کاردکس تعدادی؛ فیلدهای بهای واحد، بهای کل، ارزش موجودی و
+  average cost در response ساخته نمی‌شوند
+- `cashier` و `viewer`: بدون دسترسی
+- منطق مجوز در `UserRole`، `InventoryCardexRequest` و
+  `InventoryCardexReportService` قرار دارد.
+
+## فایل‌های اصلی
+
+- `app/Services/Inventory/InventoryCardexReportService.php`
+- `app/Http/Controllers/InventoryCardexController.php`
+- `app/Http/Requests/InventoryCardexRequest.php`
+- `resources/js/pages/inventory/cardex/Index.vue`
+- `tests/Feature/Accounting/InventoryCardexReportTest.php`
+
+## بررسی‌ها
+
+- Pest: `235 tests`, `1834 assertions`
+- PHPStan: بدون خطا
+- Pint: موفق
+- Vue lint/format: موفق
+- Vue type-check: موفق
+- Frontend build: موفق
+- migration جدید لازم نبود؛ index موجود
+  `(warehouse_id, product_id, movement_date)` برای queryهای کاردکس مناسب است.
+
+## محدودیت‌های باز
+
+- بررسی دستی صفحه در مرورگر دسکتاپ و موبایل انجام نشده است.
+- فیلتر کالا فعلاً select ساده است و برای کاتالوگ بسیار بزرگ به combobox
+  جست‌وجوشونده نیاز خواهد داشت.
+- کاردکس به‌صورت PDF/Excel خروجی نمی‌گیرد.
+- موجودی‌گیری فیزیکی و Stock Adjustment اختصاصی همچنان پیاده‌سازی نشده‌اند.

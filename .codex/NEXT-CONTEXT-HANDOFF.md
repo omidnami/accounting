@@ -1,6 +1,6 @@
 # Store Accounting System - Context Handoff
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 13A)
+آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 14A)
 
 ## شروع کانتکست جدید
 
@@ -16,9 +16,10 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `0dbb375`
-- پیام: `fixed pages`
-- شاخه با `origin/main` هم‌سطح بود؛ Phase 13A هنوز commit نشده است.
+- آخرین کامیت محلی: `fc8ae30`
+- پیام: `fix(calendar): harden Jalali picker and monthly trend UX`
+- شاخه با `origin/main` هم‌سطح است.
+- تغییرات Phase 14A در worktree آماده‌اند و commit آن‌ها بر عهده کاربر است.
 
 ## استک و محیط
 
@@ -35,7 +36,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `226 tests`, `1685 assertions`
+- Pest: `235 tests`, `1834 assertions`
 - Node calendar: `3 tests`
 - PHPStan: صفر خطا
 - Pint: موفق
@@ -143,6 +144,7 @@ npm run build
 - `/purchases`
 - `/payments`
 - `/reports`
+- `/inventory/cardex`
 - `/settings/profile`
 - `/settings/security`
 
@@ -168,6 +170,7 @@ npm run build
 - `phase-11a`: Audit Log و مدیریت کاربران
 - `phase-12a`: Dashboard تحلیلی واقعی
 - `phase-13a`: Datepicker شمسی و نمودار ماهانه
+- `phase-14a`: گزارش کاردکس تعدادی/ریالی و دسترسی انباردار
 
 ## فایل‌های کلیدی
 
@@ -190,6 +193,7 @@ npm run build
 - `app/Services/Audit/AuditLogService.php`
 - `app/Services/Dashboard/DashboardService.php`
 - `app/Services/Treasury/CheckSettlementService.php`
+- `app/Services/Inventory/InventoryCardexReportService.php`
 
 ### Controllers
 
@@ -206,6 +210,7 @@ npm run build
 - `AuditLogController`
 - `DashboardController`
 - `FinancialReportsController`
+- `InventoryCardexController`
 
 ### UI
 
@@ -222,6 +227,7 @@ npm run build
 - `resources/js/pages/purchases`
 - `resources/js/pages/payments`
 - `resources/js/pages/reports`
+- `resources/js/pages/inventory/cardex`
 
 ## قواعد اجباری ادامه کار
 
@@ -249,7 +255,10 @@ npm run build
   همچنان خارج از MVP است.
 - هزینه‌های جانبی خرید و حمل پیاده‌سازی نشده‌اند.
 - دسته‌بندی، تنوع کالا، سریال، Batch، تاریخ انقضا و PriceHistory وجود ندارند.
-- موجودی‌گیری فیزیکی، StockAdjustment و صفحه Cardex اختصاصی وجود ندارند.
+- موجودی‌گیری فیزیکی و StockAdjustment اختصاصی وجود ندارند.
+- کاردکس موجودی پیاده‌سازی شده است؛ فیلتر کالای آن فعلاً select ساده است و
+  برای کاتالوگ بسیار بزرگ به combobox جست‌وجوشونده نیاز دارد.
+- خروجی PDF/Excel گزارش کاردکس هنوز وجود ندارد.
 - Audit Log و مدیریت کاربران/نقش‌ها وجود دارد؛ غیرفعال‌سازی کاربر، retention و
   alerting برای Audit هنوز پیاده‌سازی نشده‌اند.
 - Dashboard برای Manager/Accountant داده واقعی و نمودار هفت‌روزه/شش‌ماهه دارد؛
@@ -259,9 +268,10 @@ npm run build
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی Phase 13A در دسکتاپ و موبایل
-2. commit و push Datepicker و نمودار ماهانه توسط کاربر
-3. شروع فاز بعدی: گزارش‌های عملیاتی/انبار یا خروجی PDF/Excel
+1. بررسی دستی Phase 14A در دسکتاپ و موبایل
+2. commit و push تغییرات Phase 14A توسط کاربر
+3. انتخاب فاز بعدی: خروجی PDF/Excel گزارش‌ها، گزارش‌های عملیاتی دیگر یا
+   موجودی‌گیری فیزیکی
 
 جزئیات Phase 8A در `.codex/phase-8a-treasury-checks-ui.md` ثبت شده است.
 اصلاحات بازبینی آن در `.codex/phase-8a-check-hardening.md` آمده است.
@@ -270,6 +280,7 @@ npm run build
 جزئیات Phase 11A در `.codex/phase-11a-audit-users.md` آمده است.
 جزئیات Phase 12A در `.codex/phase-12a-dashboard-analytics.md` آمده است.
 جزئیات Phase 13A در `.codex/phase-13a-jalali-datepicker-monthly-chart.md` آمده است.
+جزئیات Phase 14A در `.codex/phase-14a-inventory-cardex.md` آمده است.
 
 ## الگوی درخواست از Agent بعدی
 
