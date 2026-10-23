@@ -55,6 +55,7 @@ class Check extends Model
         'settled_at',
         'bounced_at',
         'settlement_entry_id',
+        'settlement_treasury_account_id',
         'bounce_entry_id',
     ];
 
@@ -133,6 +134,12 @@ class Check extends Model
         return $this->belongsTo(JournalEntry::class, 'settlement_entry_id');
     }
 
+    /** @return BelongsTo<TreasuryAccount, $this> */
+    public function settlementTreasuryAccount(): BelongsTo
+    {
+        return $this->belongsTo(TreasuryAccount::class, 'settlement_treasury_account_id');
+    }
+
     /** @return BelongsTo<JournalEntry, $this> */
     public function bounceEntry(): BelongsTo
     {
@@ -165,9 +172,17 @@ class Check extends Model
         });
     }
 
-    public function markSettled(JournalEntry $entry): self
-    {
+    public function markSettled(
+        JournalEntry $entry,
+        TreasuryAccount $treasuryAccount,
+    ): self {
         $this->assertSettlementEntry($entry);
+
+        if ((int) $treasuryAccount->store_id !== (int) $this->store_id
+            || (int) $treasuryAccount->branch_id !== (int) $this->branch_id) {
+            throw new DomainException('حساب تسویه چک باید متعلق به فروشگاه و شعبه چک باشد.');
+        }
+
         $status = $this->type === CheckType::Receivable
             ? CheckStatus::Collected
             : CheckStatus::Spent;
@@ -176,6 +191,7 @@ class Check extends Model
         $this->status = $status;
         $this->settled_at = now();
         $this->settlement_entry_id = $entry->id;
+        $this->settlement_treasury_account_id = $treasuryAccount->id;
         $this->save();
 
         return $this;

@@ -5,6 +5,7 @@ import {
     CircleDollarSign,
     HandCoins,
     LayoutGrid,
+    Landmark,
     PackageSearch,
     ShoppingBag,
     ShoppingCart,
@@ -26,6 +27,7 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import { index as checks } from '@/routes/checks';
+import { index as treasuryAccounts } from '@/routes/treasury-accounts';
 import { index as parties } from '@/routes/parties';
 import { index as products } from '@/routes/products';
 import { index as payments } from '@/routes/payments';
@@ -94,6 +96,11 @@ const mainNavItems = computed<NavItem[]>(() => {
             title: 'چک‌ها',
             href: checks(),
             icon: WalletCards,
+        });
+        items.push({
+            title: 'حساب‌های خزانه',
+            href: treasuryAccounts(),
+            icon: Landmark,
         });
     }
 

@@ -88,6 +88,8 @@ const props = defineProps<{
         settled_at: string | null;
         bounced_at: string | null;
         treasury_document: TreasuryDocument | null;
+        settlement_treasury_account: string | null;
+        settlement_treasury_account_code: string | null;
         entries: {
             settlement: Entry | null;
             bounce: Entry | null;
@@ -340,6 +342,14 @@ defineOptions({
                 <p class="mt-3 text-2xl font-black">
                     {{ money.format(Number(check.amount)) }}
                     <small class="text-[10px] font-medium">ریال</small>
+                </p>
+                <p
+                    v-if="check.settlement_treasury_account"
+                    class="mt-2 text-[10px] text-muted-foreground"
+                >
+                    حساب تسویه:
+                    {{ check.settlement_treasury_account }}
+                    · {{ check.settlement_treasury_account_code }}
                 </p>
             </article>
             <article

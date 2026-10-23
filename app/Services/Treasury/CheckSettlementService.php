@@ -246,7 +246,7 @@ class CheckSettlementService
                 $approver,
             );
 
-            $locked->markSettled($entry);
+            $locked->markSettled($entry, $treasuryAccount);
 
             return $locked->refresh();
         });
@@ -292,15 +292,7 @@ class CheckSettlementService
             return;
         }
 
-        $treasuryAccount = TreasuryAccount::query()
-            ->whereKey($treasuryAccountId)
-            ->where('store_id', $check->store_id)
-            ->where('branch_id', $check->branch_id)
-            ->where('type', TreasuryAccountType::Bank)
-            ->first();
-
-        if (! $treasuryAccount
-            || ! $entry->lines()->where('account_id', $treasuryAccount->gl_account_id)->exists()) {
+        if ($treasuryAccountId !== $check->settlement_treasury_account_id) {
             throw new DomainException('این چک قبلاً با حساب بانکی دیگری وصول یا خرج شده است.');
         }
     }

@@ -2,6 +2,7 @@
 
 use App\Enums\InventoryMovementType;
 use App\Enums\InvoiceStatus;
+use App\Enums\TreasuryAccountType;
 use App\Enums\UserRole;
 use App\Models\Customer;
 use App\Models\FiscalYear;
@@ -11,6 +12,7 @@ use App\Models\Party;
 use App\Models\Product;
 use App\Models\Receipt;
 use App\Models\Store;
+use App\Models\TreasuryAccount;
 use App\Models\User;
 use App\Services\Accounting\FiscalYearSetupService;
 use App\Services\Accounting\JalaliDateService;
@@ -311,4 +313,34 @@ it('passes receivable status to the sales invoice page', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->where('can_receive', true)
             ->where('outstanding', $invoice->total));
+});
+
+it('uses a card treasury account for card receipts', function () {
+    $context = receiptUiContext();
+    $invoice = createReceiptTestInvoice($context);
+    $bank = TreasuryAccount::query()
+        ->where('branch_id', $context['branch']->id)
+        ->where('type', TreasuryAccountType::Bank)
+        ->firstOrFail();
+    $card = TreasuryAccount::query()->create([
+        'store_id' => $context['store']->id,
+        'branch_id' => $context['branch']->id,
+        'gl_account_id' => $bank->gl_account_id,
+        'code' => 'CARD-UI',
+        'name' => 'کارت‌خوان رابط',
+        'type' => TreasuryAccountType::Card,
+        'is_default' => true,
+        'is_active' => true,
+    ]);
+
+    $this->actingAs($context['user'])
+        ->post(route('receipts.store'), receiptUiPayload($context, $invoice, [
+            'payment_method' => 'card',
+            'treasury_account_id' => $card->id,
+        ]))
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect(Receipt::query()->firstOrFail()->treasury_account_id)
+        ->toBe($card->id);
 });

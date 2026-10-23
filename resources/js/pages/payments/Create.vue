@@ -48,7 +48,7 @@ type Allocation = Invoice & { amount: string };
 type Treasury = {
     id: number;
     name: string;
-    type: 'cash' | 'bank';
+    type: 'cash' | 'bank' | 'card';
     is_default: boolean;
 };
 type PendingCheck = {
@@ -125,10 +125,16 @@ const total = computed(() =>
     ),
 );
 const eligibleAccounts = computed(() =>
-    props.treasury_accounts.filter(
-        (account) =>
-            account.type === (form.payment_method === 'cash' ? 'cash' : 'bank'),
-    ),
+    props.treasury_accounts.filter((account) => {
+        const type = {
+            cash: 'cash',
+            bank: 'bank',
+            card: 'card',
+            check: null,
+        }[form.payment_method];
+
+        return account.type === type;
+    }),
 );
 const selectedCheck = computed(() =>
     pendingChecks.value.find((check) => check.id.toString() === form.check_id),

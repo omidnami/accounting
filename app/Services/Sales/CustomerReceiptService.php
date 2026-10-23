@@ -194,9 +194,11 @@ class CustomerReceiptService
             } elseif ($checkId !== null) {
                 throw new DomainException('برای روش‌های غیرچکی نباید شناسه چک ارسال شود.');
             } else {
-                $treasuryType = $paymentMethod === PaymentMethod::Cash
-                    ? TreasuryAccountType::Cash
-                    : TreasuryAccountType::Bank;
+                $treasuryType = match ($paymentMethod) {
+                    PaymentMethod::Cash => TreasuryAccountType::Cash,
+                    PaymentMethod::Bank => TreasuryAccountType::Bank,
+                    PaymentMethod::Card => TreasuryAccountType::Card,
+                };
                 $treasuryAccount = TreasuryAccount::query()
                     ->where('store_id', $storeId)
                     ->where('branch_id', $branchId)

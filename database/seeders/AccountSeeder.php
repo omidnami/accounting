@@ -297,5 +297,16 @@ class AccountSeeder extends Seeder
                 'is_active' => true,
             ],
         );
+        TreasuryAccount::query()->firstOrCreate(
+            ['branch_id' => $branch->id, 'code' => 'CARD'],
+            [
+                'store_id' => $store->id,
+                'gl_account_id' => $bank->id,
+                'name' => 'کارت اصلی',
+                'type' => TreasuryAccountType::Card,
+                'is_default' => true,
+                'is_active' => true,
+            ],
+        );
     }
 }

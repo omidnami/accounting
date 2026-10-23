@@ -128,6 +128,7 @@ it('collects a pending customer check into the bank', function () {
 
     expect($settled->status)->toBe(CheckStatus::Collected)
         ->and($settled->settlement_entry_id)->toBe($entry->id)
+        ->and($settled->settlement_treasury_account_id)->toBe($bank->id)
         ->and($receipt->fresh()->status->value)->toBe('confirmed')
         ->and($entry->totalDebit())->toBe('100.00')
         ->and($entry->totalCredit())->toBe('100.00');

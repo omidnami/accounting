@@ -11,6 +11,7 @@ use App\Http\Controllers\PurchaseLookupController;
 use App\Http\Controllers\SalesInvoiceController;
 use App\Http\Controllers\SalesLookupController;
 use App\Http\Controllers\SupplierPaymentController;
+use App\Http\Controllers\TreasuryAccountController;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
@@ -18,6 +19,13 @@ Route::inertia('/', 'Welcome')->name('home');
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');
     Route::get('reports', FinancialReportsController::class)->name('reports.index');
+    Route::resource('treasury-accounts', TreasuryAccountController::class)
+        ->parameters(['treasury-accounts' => 'treasuryAccount'])
+        ->except(['show', 'destroy']);
+    Route::patch('treasury-accounts/{treasuryAccount}/status', [
+        TreasuryAccountController::class,
+        'status',
+    ])->name('treasury-accounts.status');
     Route::resource('parties', PartyController::class)
         ->except(['show', 'destroy']);
     Route::resource('products', ProductController::class)

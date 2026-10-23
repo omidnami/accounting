@@ -254,6 +254,7 @@ class CheckController extends Controller
             'payment.supplier.party',
             'payment.allocations.invoice',
             'settlementEntry',
+            'settlementTreasuryAccount',
             'bounceEntry',
         ]);
 
@@ -299,6 +300,8 @@ class CheckController extends Controller
                 'settled_at' => $check->settled_at?->toDateTimeString(),
                 'bounced_at' => $check->bounced_at?->toDateTimeString(),
                 'treasury_document' => $treasuryDocument,
+                'settlement_treasury_account' => $check->settlementTreasuryAccount?->name,
+                'settlement_treasury_account_code' => $check->settlementTreasuryAccount?->code,
                 'entries' => [
                     'settlement' => $this->mapEntry($check->settlementEntry),
                     'bounce' => $this->mapEntry($check->bounceEntry),

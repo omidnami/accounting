@@ -26,4 +26,10 @@ return [
         'cogs' => '5101',
         'purchase_return_difference' => '5106',
     ],
+
+    'treasury_account_gl_codes' => [
+        'cash' => '1101',
+        'bank' => '1102',
+        'card' => '1102',
+    ],
 ];

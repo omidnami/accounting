@@ -149,4 +149,9 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     {
         return $this->role->canManageChecks();
     }
+
+    public function canManageTreasury(): bool
+    {
+        return $this->role->canManageTreasury();
+    }
 }

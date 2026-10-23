@@ -383,6 +383,7 @@ class CustomerReceiptController extends Controller
             ->whereIn('type', [
                 TreasuryAccountType::Cash,
                 TreasuryAccountType::Bank,
+                TreasuryAccountType::Card,
             ])
             ->orderByDesc('is_default')
             ->orderBy('name')

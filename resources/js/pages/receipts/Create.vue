@@ -54,7 +54,7 @@ type Allocation = OpenInvoice & {
 type TreasuryOption = {
     id: number;
     name: string;
-    type: 'cash' | 'bank';
+    type: 'cash' | 'bank' | 'card';
     is_default: boolean;
 };
 
@@ -144,7 +144,12 @@ const total = computed(() =>
     ),
 );
 const eligibleAccounts = computed(() => {
-    const type = form.payment_method === 'cash' ? 'cash' : 'bank';
+    const type = {
+        cash: 'cash',
+        bank: 'bank',
+        card: 'card',
+        check: null,
+    }[form.payment_method];
 
     return props.treasury_accounts.filter((account) => account.type === type);
 });

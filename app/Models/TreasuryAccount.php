@@ -14,6 +14,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * @property TreasuryAccountType $type
+ * @property int $version
+ * @property-read int $pending_receipts_count
+ * @property-read int $pending_payments_count
  */
 class TreasuryAccount extends Model
 {
@@ -28,7 +31,9 @@ class TreasuryAccount extends Model
         'name',
         'type',
         'is_default',
+        'default_slot',
         'is_active',
+        'version',
     ];
 
     protected function casts(): array
@@ -37,6 +42,7 @@ class TreasuryAccount extends Model
             'type' => TreasuryAccountType::class,
             'is_default' => 'boolean',
             'is_active' => 'boolean',
+            'version' => 'integer',
         ];
     }
 
@@ -70,35 +76,57 @@ class TreasuryAccount extends Model
         return $this->hasMany(Payment::class);
     }
 
+    /** @return HasMany<Check, $this> */
+    public function settledChecks(): HasMany
+    {
+        return $this->hasMany(Check::class, 'settlement_treasury_account_id');
+    }
+
     protected static function booted(): void
     {
         static::saving(function (TreasuryAccount $treasury): void {
+            if (! $treasury->is_active) {
+                $treasury->is_default = false;
+            }
+
+            $treasury->default_slot = $treasury->is_default
+                ? $treasury->type->value
+                : null;
             $branch = Branch::query()->find($treasury->branch_id);
             $account = Account::query()->find($treasury->gl_account_id);
 
-            if (! $branch || (int) $branch->store_id !== (int) $treasury->store_id) {
+            if (! $branch
+                || (int) $branch->store_id !== (int) $treasury->store_id
+                || ($treasury->is_active && ! $branch->is_active)) {
                 throw new DomainException('حساب خزانه و شعبه باید متعلق به یک فروشگاه باشند.');
             }
+
+            $allowedCode = config(
+                "accounting.treasury_account_gl_codes.{$treasury->type->value}",
+            );
 
             if (! $account
                 || $account->level !== AccountLevel::Subsidiary
                 || $account->type !== AccountType::Asset
-                || ! $account->is_active
-                || (int) $account->store_id !== (int) $treasury->store_id) {
+                || (int) $account->store_id !== (int) $treasury->store_id
+                || ($treasury->is_active && ! $account->is_active)
+                || (! is_string($allowedCode) || $account->code !== $allowedCode)) {
                 throw new DomainException('حساب دفتر کل خزانه باید معین، دارایی، فعال و متعلق به همان فروشگاه باشد.');
             }
-        });
 
-        static::saved(function (TreasuryAccount $treasury): void {
-            if (! $treasury->is_default) {
-                return;
+            if ($treasury->is_default) {
+                self::query()
+                    ->where('branch_id', $treasury->branch_id)
+                    ->where('type', $treasury->type)
+                    ->when(
+                        $treasury->exists,
+                        fn ($query) => $query->whereKeyNot($treasury->getKey()),
+                    )
+                    ->update([
+                        'is_default' => false,
+                        'default_slot' => null,
+                    ]);
             }
-
-            self::query()
-                ->where('branch_id', $treasury->branch_id)
-                ->where('type', $treasury->type)
-                ->whereKeyNot($treasury->getKey())
-                ->update(['is_default' => false]);
         });
     }
 }
