@@ -7,6 +7,7 @@ use App\Enums\InventoryMovementType;
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Models\AccountingPeriod;
+use App\Models\InventoryMovement;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\User;
@@ -162,32 +163,33 @@ class PurchaseReturnService
                         throw new DomainException('مقدار برگشت باید بزرگ‌تر از صفر باشد.');
                     }
 
-                    $remaining = $this->returnableQuantities->remainingFor(
+                    $state = $this->returnableQuantities->stateFor(
                         $originalItem,
                         InvoiceType::PurchaseReturn,
                     );
+                    $remaining = $state['remaining_quantity'];
 
                     if (Decimal::compare($quantity, $remaining, Decimal::QUANTITY_SCALE) > 0) {
                         throw new DomainException('مقدار برگشت از مقدار قابل برگشت ردیف بیشتر است.');
                     }
 
-                    $isFullLine = Decimal::compare($quantity, $originalItem->quantity, Decimal::QUANTITY_SCALE) === 0;
+                    $isFinal = Decimal::compare($quantity, $remaining, Decimal::QUANTITY_SCALE) === 0;
                     $gross = Decimal::multiply($quantity, $originalItem->unit_price, Decimal::MONEY_SCALE);
-                    $discount = $isFullLine
-                        ? Decimal::normalize($originalItem->discount_amount, Decimal::MONEY_SCALE)
-                        : Decimal::divide(
-                            Decimal::multiply($originalItem->discount_amount, $quantity, 4),
-                            $originalItem->quantity,
-                            Decimal::MONEY_SCALE,
-                        );
+                    $discount = $this->returnableQuantities->allocateMoney(
+                        $originalItem->discount_amount,
+                        $state['returned_discount'],
+                        $quantity,
+                        $originalItem->quantity,
+                        $isFinal,
+                    );
                     $taxable = Decimal::subtract($gross, $discount, Decimal::MONEY_SCALE);
-                    $taxAmount = $isFullLine
-                        ? Decimal::normalize($originalItem->tax_amount, Decimal::MONEY_SCALE)
-                        : Decimal::divide(
-                            Decimal::multiply($originalItem->tax_amount, $quantity, 4),
-                            $originalItem->quantity,
-                            Decimal::MONEY_SCALE,
-                        );
+                    $taxAmount = $this->returnableQuantities->allocateMoney(
+                        $originalItem->tax_amount,
+                        $state['returned_tax'],
+                        $quantity,
+                        $originalItem->quantity,
+                        $isFinal,
+                    );
                     $lineTotal = Decimal::add($taxable, $taxAmount, Decimal::MONEY_SCALE);
 
                     $returnInvoice->items()->create([
@@ -291,13 +293,30 @@ class PurchaseReturnService
                 ->findOrFail($returnInvoice->id);
 
             if ($return->type !== InvoiceType::PurchaseReturn
-                || $return->status !== InvoiceStatus::Draft) {
-                throw new DomainException('فقط برگشت خرید پیش‌نویس قابل تأیید است.');
-            }
-
-            if ($original->type !== InvoiceType::Purchase
+                || $original->type !== InvoiceType::Purchase
                 || (int) $return->parent_invoice_id !== (int) $original->id) {
                 throw new DomainException('فاکتور اصلی برگشت خرید معتبر نیست.');
+            }
+
+            $warehouse = Warehouse::query()->findOrFail($warehouseId);
+
+            if ((int) $warehouse->store_id !== (int) $return->store_id
+                || (int) $warehouse->branch_id !== (int) $return->branch_id) {
+                throw new DomainException('انبار باید متعلق به فروشگاه و شعبه سند برگشت باشد.');
+            }
+
+            if ($return->status === InvoiceStatus::Confirmed) {
+                $this->assertConfirmedWarehouse(
+                    $return,
+                    $warehouseId,
+                    InventoryMovementType::PurchaseReturn,
+                );
+
+                return $return->load(['items', 'parentInvoice']);
+            }
+
+            if ($return->status !== InvoiceStatus::Draft) {
+                throw new DomainException('فقط برگشت خرید پیش‌نویس قابل تأیید است.');
             }
 
             $supplier = $return->supplier;
@@ -321,15 +340,11 @@ class PurchaseReturnService
                 throw new DomainException('برای تاریخ برگشت، دوره مالی پیدا نشد.');
             }
 
-            $warehouse = Warehouse::query()->findOrFail($warehouseId);
-
-            if ((int) $warehouse->store_id !== (int) $return->store_id
-                || (int) $warehouse->branch_id !== (int) $return->branch_id) {
-                throw new DomainException('انبار باید متعلق به فروشگاه و شعبه سند برگشت باشد.');
-            }
-
             $inventoryCost = '0.00';
             $taxTotal = '0.00';
+            $subtotal = '0.00';
+            $discountTotal = '0.00';
+            $total = '0.00';
 
             foreach ($return->items as $item) {
                 $originalItem = $original->items
@@ -339,14 +354,50 @@ class PurchaseReturnService
                     throw new DomainException('ردیف اصلی برگشت خرید پیدا نشد.');
                 }
 
-                $remaining = $this->returnableQuantities->remainingFor(
+                $state = $this->returnableQuantities->stateFor(
                     $originalItem,
                     InvoiceType::PurchaseReturn,
                 );
+                $remaining = $state['remaining_quantity'];
 
                 if (Decimal::compare($item->quantity, $remaining, Decimal::QUANTITY_SCALE) > 0) {
                     throw new DomainException('مقدار تأییدشده برگشت خرید از مقدار قابل برگشت ردیف بیشتر است.');
                 }
+
+                $isFinal = Decimal::compare(
+                    $item->quantity,
+                    $remaining,
+                    Decimal::QUANTITY_SCALE,
+                ) === 0;
+                $gross = Decimal::multiply(
+                    $item->quantity,
+                    $originalItem->unit_price,
+                    Decimal::MONEY_SCALE,
+                );
+                $discount = $this->returnableQuantities->allocateMoney(
+                    $originalItem->discount_amount,
+                    $state['returned_discount'],
+                    $item->quantity,
+                    $originalItem->quantity,
+                    $isFinal,
+                );
+                $taxAmount = $this->returnableQuantities->allocateMoney(
+                    $originalItem->tax_amount,
+                    $state['returned_tax'],
+                    $item->quantity,
+                    $originalItem->quantity,
+                    $isFinal,
+                );
+                $lineTotal = Decimal::add(
+                    Decimal::subtract($gross, $discount, Decimal::MONEY_SCALE),
+                    $taxAmount,
+                    Decimal::MONEY_SCALE,
+                );
+                $item->forceFill([
+                    'discount_amount' => $discount,
+                    'tax_amount' => $taxAmount,
+                    'line_total' => $lineTotal,
+                ])->save();
 
                 $movement = $this->inventory->issue(
                     warehouseId: $warehouseId,
@@ -362,11 +413,20 @@ class PurchaseReturnService
                 );
 
                 $inventoryCost = Decimal::add($inventoryCost, $movement->total_cost, Decimal::MONEY_SCALE);
-                $taxTotal = Decimal::add($taxTotal, $item->tax_amount, Decimal::MONEY_SCALE);
+                $taxTotal = Decimal::add($taxTotal, $taxAmount, Decimal::MONEY_SCALE);
+                $subtotal = Decimal::add($subtotal, $gross, Decimal::MONEY_SCALE);
+                $discountTotal = Decimal::add($discountTotal, $discount, Decimal::MONEY_SCALE);
+                $total = Decimal::add($total, $lineTotal, Decimal::MONEY_SCALE);
             }
 
+            $return->forceFill([
+                'subtotal' => $subtotal,
+                'discount_total' => $discountTotal,
+                'tax_total' => $taxTotal,
+                'total' => $total,
+            ])->save();
             $difference = Decimal::subtract(
-                Decimal::subtract($return->total, $inventoryCost, Decimal::MONEY_SCALE),
+                Decimal::subtract($total, $inventoryCost, Decimal::MONEY_SCALE),
                 $taxTotal,
                 Decimal::MONEY_SCALE,
             );
@@ -374,7 +434,7 @@ class PurchaseReturnService
                 [
                     'account_id' => $this->settings->defaultAccountId('accounts_payable', $return->store_id),
                     'party_id' => $supplier->party_id,
-                    'debit' => $return->total,
+                    'debit' => $total,
                     'credit' => '0.00',
                     'description' => 'کاهش بدهی تأمین‌کننده',
                 ],
@@ -445,6 +505,26 @@ class PurchaseReturnService
             || ($existing->idempotency_request_hash !== null
                 && ! hash_equals($existing->idempotency_request_hash, $requestHash))) {
             throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست برگشت متفاوتی استفاده شده است.');
+        }
+    }
+
+    private function assertConfirmedWarehouse(
+        Invoice $return,
+        int $warehouseId,
+        InventoryMovementType $movementType,
+    ): void {
+        $warehouseIds = InventoryMovement::query()
+            ->where('source_type', $return->getMorphClass())
+            ->where('source_id', $return->id)
+            ->where('movement_type', $movementType)
+            ->pluck('warehouse_id')
+            ->map(fn ($id): int => (int) $id)
+            ->unique();
+
+        if ($warehouseIds->isEmpty()
+            || $warehouseIds->count() !== 1
+            || ! $warehouseIds->contains($warehouseId)) {
+            throw new DomainException('این برگشت قبلاً با انبار دیگری تأیید شده است.');
         }
     }
 }

@@ -8,12 +8,14 @@ use App\Models\Customer;
 use App\Models\FiscalYear;
 use App\Models\InventoryBalance;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\JournalEntry;
 use App\Models\Party;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\Accounting\FiscalYearSetupService;
 use App\Services\Accounting\JalaliDateService;
 use App\Services\Inventory\InventoryService;
@@ -21,6 +23,7 @@ use App\Services\Purchasing\PurchaseReturnService;
 use App\Services\Purchasing\PurchaseService;
 use App\Services\Sales\SalesReturnService;
 use App\Services\Sales\SalesService;
+use App\Support\Decimal;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AccountSeeder;
 use Illuminate\Support\Str;
@@ -259,6 +262,32 @@ it('creates an idempotent sales return draft and confirms it', function () {
         ->assertRedirect($showUrl)
         ->assertSessionHasNoErrors();
 
+    $this->actingAs($context['user'])
+        ->post(route('sales.returns.confirm', $return), [
+            'warehouse_id' => $context['warehouse']->id,
+        ])
+        ->assertRedirect($showUrl)
+        ->assertSessionHasNoErrors();
+
+    $otherWarehouse = Warehouse::query()->create([
+        'store_id' => $context['store']->id,
+        'branch_id' => $context['branch']->id,
+        'code' => 'RETURN-UI-OTHER',
+        'name' => 'انبار دیگر مرجوعی',
+        'is_active' => true,
+        'is_default' => false,
+    ]);
+
+    $this->actingAs($context['user'])
+        ->post(route('sales.returns.confirm', $return), [
+            'warehouse_id' => $otherWarehouse->id,
+        ])
+        ->assertSessionHasErrors('return');
+
+    $this->actingAs($context['user'])
+        ->delete(route('sales.returns.destroy', $return))
+        ->assertSessionHasErrors('return');
+
     $entry = JournalEntry::query()
         ->where('source_type', Invoice::class)
         ->where('source_id', $return->id)
@@ -266,6 +295,10 @@ it('creates an idempotent sales return draft and confirms it', function () {
 
     expect($return->refresh()->status)->toBe(InvoiceStatus::Confirmed)
         ->and($return->items)->toHaveCount(1)
+        ->and(JournalEntry::query()
+            ->where('source_type', Invoice::class)
+            ->where('source_id', $return->id)
+            ->count())->toBe(1)
         ->and($entry->totalDebit())->toBe($entry->totalCredit())
         ->and(InventoryBalance::query()
             ->where('warehouse_id', $context['warehouse']->id)
@@ -360,4 +393,84 @@ it('rechecks returnable quantities when confirming competing drafts', function (
 
     expect($second->refresh()->status)->toBe(InvoiceStatus::Draft)
         ->and($first->refresh()->status)->toBe(InvoiceStatus::Confirmed);
+});
+
+it('allocates the residual discount and tax to the final partial return', function () {
+    $context = invoiceReturnUiContext();
+    $service = app(SalesReturnService::class);
+    $sales = app(SalesService::class);
+    $invoice = $sales->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'customer_id' => $context['customer']->id,
+            'invoice_date' => $context['date'],
+            'created_by' => $context['user']->id,
+        ],
+        [[
+            'product_id' => $context['product']->id,
+            'quantity' => 3,
+            'unit_price' => 300,
+            'discount_amount' => 40,
+            'tax_rate' => 10,
+        ]],
+        'return-ui-rounding-sale-'.$context['user']->id,
+    );
+    $invoice = $sales->confirm($invoice, $context['warehouse']->id, $context['user']);
+    $item = $invoice->items()->firstOrFail();
+
+    $first = $service->createDraft(
+        $invoice,
+        [['invoice_item_id' => $item->id, 'quantity' => '2']],
+        $context['date'],
+        $context['user']->id,
+        (string) Str::uuid(),
+    );
+    $service->confirm($first, $context['warehouse']->id, $context['user']);
+    $final = $service->createDraft(
+        $invoice,
+        [['invoice_item_id' => $item->id, 'quantity' => '1']],
+        $context['date'],
+        $context['user']->id,
+        (string) Str::uuid(),
+    );
+    $service->confirm($final, $context['warehouse']->id, $context['user']);
+
+    $confirmedReturns = Invoice::query()
+        ->where('parent_invoice_id', $invoice->id)
+        ->where('type', InvoiceType::SalesReturn)
+        ->where('status', InvoiceStatus::Confirmed);
+    $returnedSubtotal = Decimal::normalize(
+        (string) (clone $confirmedReturns)->sum('subtotal'),
+        2,
+    );
+    $returnedDiscount = Decimal::normalize(
+        (string) (clone $confirmedReturns)->sum('discount_total'),
+        2,
+    );
+    $returnedTax = Decimal::normalize(
+        (string) (clone $confirmedReturns)->sum('tax_total'),
+        2,
+    );
+    $returnedTotal = Decimal::normalize(
+        (string) (clone $confirmedReturns)->sum('total'),
+        2,
+    );
+    $returnedCost = Decimal::normalize(
+        (string) InvoiceItem::query()
+            ->where('parent_invoice_item_id', $item->id)
+            ->whereHas('invoice', fn ($query) => $query
+                ->where('type', InvoiceType::SalesReturn)
+                ->where('status', InvoiceStatus::Confirmed))
+            ->sum('total_cost_snapshot'),
+        2,
+    );
+
+    expect($returnedSubtotal)->toBe($invoice->subtotal)
+        ->and($returnedDiscount)->toBe($invoice->discount_total)
+        ->and($returnedTax)->toBe($invoice->tax_total)
+        ->and($returnedTotal)->toBe($invoice->total)
+        ->and($returnedCost)->toBe($item->total_cost_snapshot)
+        ->and($invoice->refresh()->status)->toBe(InvoiceStatus::Reversed);
 });

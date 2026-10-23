@@ -15,6 +15,7 @@ use App\Services\Sales\SalesReturnService;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -106,7 +107,7 @@ class InvoiceReturnController extends Controller
     {
         abort_unless($request->user()?->canConfirmSales(), 403);
         $this->assertReturnInvoice($return, InvoiceType::SalesReturn);
-        $this->deleteDraft($return);
+        $this->deleteDraft($return, InvoiceType::SalesReturn);
 
         Inertia::flash('toast', [
             'type' => 'success',
@@ -201,7 +202,7 @@ class InvoiceReturnController extends Controller
     {
         abort_unless($request->user()?->canManagePurchases(), 403);
         $this->assertReturnInvoice($return, InvoiceType::PurchaseReturn);
-        $this->deleteDraft($return);
+        $this->deleteDraft($return, InvoiceType::PurchaseReturn);
 
         Inertia::flash('toast', [
             'type' => 'success',
@@ -338,14 +339,28 @@ class InvoiceReturnController extends Controller
         return Store::query()->where('code', 'MAIN')->firstOrFail();
     }
 
-    private function deleteDraft(Invoice $return): void
+    private function deleteDraft(Invoice $return, InvoiceType $type): void
     {
-        if ($return->status !== InvoiceStatus::Draft) {
-            throw ValidationException::withMessages([
-                'return' => 'فقط پیش‌نویس برگشت قابل حذف است.',
-            ]);
-        }
+        DB::transaction(function () use ($return, $type): void {
+            $snapshot = Invoice::query()->findOrFail($return->id);
+            Invoice::query()
+                ->whereKey($snapshot->parent_invoice_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $locked = Invoice::query()
+                ->whereKey($return->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $return->delete();
+            if ($locked->type !== $type
+                || (int) $locked->store_id !== $this->mainStore()->id
+                || $locked->status !== InvoiceStatus::Draft) {
+                throw ValidationException::withMessages([
+                    'return' => 'فقط پیش‌نویس برگشت قابل حذف است.',
+                ]);
+            }
+
+            $locked->delete();
+        });
     }
 }

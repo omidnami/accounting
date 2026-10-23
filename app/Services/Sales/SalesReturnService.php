@@ -7,6 +7,7 @@ use App\Enums\InventoryMovementType;
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Models\AccountingPeriod;
+use App\Models\InventoryMovement;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\User;
@@ -151,24 +152,33 @@ class SalesReturnService
                         throw new DomainException('مقدار برگشت فروش باید بزرگ‌تر از صفر باشد.');
                     }
 
-                    $remaining = $this->returnableQuantities->remainingFor(
+                    $state = $this->returnableQuantities->stateFor(
                         $originalItem,
                         InvoiceType::SalesReturn,
                     );
+                    $remaining = $state['remaining_quantity'];
 
                     if (Decimal::compare($quantity, $remaining, 3) > 0) {
                         throw new DomainException('مقدار برگشت فروش از مقدار قابل برگشت ردیف بیشتر است.');
                     }
 
-                    $isFull = Decimal::compare($quantity, $originalItem->quantity, 3) === 0;
+                    $isFinal = Decimal::compare($quantity, $remaining, 3) === 0;
                     $gross = Decimal::multiply($quantity, $originalItem->unit_price, 2);
-                    $discount = $isFull
-                        ? Decimal::normalize($originalItem->discount_amount, 2)
-                        : Decimal::divide(Decimal::multiply($originalItem->discount_amount, $quantity, 4), $originalItem->quantity, 2);
+                    $discount = $this->returnableQuantities->allocateMoney(
+                        $originalItem->discount_amount,
+                        $state['returned_discount'],
+                        $quantity,
+                        $originalItem->quantity,
+                        $isFinal,
+                    );
                     $taxable = Decimal::subtract($gross, $discount, 2);
-                    $taxAmount = $isFull
-                        ? Decimal::normalize($originalItem->tax_amount, 2)
-                        : Decimal::divide(Decimal::multiply($originalItem->tax_amount, $quantity, 4), $originalItem->quantity, 2);
+                    $taxAmount = $this->returnableQuantities->allocateMoney(
+                        $originalItem->tax_amount,
+                        $state['returned_tax'],
+                        $quantity,
+                        $originalItem->quantity,
+                        $isFinal,
+                    );
                     $lineTotal = Decimal::add($taxable, $taxAmount, 2);
 
                     $return->items()->create([
@@ -273,18 +283,10 @@ class SalesReturnService
                 ->lockForUpdate()
                 ->findOrFail($returnInvoice->id);
 
-            if ($return->type !== InvoiceType::SalesReturn || $return->status !== InvoiceStatus::Draft) {
-                throw new DomainException('فقط برگشت فروش پیش‌نویس قابل تأیید است.');
-            }
-
-            if ($original->type !== InvoiceType::Sales
+            if ($return->type !== InvoiceType::SalesReturn
+                || $original->type !== InvoiceType::Sales
                 || (int) $return->parent_invoice_id !== (int) $original->id) {
                 throw new DomainException('فاکتور اصلی برگشت فروش معتبر نیست.');
-            }
-
-            if (! $return->customer?->party?->is_active
-                || (int) $return->customer->party->store_id !== (int) $return->store_id) {
-                throw new DomainException('مشتری برگشت فروش معتبر نیست.');
             }
 
             $warehouse = Warehouse::query()->findOrFail($warehouseId);
@@ -292,6 +294,25 @@ class SalesReturnService
             if ((int) $warehouse->store_id !== (int) $return->store_id
                 || (int) $warehouse->branch_id !== (int) $return->branch_id) {
                 throw new DomainException('انبار برگشت فروش باید متعلق به همان فروشگاه و شعبه باشد.');
+            }
+
+            if ($return->status === InvoiceStatus::Confirmed) {
+                $this->assertConfirmedWarehouse(
+                    $return,
+                    $warehouseId,
+                    InventoryMovementType::SalesReturn,
+                );
+
+                return $return->load(['items', 'parentInvoice']);
+            }
+
+            if ($return->status !== InvoiceStatus::Draft) {
+                throw new DomainException('فقط برگشت فروش پیش‌نویس قابل تأیید است.');
+            }
+
+            if (! $return->customer?->party?->is_active
+                || (int) $return->customer->party->store_id !== (int) $return->store_id) {
+                throw new DomainException('مشتری برگشت فروش معتبر نیست.');
             }
 
             $period = AccountingPeriod::query()
@@ -307,6 +328,9 @@ class SalesReturnService
 
             $costTotal = '0.00';
             $taxTotal = '0.00';
+            $subtotal = '0.00';
+            $discountTotal = '0.00';
+            $total = '0.00';
 
             foreach ($return->items as $item) {
                 $originalItem = $original->items
@@ -316,24 +340,60 @@ class SalesReturnService
                     throw new DomainException('ردیف اصلی برگشت فروش پیدا نشد.');
                 }
 
-                $remaining = $this->returnableQuantities->remainingFor(
+                $state = $this->returnableQuantities->stateFor(
                     $originalItem,
                     InvoiceType::SalesReturn,
                 );
+                $remaining = $state['remaining_quantity'];
 
                 if (Decimal::compare($item->quantity, $remaining, Decimal::QUANTITY_SCALE) > 0) {
                     throw new DomainException('مقدار تأییدشده برگشت فروش از مقدار قابل برگشت ردیف بیشتر است.');
                 }
 
-                $isFull = Decimal::compare($item->quantity, $originalItem->quantity, 3) === 0;
-                $itemCost = $isFull
-                    ? Decimal::normalize($originalItem->total_cost_snapshot, 2)
-                    : Decimal::divide(
-                        Decimal::multiply($originalItem->total_cost_snapshot, $item->quantity, 4),
-                        $originalItem->quantity,
-                        2,
-                    );
+                $isFinal = Decimal::compare(
+                    $item->quantity,
+                    $remaining,
+                    Decimal::QUANTITY_SCALE,
+                ) === 0;
+                $gross = Decimal::multiply(
+                    $item->quantity,
+                    $originalItem->unit_price,
+                    Decimal::MONEY_SCALE,
+                );
+                $discount = $this->returnableQuantities->allocateMoney(
+                    $originalItem->discount_amount,
+                    $state['returned_discount'],
+                    $item->quantity,
+                    $originalItem->quantity,
+                    $isFinal,
+                );
+                $taxAmount = $this->returnableQuantities->allocateMoney(
+                    $originalItem->tax_amount,
+                    $state['returned_tax'],
+                    $item->quantity,
+                    $originalItem->quantity,
+                    $isFinal,
+                );
+                $lineTotal = Decimal::add(
+                    Decimal::subtract($gross, $discount, Decimal::MONEY_SCALE),
+                    $taxAmount,
+                    Decimal::MONEY_SCALE,
+                );
+                $itemCost = $this->returnableQuantities->allocateMoney(
+                    $originalItem->total_cost_snapshot,
+                    $state['returned_cost'],
+                    $item->quantity,
+                    $originalItem->quantity,
+                    $isFinal,
+                );
                 $unitCost = Decimal::divide($itemCost, $item->quantity, 4);
+                $item->forceFill([
+                    'discount_amount' => $discount,
+                    'tax_amount' => $taxAmount,
+                    'line_total' => $lineTotal,
+                    'unit_cost_snapshot' => $unitCost,
+                    'total_cost_snapshot' => $itemCost,
+                ])->save();
 
                 $this->inventory->receive(
                     warehouseId: $warehouseId,
@@ -351,10 +411,19 @@ class SalesReturnService
                 );
 
                 $costTotal = Decimal::add($costTotal, $itemCost, 2);
-                $taxTotal = Decimal::add($taxTotal, $item->tax_amount, 2);
+                $taxTotal = Decimal::add($taxTotal, $taxAmount, 2);
+                $subtotal = Decimal::add($subtotal, $gross, 2);
+                $discountTotal = Decimal::add($discountTotal, $discount, 2);
+                $total = Decimal::add($total, $lineTotal, 2);
             }
 
-            $taxable = Decimal::subtract($return->total, $taxTotal, 2);
+            $return->forceFill([
+                'subtotal' => $subtotal,
+                'discount_total' => $discountTotal,
+                'tax_total' => $taxTotal,
+                'total' => $total,
+            ])->save();
+            $taxable = Decimal::subtract($total, $taxTotal, 2);
             $lines = [
                 [
                     'account_id' => $this->settings->defaultAccountId('sales_returns', $return->store_id),
@@ -366,7 +435,7 @@ class SalesReturnService
                     'account_id' => $this->settings->defaultAccountId('accounts_receivable', $return->store_id),
                     'party_id' => $return->customer->party_id,
                     'debit' => '0.00',
-                    'credit' => $return->total,
+                    'credit' => $total,
                     'description' => 'کاهش مطالبات مشتری',
                 ],
                 [
@@ -421,6 +490,26 @@ class SalesReturnService
             || ($existing->idempotency_request_hash !== null
                 && ! hash_equals($existing->idempotency_request_hash, $requestHash))) {
             throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست برگشت متفاوتی استفاده شده است.');
+        }
+    }
+
+    private function assertConfirmedWarehouse(
+        Invoice $return,
+        int $warehouseId,
+        InventoryMovementType $movementType,
+    ): void {
+        $warehouseIds = InventoryMovement::query()
+            ->where('source_type', $return->getMorphClass())
+            ->where('source_id', $return->id)
+            ->where('movement_type', $movementType)
+            ->pluck('warehouse_id')
+            ->map(fn ($id): int => (int) $id)
+            ->unique();
+
+        if ($warehouseIds->isEmpty()
+            || $warehouseIds->count() !== 1
+            || ! $warehouseIds->contains($warehouseId)) {
+            throw new DomainException('این برگشت قبلاً با انبار دیگری تأیید شده است.');
         }
     }
 }

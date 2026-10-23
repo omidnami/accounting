@@ -16,9 +16,9 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `bfd293f`
-- پیام: `fix(treasury): harden check identity and linking flow`
-- شاخه یک commit جلوتر از `origin/main` است و تغییرات Phase 9A هنوز commit
+- آخرین کامیت محلی: `ae27cad`
+- پیام: `feat(returns): add purchase and sales return workflow UI`
+- شاخه با `origin/main` هم‌سطح بود؛ اصلاحات بازبینی Phase 9A هنوز commit
   نشده‌اند.
 
 ## استک و محیط
@@ -36,7 +36,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `198 tests`, `1350 assertions`
+- Pest: `199 tests`, `1364 assertions`
 - PHPStan: صفر خطا
 - Pint: موفق
 - Vue type-check: موفق
