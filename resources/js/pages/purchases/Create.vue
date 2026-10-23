@@ -76,6 +76,14 @@ const form = useForm({
     notes: '',
     items: [] as Line[],
 });
+watch(
+    () => form.invoice_date,
+    (value) => {
+        if (form.due_date && value && form.due_date < value) {
+            form.due_date = '';
+        }
+    },
+);
 const warehouseId = ref(props.defaults.warehouse_id?.toString() ?? '');
 const selectedSupplier = ref<SupplierOption | null>(null);
 const supplierSearch = ref('');
@@ -392,6 +400,7 @@ defineOptions({
                             v-model="form.invoice_date"
                             :min="defaults.fiscal_year.starts_on"
                             :max="defaults.fiscal_year.ends_on"
+                            required
                         />
                         <InputError :message="form.errors.invoice_date" />
                     </div>

@@ -228,6 +228,7 @@ defineOptions({
                                 v-model="form.return_date"
                                 :min="original.invoice_date"
                                 :max="fiscal_year.ends_on"
+                                required
                             />
                             <InputError :message="form.errors.return_date" />
                         </div>

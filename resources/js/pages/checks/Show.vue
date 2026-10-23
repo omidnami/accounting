@@ -594,6 +594,7 @@ defineOptions({
                             <JalaliDatePicker
                                 id="settlement_date"
                                 v-model="settlementForm.settlement_date"
+                                required
                             />
                             <InputError
                                 :message="settlementForm.errors.settlement_date"
@@ -688,6 +689,7 @@ defineOptions({
                         <JalaliDatePicker
                             id="bounce_date"
                             v-model="bounceForm.bounce_date"
+                            required
                         />
                         <InputError :message="bounceForm.errors.bounce_date" />
                         <InputError :message="bounceCheckError" />

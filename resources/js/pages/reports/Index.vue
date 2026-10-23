@@ -218,13 +218,13 @@ defineOptions({
                 <span class="text-xs font-semibold text-muted-foreground"
                     >از تاریخ</span
                 >
-                <JalaliDatePicker v-model="from" :max="to" />
+                <JalaliDatePicker v-model="from" required />
             </label>
             <label class="space-y-1.5">
                 <span class="text-xs font-semibold text-muted-foreground"
                     >تا تاریخ</span
                 >
-                <JalaliDatePicker v-model="to" :min="from" />
+                <JalaliDatePicker v-model="to" required />
             </label>
             <label class="space-y-1.5">
                 <span class="text-xs font-semibold text-muted-foreground"

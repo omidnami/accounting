@@ -670,6 +670,7 @@ defineOptions({
                                 v-model="form.receipt_date"
                                 :min="fiscal_year.starts_on"
                                 :max="fiscal_year.ends_on"
+                                required
                             />
                             <InputError :message="form.errors.receipt_date" />
                         </div>

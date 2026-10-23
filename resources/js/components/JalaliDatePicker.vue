@@ -24,12 +24,14 @@ const props = withDefaults(
         max?: string;
         id?: string;
         placeholder?: string;
+        required?: boolean;
     }>(),
     {
         min: undefined,
         max: undefined,
         id: undefined,
         placeholder: 'انتخاب تاریخ',
+        required: false,
     },
 );
 
@@ -54,6 +56,8 @@ const monthNames = [
 const weekDays = ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'];
 const open = ref(false);
 const root = ref<HTMLElement | null>(null);
+const trigger = ref<HTMLButtonElement | null>(null);
+const focusedDay = ref(1);
 const initial = toJalali(props.modelValue || todayIso());
 const viewYear = ref(initial.year);
 const viewMonth = ref(initial.month);
@@ -120,6 +124,20 @@ const changeMonth = (direction: number) => {
 
     viewMonth.value = month;
     viewYear.value = year;
+    focusedDay.value = Math.min(
+        focusedDay.value,
+        jalaliMonthLength(year, month),
+    );
+};
+const focusDay = async () => {
+    await nextTick();
+    root.value
+        ?.querySelector<HTMLButtonElement>(`[data-day="${focusedDay.value}"]`)
+        ?.focus();
+};
+const close = () => {
+    open.value = false;
+    void nextTick(() => trigger.value?.focus());
 };
 const selectDay = (day: number) => {
     if (isDisabled(day)) {
@@ -127,11 +145,11 @@ const selectDay = (day: number) => {
     }
 
     emit('update:modelValue', toIsoDate(viewYear.value, viewMonth.value, day));
-    open.value = false;
+    close();
 };
 const clear = () => {
     emit('update:modelValue', '');
-    open.value = false;
+    close();
 };
 const toggle = async () => {
     open.value = !open.value;
@@ -140,7 +158,61 @@ const toggle = async () => {
         const current = selected.value ?? toJalali(todayIso());
         viewYear.value = current.year;
         viewMonth.value = current.month;
-        await nextTick();
+        focusedDay.value = selected.value?.day ?? 1;
+        await focusDay();
+    }
+};
+const moveFocus = (days: number) => {
+    const iso = toIsoDate(viewYear.value, viewMonth.value, focusedDay.value);
+    const date = new Date(`${iso}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    const next = toJalali(date.toISOString().slice(0, 10));
+    const nextKey = dateKey(next);
+
+    if (
+        (minDate.value !== null && nextKey < dateKey(minDate.value)) ||
+        (maxDate.value !== null && nextKey > dateKey(maxDate.value))
+    ) {
+        return;
+    }
+
+    viewYear.value = next.year;
+    viewMonth.value = next.month;
+    focusedDay.value = next.day;
+    void focusDay();
+};
+const onCalendarKeydown = (event: KeyboardEvent) => {
+    const keys: Record<string, number> = {
+        ArrowLeft: 1,
+        ArrowRight: -1,
+        ArrowDown: 7,
+        ArrowUp: -7,
+    };
+
+    if (event.key === 'Escape') {
+        event.preventDefault();
+        close();
+        return;
+    }
+
+    if (event.key === 'Home' || event.key === 'End') {
+        event.preventDefault();
+        const nextDay =
+            event.key === 'Home'
+                ? 1
+                : jalaliMonthLength(viewYear.value, viewMonth.value);
+
+        if (!isDisabled(nextDay)) {
+            focusedDay.value = nextDay;
+            void focusDay();
+        }
+
+        return;
+    }
+
+    if (event.key in keys) {
+        event.preventDefault();
+        moveFocus(keys[event.key]);
     }
 };
 const clickOutside = (event: MouseEvent) => {
@@ -167,10 +239,12 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', clickOutside));
 <template>
     <div ref="root" class="relative" dir="rtl">
         <button
+            ref="trigger"
             :id="id"
             type="button"
             class="flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 text-right text-sm transition outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"
             :aria-expanded="open"
+            :aria-required="required"
             @click="toggle"
         >
             <span :class="displayValue ? '' : 'text-muted-foreground'">
@@ -181,7 +255,10 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', clickOutside));
 
         <div
             v-if="open"
-            class="absolute z-50 mt-2 w-72 rounded-2xl border border-border bg-popover p-3 text-popover-foreground shadow-xl"
+            role="dialog"
+            aria-label="انتخاب تاریخ شمسی"
+            class="absolute right-0 z-50 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-2xl border border-border bg-popover p-3 text-popover-foreground shadow-xl"
+            @keydown="onCalendarKeydown"
         >
             <div class="flex items-center justify-between">
                 <button
@@ -210,21 +287,26 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', clickOutside));
                 </button>
             </div>
 
-            <div class="mt-3 grid grid-cols-7 text-center">
+            <div role="row" class="mt-3 grid grid-cols-7 text-center">
                 <span
                     v-for="weekDay in weekDays"
                     :key="weekDay"
+                    role="columnheader"
                     class="py-1 text-[9px] font-bold text-muted-foreground"
                 >
                     {{ weekDay }}
                 </span>
             </div>
-            <div class="grid grid-cols-7 gap-1">
+            <div role="grid" class="grid grid-cols-7 gap-1">
                 <template v-for="(day, index) in days" :key="`${index}-${day}`">
                     <span v-if="day === null" class="size-8" />
                     <button
                         v-else
                         type="button"
+                        role="gridcell"
+                        :data-day="day"
+                        :tabindex="focusedDay === day ? 0 : -1"
+                        :aria-label="`${day} ${monthNames[viewMonth - 1]} ${toPersianDigits(viewYear)}`"
                         class="flex size-8 items-center justify-center rounded-lg text-xs transition"
                         :class="[
                             isSelected(day)
@@ -242,7 +324,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', clickOutside));
                 </template>
             </div>
             <div
-                v-if="!min || !max || modelValue"
+                v-if="modelValue && !required"
                 class="mt-2 flex justify-end border-t pt-2"
             >
                 <button

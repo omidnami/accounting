@@ -464,9 +464,19 @@ defineOptions({
             <article class="rounded-2xl border border-border/70 bg-card p-5">
                 <div class="flex items-center justify-between">
                     <div>
-                        <h2 class="text-sm font-bold">روند ۷ روز اخیر</h2>
+                        <h2 class="text-sm font-bold">
+                            {{
+                                trendPeriod === 'week'
+                                    ? 'روند ۷ روز اخیر'
+                                    : 'روند ۶ ماه اخیر'
+                            }}
+                        </h2>
                         <p class="mt-1 text-[10px] text-muted-foreground">
-                            فروش خالص و در نمای مالی، خرید خالص
+                            {{
+                                trendPeriod === 'week'
+                                    ? 'فروش خالص و در نمای مالی، خرید خالص'
+                                    : 'فروش و خرید خالص در ماه‌های شمسی'
+                            }}
                         </p>
                     </div>
                     <div class="flex gap-3 text-[9px] text-muted-foreground">

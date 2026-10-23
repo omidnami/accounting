@@ -560,6 +560,7 @@ defineOptions({
                                 v-model="form.payment_date"
                                 :min="fiscal_year.starts_on"
                                 :max="fiscal_year.ends_on"
+                                required
                             />
                             <InputError :message="form.errors.payment_date" />
                         </div>

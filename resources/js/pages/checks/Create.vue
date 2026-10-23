@@ -64,6 +64,14 @@ const form = useForm({
     due_date: props.defaults.due_date,
     description: '',
 });
+watch(
+    () => form.issue_date,
+    (value) => {
+        if (form.due_date && value && form.due_date < value) {
+            form.due_date = '';
+        }
+    },
+);
 const selectedParty = ref<PartyOption | null>(
     props.defaults.type === 'receivable' ? props.initial_party : null,
 );
@@ -514,6 +522,7 @@ defineOptions({
                                 id="due_date"
                                 v-model="form.due_date"
                                 :min="form.issue_date"
+                                required
                             />
                             <InputError :message="form.errors.due_date" />
                         </div>

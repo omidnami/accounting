@@ -140,13 +140,16 @@ export const jalaliWeekDay = (year: number, month: number, day: number) => {
 };
 
 export const todayIso = () => {
-    const today = new Date();
+    const parts = new Intl.DateTimeFormat('en-US', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        timeZone: 'Asia/Tehran',
+    }).formatToParts(new Date());
+    const value = (type: Intl.DateTimeFormatPartTypes) =>
+        parts.find((part) => part.type === type)?.value ?? '';
 
-    return [
-        today.getFullYear().toString().padStart(4, '0'),
-        (today.getMonth() + 1).toString().padStart(2, '0'),
-        today.getDate().toString().padStart(2, '0'),
-    ].join('-');
+    return `${value('year')}-${value('month')}-${value('day')}`;
 };
 
 export const toPersianDigits = (value: string | number) =>

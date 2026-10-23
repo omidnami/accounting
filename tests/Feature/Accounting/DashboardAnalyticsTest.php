@@ -218,6 +218,10 @@ it('shows real financial metrics to managers and accountants', function (UserRol
             ->has('dashboard.trend', 7)
             ->has('dashboard.monthly_trend', 6)
             ->where(
+                'dashboard.monthly_trend.5.sales',
+                $context['invoice']->total,
+            )
+            ->where(
                 'dashboard.recent_activity',
                 fn ($activity) => collect($activity)->contains('kind', 'check'),
             ));
