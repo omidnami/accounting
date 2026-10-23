@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\CheckController;
 use App\Http\Controllers\CustomerReceiptController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FinancialReportsController;
 use App\Http\Controllers\InvoiceReturnController;
 use App\Http\Controllers\PartyController;
@@ -19,7 +20,7 @@ use Illuminate\Support\Facades\Route;
 Route::inertia('/', 'Welcome')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+    Route::get('dashboard', DashboardController::class)->name('dashboard');
     Route::get('reports', FinancialReportsController::class)->name('reports.index');
     Route::get('audit-logs', AuditLogController::class)->name('audit-logs.index');
     Route::resource('users', UserManagementController::class)

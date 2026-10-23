@@ -51,6 +51,34 @@ class CustomerReceivableService
         return $this->outstandingFromLoadedRelations($invoice);
     }
 
+    public function storeOutstanding(int $storeId, ?int $branchId = null): string
+    {
+        $invoices = Invoice::query()
+            ->where('store_id', $storeId)
+            ->when($branchId !== null, fn ($query) => $query->where('branch_id', $branchId))
+            ->where('type', InvoiceType::Sales)
+            ->whereIn('status', [
+                InvoiceStatus::Confirmed,
+                InvoiceStatus::PartiallyPaid,
+            ])
+            ->with([
+                'receiptAllocations.receipt',
+                'childInvoices',
+            ])
+            ->get();
+        $total = '0.00';
+
+        foreach ($invoices as $invoice) {
+            $outstanding = $this->outstandingFromLoadedRelations($invoice);
+
+            if (Decimal::isPositive($outstanding)) {
+                $total = Decimal::add($total, $outstanding, Decimal::MONEY_SCALE);
+            }
+        }
+
+        return $total;
+    }
+
     /**
      * @return Collection<int, Invoice>
      */

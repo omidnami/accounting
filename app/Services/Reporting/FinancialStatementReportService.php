@@ -165,8 +165,8 @@ class FinancialStatementReportService
                 $query->posted()
                     ->where('store_id', $storeId)
                     ->when($branchId !== null, fn ($query) => $query->where('branch_id', $branchId))
-                    ->when($from !== null, fn ($query) => $query->where('entry_date', '>=', $from))
-                    ->where('entry_date', '<=', $to);
+                    ->when($from !== null, fn ($query) => $query->whereDate('entry_date', '>=', $from))
+                    ->whereDate('entry_date', '<=', $to);
             })
             ->groupBy('account_id')
             ->get()

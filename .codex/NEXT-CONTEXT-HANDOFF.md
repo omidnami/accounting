@@ -1,6 +1,6 @@
 # Store Accounting System - Context Handoff
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 11A)
+آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 12A)
 
 ## شروع کانتکست جدید
 
@@ -16,9 +16,9 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `eb0c03f`
-- پیام: `fix(treasury): harden account management and check integration`
-- شاخه با `origin/main` هم‌سطح بود؛ Phase 11A هنوز commit نشده است.
+- آخرین کامیت محلی: `cd2964b`
+- پیام: `fix(audit): enforce immutable actor-safe audit and manager safeguards`
+- شاخه با `origin/main` هم‌سطح بود؛ Phase 12A هنوز commit نشده است.
 
 ## استک و محیط
 
@@ -35,7 +35,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `221 tests`, `1562 assertions`
+- Pest: `226 tests`, `1659 assertions`
 - PHPStan: صفر خطا
 - Pint: موفق
 - Vue type-check: موفق
@@ -165,6 +165,7 @@ npm run build
 - `phase-9a`: رابط برگشت خرید و فروش
 - `phase-10a`: مدیریت حساب‌های خزانه
 - `phase-11a`: Audit Log و مدیریت کاربران
+- `phase-12a`: Dashboard تحلیلی واقعی
 
 ## فایل‌های کلیدی
 
@@ -185,6 +186,7 @@ npm run build
 - `app/Services/Treasury/TreasuryAccountService.php`
 - `app/Services/Users/UserManagementService.php`
 - `app/Services/Audit/AuditLogService.php`
+- `app/Services/Dashboard/DashboardService.php`
 - `app/Services/Treasury/CheckSettlementService.php`
 
 ### Controllers
@@ -200,6 +202,7 @@ npm run build
 - `TreasuryAccountController`
 - `UserManagementController`
 - `AuditLogController`
+- `DashboardController`
 - `FinancialReportsController`
 
 ### UI
@@ -213,6 +216,7 @@ npm run build
 - `resources/js/pages/treasury-accounts`
 - `resources/js/pages/users`
 - `resources/js/pages/audit`
+- `resources/js/pages/DashboardHome.vue`
 - `resources/js/pages/purchases`
 - `resources/js/pages/payments`
 - `resources/js/pages/reports`
@@ -246,21 +250,23 @@ npm run build
 - موجودی‌گیری فیزیکی، StockAdjustment و صفحه Cardex اختصاصی وجود ندارند.
 - Audit Log و مدیریت کاربران/نقش‌ها وجود دارد؛ غیرفعال‌سازی کاربر، retention و
   alerting برای Audit هنوز پیاده‌سازی نشده‌اند.
-- داشبورد فعلی داده واقعی تحلیلی ندارد.
+- Dashboard برای Manager/Accountant داده واقعی دارد؛ نمودار ماهانه شمسی، cache
+  و پاک‌سازی فایل Dashboard قدیمی باقی مانده است.
 - سامانه مودیان خارج از MVP است.
 - بررسی دستی مرورگر و acceptance نهایی انجام نشده است.
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی Phase 11A در دسکتاپ و موبایل
-2. commit و push مدیریت کاربران و Audit توسط کاربر و سپس تأیید CI
-3. تکمیل Dashboard تحلیلی واقعی یا Datepicker شمسی
+1. بررسی دستی Phase 12A در دسکتاپ و موبایل
+2. commit و push Dashboard توسط کاربر و سپس تأیید CI
+3. پیاده‌سازی Datepicker شمسی و نمودار ماهانه
 
 جزئیات Phase 8A در `.codex/phase-8a-treasury-checks-ui.md` ثبت شده است.
 اصلاحات بازبینی آن در `.codex/phase-8a-check-hardening.md` آمده است.
 جزئیات Phase 9A در `.codex/phase-9a-return-ui.md` آمده است.
 جزئیات Phase 10A در `.codex/phase-10a-treasury-account-ui.md` آمده است.
 جزئیات Phase 11A در `.codex/phase-11a-audit-users.md` آمده است.
+جزئیات Phase 12A در `.codex/phase-12a-dashboard-analytics.md` آمده است.
 
 ## الگوی درخواست از Agent بعدی
 
