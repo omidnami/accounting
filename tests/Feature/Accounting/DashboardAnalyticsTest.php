@@ -3,6 +3,8 @@
 use App\Enums\InventoryMovementType;
 use App\Enums\PaymentMethod;
 use App\Enums\UserRole;
+use App\Models\Account;
+use App\Models\Check;
 use App\Models\Customer;
 use App\Models\FiscalYear;
 use App\Models\Party;
@@ -12,9 +14,11 @@ use App\Models\User;
 use App\Services\Accounting\FiscalYearSetupService;
 use App\Services\Accounting\JalaliDateService;
 use App\Services\Inventory\InventoryService;
+use App\Services\Reporting\FinancialStatementReportService;
 use App\Services\Sales\CustomerReceiptService;
 use App\Services\Sales\SalesService;
 use Database\Seeders\AccountSeeder;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 
 function dashboardAnalyticsContext(): array
@@ -94,14 +98,107 @@ function dashboardAnalyticsContext(): array
         approver: $owner,
         idempotencyKey: 'dashboard-receipt-'.$owner->id,
     );
+    Check::query()->create([
+        'store_id' => $store->id,
+        'branch_id' => $branch->id,
+        'document_number' => 'CK-DASHBOARD-OVERDUE',
+        'check_number' => 'DASH-1',
+        'bank_name' => 'بانک داشبورد',
+        'amount' => '100.00',
+        'due_date' => today()->subDay()->toDateString(),
+        'type' => 'receivable',
+        'customer_id' => $customer->id,
+        'created_by' => $owner->id,
+    ]);
+    Check::query()->create([
+        'store_id' => $store->id,
+        'branch_id' => $branch->id,
+        'document_number' => 'CK-DASHBOARD-SOON',
+        'check_number' => 'DASH-2',
+        'bank_name' => 'بانک داشبورد',
+        'amount' => '100.00',
+        'due_date' => today()->addDays(3)->toDateString(),
+        'type' => 'receivable',
+        'customer_id' => $customer->id,
+        'created_by' => $owner->id,
+    ]);
+    Check::query()->create([
+        'store_id' => $store->id,
+        'branch_id' => $branch->id,
+        'document_number' => 'CK-DASHBOARD-LATER',
+        'check_number' => 'DASH-3',
+        'bank_name' => 'بانک داشبورد',
+        'amount' => '100.00',
+        'due_date' => today()->addDays(30)->toDateString(),
+        'type' => 'receivable',
+        'customer_id' => $customer->id,
+        'created_by' => $owner->id,
+    ]);
+    $cash = Account::query()
+        ->where('store_id', $store->id)
+        ->where('code', '1101')
+        ->firstOrFail();
+    $salesAccount = Account::query()
+        ->where('store_id', $store->id)
+        ->where('code', '4101')
+        ->firstOrFail();
+    $oldEntryId = DB::table('journal_entries')->insertGetId([
+        'store_id' => $store->id,
+        'branch_id' => $branch->id,
+        'fiscal_year_id' => $fiscalYear->id,
+        'accounting_period_id' => $fiscalYear->periods()->firstOrFail()->id,
+        'entry_number' => 'OLD-DASHBOARD-'.$owner->id,
+        'entry_date' => $fiscalYear->starts_on->subDay()->toDateString(),
+        'description' => 'درآمد سال قبل',
+        'status' => 'posted',
+        'created_by' => $owner->id,
+        'posted_at' => now(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    DB::table('journal_entry_lines')->insert([
+        [
+            'journal_entry_id' => $oldEntryId,
+            'account_id' => $cash->id,
+            'debit' => '1000.00',
+            'credit' => '0.00',
+            'sort_order' => 1,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ],
+        [
+            'journal_entry_id' => $oldEntryId,
+            'account_id' => $salesAccount->id,
+            'debit' => '0.00',
+            'credit' => '1000.00',
+            'sort_order' => 2,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ],
+    ]);
 
-    return compact('store', 'branch', 'fiscalYear', 'owner', 'invoice', 'product');
+    return compact(
+        'store',
+        'branch',
+        'fiscalYear',
+        'owner',
+        'customer',
+        'invoice',
+        'product',
+    );
 }
 
 it('shows real financial metrics to managers and accountants', function (UserRole $role) {
     $context = dashboardAnalyticsContext();
     $viewer = User::factory()->create();
     $viewer->forceFill(['role' => $role])->save();
+    $expectedProfit = app(FinancialStatementReportService::class)
+        ->incomeStatement(
+            $context['store']->id,
+            $context['fiscalYear']->starts_on->toDateString(),
+            today()->toDateString(),
+            $context['branch']->id,
+        )['net_profit'];
 
     $this->actingAs($viewer)
         ->get(route('dashboard'))
@@ -109,13 +206,20 @@ it('shows real financial metrics to managers and accountants', function (UserRol
         ->assertInertia(fn (Assert $page) => $page
             ->component('DashboardHome')
             ->where('dashboard.mode', 'financial')
-            ->where('dashboard.metrics.cash_balance', '100.00')
+            ->where('dashboard.metrics.cash_balance', '1100.00')
             ->where('dashboard.metrics.receivables', '340.00')
             ->where('dashboard.metrics.sales_today', $context['invoice']->total)
             ->where('dashboard.metrics.open_sales', 1)
+            ->where('dashboard.metrics.overdue_checks', 1)
+            ->where('dashboard.metrics.due_soon_checks', 1)
+            ->where('dashboard.metrics.pending_checks_amount', '300.00')
+            ->where('dashboard.metrics.net_profit', $expectedProfit)
             ->where('dashboard.low_stock.count', 1)
             ->has('dashboard.trend', 7)
-            ->has('dashboard.recent_activity'));
+            ->where(
+                'dashboard.recent_activity',
+                fn ($activity) => collect($activity)->contains('kind', 'check'),
+            ));
 })->with([
     'manager' => [UserRole::Manager],
     'accountant' => [UserRole::Accountant],

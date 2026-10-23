@@ -40,7 +40,8 @@ type ActivityKind =
     | 'sales_return'
     | 'purchase_return'
     | 'receipt'
-    | 'payment';
+    | 'payment'
+    | 'check';
 
 const props = defineProps<{
     dashboard: {
@@ -223,8 +224,13 @@ const secondaryMetrics = computed(() => {
             icon: ShoppingCart,
         },
         {
+            label: 'چک‌های سررسیدگذشته',
+            value: count.format(Number(m.overdue_checks ?? 0)),
+            icon: AlertTriangle,
+        },
+        {
             label: 'چک‌های تا ۷ روز آینده',
-            value: count.format(Number(m.due_checks ?? 0)),
+            value: count.format(Number(m.due_soon_checks ?? 0)),
             icon: CalendarDays,
         },
         {
@@ -276,6 +282,10 @@ const activityMeta: Record<ActivityKind, { label: string; className: string }> =
         payment: {
             label: 'پرداخت',
             className: 'bg-red-500/10 text-red-700 dark:text-red-300',
+        },
+        check: {
+            label: 'چک',
+            className: 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300',
         },
     };
 const primaryAction = computed(() => {

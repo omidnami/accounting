@@ -35,7 +35,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `226 tests`, `1659 assertions`
+- Pest: `226 tests`, `1677 assertions`
 - PHPStan: صفر خطا
 - Pint: موفق
 - Vue type-check: موفق

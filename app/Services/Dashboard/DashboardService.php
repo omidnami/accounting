@@ -3,6 +3,7 @@
 namespace App\Services\Dashboard;
 
 use App\Enums\CheckStatus;
+use App\Enums\CheckType;
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Enums\UserRole;
@@ -21,6 +22,7 @@ use App\Services\Reporting\FinancialStatementReportService;
 use App\Services\Sales\CustomerReceivableService;
 use App\Support\Decimal;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 class DashboardService
 {
@@ -34,6 +36,26 @@ class DashboardService
      * @return array<string, mixed>
      */
     public function overview(
+        User $user,
+        Store $store,
+        Branch $branch,
+        FiscalYear $fiscalYear,
+    ): array {
+        return DB::transaction(
+            fn (): array => $this->buildOverview(
+                $user,
+                $store,
+                $branch,
+                $fiscalYear,
+            ),
+            attempts: 3,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildOverview(
         User $user,
         Store $store,
         Branch $branch,
@@ -70,14 +92,8 @@ class DashboardService
             return $data;
         }
 
-        $salesToday = $this->netInvoiceTotal(
-            $store,
-            $branch,
-            InvoiceType::Sales,
-            today()->toDateString(),
-            today()->toDateString(),
-        );
         $data['trend'] = $this->trend($store, $branch, includePurchases: $mode === 'financial');
+        $salesToday = $data['trend'][6]['sales'];
         $data['recent_activity'] = $this->recentActivity($store, $branch, $mode === 'financial');
 
         if ($mode === 'sales') {
@@ -104,6 +120,12 @@ class DashboardService
             today()->toDateString(),
             $branch->id,
         );
+        $incomeStatement = $this->statements->incomeStatement(
+            $store->id,
+            $fiscalYear->starts_on->toDateString(),
+            today()->toDateString(),
+            $branch->id,
+        );
         $assetAmount = fn (string $code): string => (string) (
             $balanceSheet['assets']->firstWhere('code', $code)['amount'] ?? '0.00'
         );
@@ -117,23 +139,24 @@ class DashboardService
             'receivables' => $this->receivables->storeOutstanding($store->id, $branch->id),
             'payables' => $this->payables->storeOutstanding($store->id, $branch->id),
             'sales_today' => $salesToday,
-            'purchases_today' => $this->netInvoiceTotal(
-                $store,
-                $branch,
-                InvoiceType::Purchase,
-                today()->toDateString(),
-                today()->toDateString(),
-            ),
+            'purchases_today' => $data['trend'][6]['purchases'],
             'open_sales' => $this->openInvoiceCount(
                 $store,
                 $branch,
                 InvoiceType::Sales,
             ),
-            'due_checks' => (clone $pendingChecks)
+            'overdue_checks' => (clone $pendingChecks)
+                ->whereDate('due_date', '<', today())
+                ->count(),
+            'due_soon_checks' => (clone $pendingChecks)
+                ->whereDate('due_date', '>=', today())
                 ->whereDate('due_date', '<=', today()->addDays(7))
                 ->count(),
-            'pending_checks_amount' => (string) (clone $pendingChecks)->sum('amount'),
-            'net_profit' => $balanceSheet['net_profit'],
+            'pending_checks_amount' => Decimal::normalize(
+                (string) (clone $pendingChecks)->sum('amount'),
+                Decimal::MONEY_SCALE,
+            ),
+            'net_profit' => $incomeStatement['net_profit'],
         ];
         $data['low_stock'] = $this->lowStock($store, $branch);
 
@@ -148,6 +171,40 @@ class DashboardService
         Branch $branch,
         bool $includePurchases,
     ): array {
+        $from = today()->subDays(6)->toDateString();
+        $to = today()->toDateString();
+        $sales = $this->invoiceTotalsByDate(
+            $store,
+            $branch,
+            InvoiceType::Sales,
+            $from,
+            $to,
+        );
+        $purchases = $includePurchases
+            ? $this->invoiceTotalsByDate(
+                $store,
+                $branch,
+                InvoiceType::Purchase,
+                $from,
+                $to,
+            )
+            : collect();
+        $salesReturns = $this->invoiceTotalsByDate(
+            $store,
+            $branch,
+            InvoiceType::SalesReturn,
+            $from,
+            $to,
+        );
+        $purchaseReturns = $includePurchases
+            ? $this->invoiceTotalsByDate(
+                $store,
+                $branch,
+                InvoiceType::PurchaseReturn,
+                $from,
+                $to,
+            )
+            : collect();
         $trend = [];
 
         for ($offset = 6; $offset >= 0; $offset--) {
@@ -155,20 +212,16 @@ class DashboardService
             $value = $date->toDateString();
             $trend[] = [
                 'date' => $value,
-                'sales' => $this->netInvoiceTotal(
-                    $store,
-                    $branch,
-                    InvoiceType::Sales,
-                    $value,
-                    $value,
+                'sales' => Decimal::subtract(
+                    $sales->get($value, '0.00'),
+                    $salesReturns->get($value, '0.00'),
+                    Decimal::MONEY_SCALE,
                 ),
                 'purchases' => $includePurchases
-                    ? $this->netInvoiceTotal(
-                        $store,
-                        $branch,
-                        InvoiceType::Purchase,
-                        $value,
-                        $value,
+                    ? Decimal::subtract(
+                        $purchases->get($value, '0.00'),
+                        $purchaseReturns->get($value, '0.00'),
+                        Decimal::MONEY_SCALE,
                     )
                     : '0.00',
             ];
@@ -177,41 +230,42 @@ class DashboardService
         return $trend;
     }
 
-    private function netInvoiceTotal(
+    /**
+     * @return Collection<int|string, numeric-string>
+     */
+    private function invoiceTotalsByDate(
         Store $store,
         Branch $branch,
         InvoiceType $type,
         string $from,
         string $to,
-    ): string {
-        $isSales = $type === InvoiceType::Sales;
-        $total = (string) Invoice::query()
-            ->where('store_id', $store->id)
-            ->where('branch_id', $branch->id)
-            ->where('type', $type)
-            ->whereIn('status', [
+    ): Collection {
+        $statuses = in_array($type, [
+            InvoiceType::SalesReturn,
+            InvoiceType::PurchaseReturn,
+        ], true)
+            ? [InvoiceStatus::Confirmed]
+            : [
                 InvoiceStatus::Confirmed,
                 InvoiceStatus::PartiallyPaid,
                 InvoiceStatus::Paid,
                 InvoiceStatus::Reversed,
-            ])
-            ->whereDate('invoice_date', '>=', $from)
-            ->whereDate('invoice_date', '<=', $to)
-            ->sum('total');
-        $returned = (string) Invoice::query()
+            ];
+
+        return Invoice::query()
             ->where('store_id', $store->id)
             ->where('branch_id', $branch->id)
-            ->where('type', $isSales ? InvoiceType::SalesReturn : InvoiceType::PurchaseReturn)
-            ->where('status', InvoiceStatus::Confirmed)
+            ->where('type', $type)
+            ->whereIn('status', $statuses)
             ->whereDate('invoice_date', '>=', $from)
             ->whereDate('invoice_date', '<=', $to)
-            ->sum('total');
-
-        return Decimal::subtract(
-            Decimal::normalize($total, Decimal::MONEY_SCALE),
-            $returned,
-            Decimal::MONEY_SCALE,
-        );
+            ->selectRaw('DATE(invoice_date) as report_date, SUM(total) as total')
+            ->groupByRaw('DATE(invoice_date)')
+            ->pluck('total', 'report_date')
+            ->map(fn ($total): string => Decimal::normalize(
+                (string) $total,
+                Decimal::MONEY_SCALE,
+            ));
     }
 
     private function openInvoiceCount(
@@ -368,10 +422,31 @@ class DashboardService
                 'amount' => $payment->amount,
                 'status' => $payment->status->value,
             ]);
+        $checks = Check::query()
+            ->with(['customer.party:id,name', 'supplier.party:id,name'])
+            ->where('store_id', $store->id)
+            ->where('branch_id', $branch->id)
+            ->latest('created_at')
+            ->latest('id')
+            ->limit(4)
+            ->get()
+            ->map(fn (Check $check): array => [
+                'id' => $check->id,
+                'kind' => 'check',
+                'number' => $check->document_number ?? $check->check_number,
+                'party' => $check->type === CheckType::Receivable
+                    ? $check->customer?->party?->name
+                    : $check->supplier?->party?->name,
+                'date' => $check->created_at?->toDateString()
+                    ?? $check->due_date->toDateString(),
+                'amount' => $check->amount,
+                'status' => $check->status->value,
+            ]);
 
         return $invoices
             ->concat($receipts)
             ->concat($payments)
+            ->concat($checks)
             ->sortByDesc(fn (array $row): string => $row['date'].'-'.str_pad(
                 (string) $row['id'],
                 10,
