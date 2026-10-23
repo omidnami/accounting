@@ -15,9 +15,11 @@ use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
 use App\Services\Inventory\InventoryService;
+use App\Services\Returns\ReturnableQuantityService;
 use App\Support\Decimal;
 use Carbon\CarbonImmutable;
 use DomainException;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 class SalesReturnService
@@ -27,142 +29,245 @@ class SalesReturnService
         private readonly InventoryService $inventory,
         private readonly PostingService $posting,
         private readonly SettingService $settings,
+        private readonly ReturnableQuantityService $returnableQuantities,
     ) {}
 
     /**
      * @param  array<int, array{invoice_item_id: int, quantity: string|int|float}>  $items
      */
-    public function createDraft(Invoice $salesInvoice, array $items, string $returnDate, ?int $createdBy = null): Invoice
-    {
+    public function createDraft(
+        Invoice $salesInvoice,
+        array $items,
+        string $returnDate,
+        ?int $createdBy = null,
+        ?string $idempotencyKey = null,
+    ): Invoice {
         if ($items === []) {
             throw new DomainException('برگشت فروش باید حداقل یک قلم داشته باشد.');
         }
 
-        return DB::transaction(function () use ($salesInvoice, $items, $returnDate, $createdBy): Invoice {
-            $original = Invoice::query()
-                ->with(['items', 'customer.party'])
-                ->lockForUpdate()
-                ->findOrFail($salesInvoice->id);
+        $canonicalItems = collect($items)
+            ->map(fn (array $item): array => [
+                'invoice_item_id' => (int) $item['invoice_item_id'],
+                'quantity' => Decimal::normalize($item['quantity'], Decimal::QUANTITY_SCALE),
+            ])
+            ->sortBy('invoice_item_id')
+            ->values()
+            ->all();
+        $requestHash = hash('sha256', json_encode([
+            'parent_invoice_id' => $salesInvoice->id,
+            'return_date' => $returnDate,
+            'created_by' => $createdBy,
+            'items' => $canonicalItems,
+        ], JSON_THROW_ON_ERROR));
 
-            if ($original->type !== InvoiceType::Sales
-                || ! in_array($original->status, [
-                    InvoiceStatus::Confirmed,
-                    InvoiceStatus::PartiallyPaid,
-                    InvoiceStatus::Paid,
-                ], true)
-                || ! $original->customer?->party?->is_active
-                || (int) $original->customer->party->store_id !== (int) $original->store_id) {
-                throw new DomainException('فاکتور فروش معتبر و متعلق به فروشگاه برای برگشت یافت نشد.');
-            }
+        try {
+            return DB::transaction(function () use (
+                $salesInvoice,
+                $items,
+                $returnDate,
+                $createdBy,
+                $idempotencyKey,
+                $requestHash,
+            ): Invoice {
+                if ($idempotencyKey !== null) {
+                    $existing = Invoice::query()
+                        ->where('idempotency_key', $idempotencyKey)
+                        ->first();
 
-            $fiscalYear = $original->fiscalYear()->firstOrFail();
-            $returnDateValue = CarbonImmutable::parse($returnDate);
+                    if ($existing) {
+                        $this->assertMatchingIdempotentReturn($existing, $requestHash);
 
-            if ($returnDateValue->lessThan($fiscalYear->starts_on)
-                || $returnDateValue->greaterThan($fiscalYear->ends_on)) {
-                throw new DomainException('تاریخ برگشت فروش باید داخل سال مالی فاکتور اصلی باشد.');
-            }
-
-            $return = Invoice::query()->create([
-                'store_id' => $original->store_id,
-                'branch_id' => $original->branch_id,
-                'fiscal_year_id' => $original->fiscal_year_id,
-                'invoice_number' => $this->documentNumbers->next(
-                    $original->store_id,
-                    $original->branch_id,
-                    $original->fiscal_year_id,
-                    DocumentType::SalesReturn,
-                ),
-                'type' => InvoiceType::SalesReturn,
-                'invoice_date' => $returnDate,
-                'customer_id' => $original->customer_id,
-                'supplier_id' => null,
-                'parent_invoice_id' => $original->id,
-                'subtotal' => '0.00',
-                'discount_total' => '0.00',
-                'tax_total' => '0.00',
-                'total' => '0.00',
-                'created_by' => $createdBy,
-            ]);
-            $subtotal = '0.00';
-            $discountTotal = '0.00';
-            $taxTotal = '0.00';
-            $total = '0.00';
-
-            foreach (array_values($items) as $index => $requested) {
-                $originalItem = $original->items->firstWhere('id', (int) $requested['invoice_item_id']);
-
-                if (! $originalItem || $originalItem->total_cost_snapshot === null) {
-                    throw new DomainException('ردیف انتخاب‌شده برای برگشت فروش معتبر نیست.');
+                        return $existing->load('items');
+                    }
                 }
 
-                $quantity = Decimal::normalize($requested['quantity'], Decimal::QUANTITY_SCALE);
+                $original = Invoice::query()
+                    ->with(['items', 'customer.party'])
+                    ->lockForUpdate()
+                    ->findOrFail($salesInvoice->id);
 
-                if (! Decimal::isPositive($quantity)) {
-                    throw new DomainException('مقدار برگشت فروش باید بزرگ‌تر از صفر باشد.');
+                if ($original->type !== InvoiceType::Sales
+                    || ! in_array($original->status, [
+                        InvoiceStatus::Confirmed,
+                        InvoiceStatus::PartiallyPaid,
+                        InvoiceStatus::Paid,
+                    ], true)
+                    || ! $original->customer?->party?->is_active
+                    || (int) $original->customer->party->store_id !== (int) $original->store_id) {
+                    throw new DomainException('فاکتور فروش معتبر و متعلق به فروشگاه برای برگشت یافت نشد.');
                 }
 
-                $returned = InvoiceItem::query()
-                    ->where('parent_invoice_item_id', $originalItem->id)
-                    ->whereHas('invoice', function ($query): void {
-                        $query->where('type', InvoiceType::SalesReturn)
-                            ->where('status', InvoiceStatus::Confirmed);
-                    })
-                    ->sum('quantity');
-                $remaining = Decimal::subtract($originalItem->quantity, (string) $returned, 3);
+                $fiscalYear = $original->fiscalYear()->firstOrFail();
+                $returnDateValue = CarbonImmutable::parse($returnDate);
 
-                if (Decimal::compare($quantity, $remaining, 3) > 0) {
-                    throw new DomainException('مقدار برگشت فروش از مقدار قابل برگشت ردیف بیشتر است.');
+                if ($returnDateValue->lessThan($fiscalYear->starts_on)
+                    || $returnDateValue->greaterThan($fiscalYear->ends_on)) {
+                    throw new DomainException('تاریخ برگشت فروش باید داخل سال مالی فاکتور اصلی باشد.');
                 }
 
-                $isFull = Decimal::compare($quantity, $originalItem->quantity, 3) === 0;
-                $gross = Decimal::multiply($quantity, $originalItem->unit_price, 2);
-                $discount = $isFull
-                    ? Decimal::normalize($originalItem->discount_amount, 2)
-                    : Decimal::divide(Decimal::multiply($originalItem->discount_amount, $quantity, 4), $originalItem->quantity, 2);
-                $taxable = Decimal::subtract($gross, $discount, 2);
-                $taxAmount = $isFull
-                    ? Decimal::normalize($originalItem->tax_amount, 2)
-                    : Decimal::divide(Decimal::multiply($originalItem->tax_amount, $quantity, 4), $originalItem->quantity, 2);
-                $lineTotal = Decimal::add($taxable, $taxAmount, 2);
+                if ($returnDateValue->lessThan($original->invoice_date)) {
+                    throw new DomainException('تاریخ برگشت فروش نمی‌تواند قبل از تاریخ فاکتور اصلی باشد.');
+                }
 
-                $return->items()->create([
-                    'parent_invoice_item_id' => $originalItem->id,
-                    'product_id' => $originalItem->product_id,
-                    'product_code' => $originalItem->product_code,
-                    'product_name' => $originalItem->product_name,
-                    'unit' => $originalItem->unit,
-                    'quantity' => $quantity,
-                    'unit_price' => $originalItem->unit_price,
-                    'discount_amount' => $discount,
-                    'tax_rate' => $originalItem->tax_rate,
-                    'tax_amount' => $taxAmount,
-                    'line_total' => $lineTotal,
-                    'unit_cost_snapshot' => $originalItem->unit_cost_snapshot,
-                    'total_cost_snapshot' => $originalItem->total_cost_snapshot,
-                    'sort_order' => $index + 1,
+                $return = Invoice::query()->create([
+                    'store_id' => $original->store_id,
+                    'branch_id' => $original->branch_id,
+                    'fiscal_year_id' => $original->fiscal_year_id,
+                    'invoice_number' => $this->documentNumbers->next(
+                        $original->store_id,
+                        $original->branch_id,
+                        $original->fiscal_year_id,
+                        DocumentType::SalesReturn,
+                    ),
+                    'idempotency_key' => $idempotencyKey,
+                    'idempotency_request_hash' => $requestHash,
+                    'type' => InvoiceType::SalesReturn,
+                    'invoice_date' => $returnDate,
+                    'customer_id' => $original->customer_id,
+                    'supplier_id' => null,
+                    'parent_invoice_id' => $original->id,
+                    'subtotal' => '0.00',
+                    'discount_total' => '0.00',
+                    'tax_total' => '0.00',
+                    'total' => '0.00',
+                    'created_by' => $createdBy,
                 ]);
+                $subtotal = '0.00';
+                $discountTotal = '0.00';
+                $taxTotal = '0.00';
+                $total = '0.00';
 
-                $subtotal = Decimal::add($subtotal, $gross, 2);
-                $discountTotal = Decimal::add($discountTotal, $discount, 2);
-                $taxTotal = Decimal::add($taxTotal, $taxAmount, 2);
-                $total = Decimal::add($total, $lineTotal, 2);
+                foreach (array_values($items) as $index => $requested) {
+                    $originalItem = $original->items->firstWhere('id', (int) $requested['invoice_item_id']);
+
+                    if (! $originalItem || $originalItem->total_cost_snapshot === null) {
+                        throw new DomainException('ردیف انتخاب‌شده برای برگشت فروش معتبر نیست.');
+                    }
+
+                    $quantity = Decimal::normalize($requested['quantity'], Decimal::QUANTITY_SCALE);
+
+                    if (! Decimal::isPositive($quantity)) {
+                        throw new DomainException('مقدار برگشت فروش باید بزرگ‌تر از صفر باشد.');
+                    }
+
+                    $remaining = $this->returnableQuantities->remainingFor(
+                        $originalItem,
+                        InvoiceType::SalesReturn,
+                    );
+
+                    if (Decimal::compare($quantity, $remaining, 3) > 0) {
+                        throw new DomainException('مقدار برگشت فروش از مقدار قابل برگشت ردیف بیشتر است.');
+                    }
+
+                    $isFull = Decimal::compare($quantity, $originalItem->quantity, 3) === 0;
+                    $gross = Decimal::multiply($quantity, $originalItem->unit_price, 2);
+                    $discount = $isFull
+                        ? Decimal::normalize($originalItem->discount_amount, 2)
+                        : Decimal::divide(Decimal::multiply($originalItem->discount_amount, $quantity, 4), $originalItem->quantity, 2);
+                    $taxable = Decimal::subtract($gross, $discount, 2);
+                    $taxAmount = $isFull
+                        ? Decimal::normalize($originalItem->tax_amount, 2)
+                        : Decimal::divide(Decimal::multiply($originalItem->tax_amount, $quantity, 4), $originalItem->quantity, 2);
+                    $lineTotal = Decimal::add($taxable, $taxAmount, 2);
+
+                    $return->items()->create([
+                        'parent_invoice_item_id' => $originalItem->id,
+                        'product_id' => $originalItem->product_id,
+                        'product_code' => $originalItem->product_code,
+                        'product_name' => $originalItem->product_name,
+                        'unit' => $originalItem->unit,
+                        'quantity' => $quantity,
+                        'unit_price' => $originalItem->unit_price,
+                        'discount_amount' => $discount,
+                        'tax_rate' => $originalItem->tax_rate,
+                        'tax_amount' => $taxAmount,
+                        'line_total' => $lineTotal,
+                        'unit_cost_snapshot' => $originalItem->unit_cost_snapshot,
+                        'total_cost_snapshot' => $originalItem->total_cost_snapshot,
+                        'sort_order' => $index + 1,
+                    ]);
+
+                    $subtotal = Decimal::add($subtotal, $gross, 2);
+                    $discountTotal = Decimal::add($discountTotal, $discount, 2);
+                    $taxTotal = Decimal::add($taxTotal, $taxAmount, 2);
+                    $total = Decimal::add($total, $lineTotal, 2);
+                }
+
+                $return->forceFill([
+                    'subtotal' => $subtotal,
+                    'discount_total' => $discountTotal,
+                    'tax_total' => $taxTotal,
+                    'total' => $total,
+                ])->save();
+
+                return $return->refresh()->load('items');
+            });
+        } catch (QueryException $exception) {
+            if ($idempotencyKey === null || (string) $exception->getCode() !== '23000') {
+                throw $exception;
             }
 
-            $return->forceFill([
-                'subtotal' => $subtotal,
-                'discount_total' => $discountTotal,
-                'tax_total' => $taxTotal,
-                'total' => $total,
-            ])->save();
+            $existing = Invoice::query()
+                ->where('idempotency_key', $idempotencyKey)
+                ->first();
 
-            return $return->refresh()->load('items');
-        });
+            if (! $existing) {
+                throw $exception;
+            }
+
+            $this->assertMatchingIdempotentReturn($existing, $requestHash);
+
+            return $existing->load('items');
+        }
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function returnableItems(Invoice $salesInvoice): array
+    {
+        if ($salesInvoice->type !== InvoiceType::Sales
+            || ! in_array($salesInvoice->status, [
+                InvoiceStatus::Confirmed,
+                InvoiceStatus::PartiallyPaid,
+                InvoiceStatus::Paid,
+            ], true)) {
+            return [];
+        }
+
+        $salesInvoice->loadMissing('items');
+
+        return $salesInvoice->items
+            ->map(fn (InvoiceItem $item): array => [
+                'id' => $item->id,
+                'product_code' => $item->product_code,
+                'product_name' => $item->product_name,
+                'unit' => $item->unit,
+                'quantity' => $item->quantity,
+                'returnable_quantity' => $this->returnableQuantities->remainingFor(
+                    $item,
+                    InvoiceType::SalesReturn,
+                ),
+                'unit_price' => $item->unit_price,
+                'discount_amount' => $item->discount_amount,
+                'tax_rate' => $item->tax_rate,
+                'tax_amount' => $item->tax_amount,
+                'line_total' => $item->line_total,
+            ])
+            ->filter(fn (array $item): bool => Decimal::isPositive($item['returnable_quantity']))
+            ->values()
+            ->all();
     }
 
     public function confirm(Invoice $returnInvoice, int $warehouseId, User $approver): Invoice
     {
         return DB::transaction(function () use ($returnInvoice, $warehouseId, $approver): Invoice {
+            $returnSnapshot = Invoice::query()->findOrFail($returnInvoice->id);
+            $original = Invoice::query()
+                ->with('items')
+                ->lockForUpdate()
+                ->findOrFail($returnSnapshot->parent_invoice_id);
             $return = Invoice::query()
                 ->with(['items', 'customer.party'])
                 ->lockForUpdate()
@@ -170,6 +275,11 @@ class SalesReturnService
 
             if ($return->type !== InvoiceType::SalesReturn || $return->status !== InvoiceStatus::Draft) {
                 throw new DomainException('فقط برگشت فروش پیش‌نویس قابل تأیید است.');
+            }
+
+            if ($original->type !== InvoiceType::Sales
+                || (int) $return->parent_invoice_id !== (int) $original->id) {
+                throw new DomainException('فاکتور اصلی برگشت فروش معتبر نیست.');
             }
 
             if (! $return->customer?->party?->is_active
@@ -199,13 +309,28 @@ class SalesReturnService
             $taxTotal = '0.00';
 
             foreach ($return->items as $item) {
-                $original = $item->parentItem()->firstOrFail();
-                $isFull = Decimal::compare($item->quantity, $original->quantity, 3) === 0;
+                $originalItem = $original->items
+                    ->firstWhere('id', $item->parent_invoice_item_id);
+
+                if (! $originalItem) {
+                    throw new DomainException('ردیف اصلی برگشت فروش پیدا نشد.');
+                }
+
+                $remaining = $this->returnableQuantities->remainingFor(
+                    $originalItem,
+                    InvoiceType::SalesReturn,
+                );
+
+                if (Decimal::compare($item->quantity, $remaining, Decimal::QUANTITY_SCALE) > 0) {
+                    throw new DomainException('مقدار تأییدشده برگشت فروش از مقدار قابل برگشت ردیف بیشتر است.');
+                }
+
+                $isFull = Decimal::compare($item->quantity, $originalItem->quantity, 3) === 0;
                 $itemCost = $isFull
-                    ? Decimal::normalize($original->total_cost_snapshot, 2)
+                    ? Decimal::normalize($originalItem->total_cost_snapshot, 2)
                     : Decimal::divide(
-                        Decimal::multiply($original->total_cost_snapshot, $item->quantity, 4),
-                        $original->quantity,
+                        Decimal::multiply($originalItem->total_cost_snapshot, $item->quantity, 4),
+                        $originalItem->quantity,
                         2,
                     );
                 $unitCost = Decimal::divide($itemCost, $item->quantity, 4);
@@ -288,5 +413,14 @@ class SalesReturnService
 
             return $return->refresh()->load(['items', 'parentInvoice']);
         });
+    }
+
+    private function assertMatchingIdempotentReturn(Invoice $existing, string $requestHash): void
+    {
+        if ($existing->type !== InvoiceType::SalesReturn
+            || ($existing->idempotency_request_hash !== null
+                && ! hash_equals($existing->idempotency_request_hash, $requestHash))) {
+            throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست برگشت متفاوتی استفاده شده است.');
+        }
     }
 }

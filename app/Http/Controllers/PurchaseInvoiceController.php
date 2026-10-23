@@ -10,6 +10,7 @@ use App\Models\Branch;
 use App\Models\FiscalYear;
 use App\Models\Invoice;
 use App\Models\Store;
+use App\Services\Purchasing\PurchaseReturnService;
 use App\Services\Purchasing\PurchaseService;
 use App\Services\Purchasing\SupplierPayableService;
 use App\Support\Digits;
@@ -170,14 +171,29 @@ class PurchaseInvoiceController extends Controller
         Request $request,
         Invoice $invoice,
         SupplierPayableService $payables,
+        PurchaseReturnService $returns,
     ): Response {
         abort_unless($request->user()?->canManagePurchases(), 403);
         $this->assertPurchaseInvoice($invoice);
-        $invoice->load(['items', 'supplier.party']);
+        $invoice->load([
+            'items',
+            'supplier.party',
+            'childInvoices' => fn ($query) => $query
+                ->where('type', InvoiceType::PurchaseReturn)
+                ->orderByDesc('id'),
+        ]);
 
         return Inertia::render('purchases/Show', [
             'can_pay' => $request->user()->canManagePayments(),
+            'can_return' => $returns->returnableItems($invoice) !== [],
             'payable' => $payables->outstandingForInvoice($invoice),
+            'returns' => $invoice->childInvoices->map(fn (Invoice $return): array => [
+                'id' => $return->id,
+                'invoice_number' => $return->invoice_number,
+                'invoice_date' => $return->invoice_date->toDateString(),
+                'status' => $return->status->value,
+                'total' => $return->total,
+            ])->values(),
             'invoice' => [
                 'id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,

@@ -11,6 +11,7 @@ use App\Models\FiscalYear;
 use App\Models\Invoice;
 use App\Models\Store;
 use App\Services\Sales\CustomerReceivableService;
+use App\Services\Sales\SalesReturnService;
 use App\Services\Sales\SalesService;
 use App\Support\Digits;
 use DomainException;
@@ -171,15 +172,31 @@ class SalesInvoiceController extends Controller
         Request $request,
         Invoice $invoice,
         CustomerReceivableService $receivables,
+        SalesReturnService $returns,
     ): Response {
         abort_unless($request->user()?->canManageSales(), 403);
         $this->assertSalesInvoice($invoice);
-        $invoice->load(['items', 'customer.party']);
+        $invoice->load([
+            'items',
+            'customer.party',
+            'childInvoices' => fn ($query) => $query
+                ->where('type', InvoiceType::SalesReturn)
+                ->orderByDesc('id'),
+        ]);
 
         return Inertia::render('sales/Show', [
             'can_confirm' => $request->user()->canConfirmSales(),
             'can_receive' => $request->user()->canManageReceipts(),
+            'can_return' => $request->user()->canConfirmSales()
+                && $returns->returnableItems($invoice) !== [],
             'outstanding' => $receivables->outstandingForInvoice($invoice),
+            'returns' => $invoice->childInvoices->map(fn (Invoice $return): array => [
+                'id' => $return->id,
+                'invoice_number' => $return->invoice_number,
+                'invoice_date' => $return->invoice_date->toDateString(),
+                'status' => $return->status->value,
+                'total' => $return->total,
+            ])->values(),
             'invoice' => [
                 'id' => $invoice->id,
                 'invoice_number' => $invoice->invoice_number,

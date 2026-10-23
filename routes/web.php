@@ -3,6 +3,7 @@
 use App\Http\Controllers\CheckController;
 use App\Http\Controllers\CustomerReceiptController;
 use App\Http\Controllers\FinancialReportsController;
+use App\Http\Controllers\InvoiceReturnController;
 use App\Http\Controllers\PartyController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseInvoiceController;
@@ -63,6 +64,26 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('sales.confirm');
     Route::delete('sales/{invoice}', [SalesInvoiceController::class, 'destroy'])
         ->name('sales.destroy');
+    Route::get('sales/{invoice}/return', [InvoiceReturnController::class, 'createSales'])
+        ->name('sales.returns.create');
+    Route::post('sales/{invoice}/return', [InvoiceReturnController::class, 'storeSales'])
+        ->name('sales.returns.store');
+    Route::get('sales/returns/{return}', [InvoiceReturnController::class, 'showSales'])
+        ->name('sales.returns.show');
+    Route::post('sales/returns/{return}/confirm', [InvoiceReturnController::class, 'confirmSales'])
+        ->name('sales.returns.confirm');
+    Route::delete('sales/returns/{return}', [InvoiceReturnController::class, 'destroySales'])
+        ->name('sales.returns.destroy');
+    Route::get('purchases/{invoice}/return', [InvoiceReturnController::class, 'createPurchase'])
+        ->name('purchases.returns.create');
+    Route::post('purchases/{invoice}/return', [InvoiceReturnController::class, 'storePurchase'])
+        ->name('purchases.returns.store');
+    Route::get('purchases/returns/{return}', [InvoiceReturnController::class, 'showPurchase'])
+        ->name('purchases.returns.show');
+    Route::post('purchases/returns/{return}/confirm', [InvoiceReturnController::class, 'confirmPurchase'])
+        ->name('purchases.returns.confirm');
+    Route::delete('purchases/returns/{return}', [InvoiceReturnController::class, 'destroyPurchase'])
+        ->name('purchases.returns.destroy');
 });
 
 require __DIR__.'/settings.php';

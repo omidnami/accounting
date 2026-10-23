@@ -24,6 +24,10 @@ import {
     index as salesIndex,
 } from '@/routes/sales';
 import { create as createReceipt } from '@/routes/receipts';
+import {
+    create as createSalesReturn,
+    show as showSalesReturn,
+} from '@/routes/sales/returns';
 
 type SaleStatus =
     | 'draft'
@@ -36,7 +40,15 @@ type SaleStatus =
 type Props = {
     can_confirm: boolean;
     can_receive: boolean;
+    can_return: boolean;
     outstanding: string;
+    returns: Array<{
+        id: number;
+        invoice_number: string;
+        invoice_date: string;
+        status: SaleStatus;
+        total: string;
+    }>;
     invoice: {
         id: number;
         invoice_number: string;
@@ -392,6 +404,37 @@ defineOptions({
                     </p>
                     <p class="mt-2 text-xs leading-7">{{ invoice.notes }}</p>
                 </section>
+
+                <section
+                    v-if="returns.length"
+                    class="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm"
+                >
+                    <div class="border-b border-border/70 px-5 py-4">
+                        <h2 class="text-sm font-bold">برگشت‌های این فاکتور</h2>
+                    </div>
+                    <div class="divide-y">
+                        <Link
+                            v-for="returnInvoice in returns"
+                            :key="returnInvoice.id"
+                            :href="showSalesReturn(returnInvoice.id)"
+                            class="flex items-center justify-between gap-4 px-5 py-3 text-xs transition hover:bg-muted/30"
+                        >
+                            <span>
+                                <span class="block font-mono font-bold">
+                                    {{ returnInvoice.invoice_number }}
+                                </span>
+                                <span
+                                    class="mt-1 block text-[9px] text-muted-foreground"
+                                >
+                                    {{ statusMeta[returnInvoice.status].label }}
+                                </span>
+                            </span>
+                            <span class="font-bold">
+                                {{ money.format(Number(returnInvoice.total)) }}
+                            </span>
+                        </Link>
+                    </div>
+                </section>
             </div>
 
             <aside class="space-y-4 xl:sticky xl:top-6 print:hidden">
@@ -509,6 +552,29 @@ defineOptions({
                             "
                         >
                             ثبت دریافت وجه
+                        </Link>
+                    </Button>
+                </section>
+
+                <section
+                    v-if="can_return"
+                    class="rounded-2xl border border-amber-500/20 bg-amber-500/[.055] p-5"
+                >
+                    <div class="flex items-center gap-2">
+                        <CircleAlert class="size-5 text-amber-600" />
+                        <h2 class="text-sm font-bold">برگشت از فروش</h2>
+                    </div>
+                    <p class="mt-2 text-[10px] leading-6 text-muted-foreground">
+                        برای اقلام این فاکتور مقدار قابل برگشت وجود دارد. ثبت
+                        برگشت با ورود موجودی و سند اصلاحی انجام می‌شود.
+                    </p>
+                    <Button
+                        as-child
+                        variant="outline"
+                        class="mt-4 h-10 w-full rounded-xl"
+                    >
+                        <Link :href="createSalesReturn(invoice.id)">
+                            ثبت برگشت فروش
                         </Link>
                     </Button>
                 </section>

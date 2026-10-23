@@ -1,6 +1,6 @@
 # Store Accounting System - Context Handoff
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از hardening چک)
+آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۳ (پس از Phase 9A)
 
 ## شروع کانتکست جدید
 
@@ -16,9 +16,10 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `94722c2`
-- پیام: `feat(treasury): add check management and lifecycle UI`
-- شاخه با `origin/main` هم‌سطح بود؛ اصلاحات hardening چک هنوز commit نشده‌اند.
+- آخرین کامیت محلی: `bfd293f`
+- پیام: `fix(treasury): harden check identity and linking flow`
+- شاخه یک commit جلوتر از `origin/main` است و تغییرات Phase 9A هنوز commit
+  نشده‌اند.
 
 ## استک و محیط
 
@@ -35,7 +36,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `191 tests`, `1251 assertions`
+- Pest: `198 tests`, `1350 assertions`
 - PHPStan: صفر خطا
 - Pint: موفق
 - Vue type-check: موفق
@@ -159,6 +160,7 @@ npm run build
 - `phase-7c`: رابط خرید و ورود انبار
 - `phase-7d`: رابط پرداخت تأمین‌کننده
 - `phase-8a`: رابط خزانه و مدیریت چک‌ها
+- `phase-9a`: رابط برگشت خرید و فروش
 
 ## فایل‌های کلیدی
 
@@ -172,6 +174,7 @@ npm run build
 - `app/Services/Purchasing/SupplierPaymentService.php`
 - `app/Services/Sales/SalesService.php`
 - `app/Services/Sales/SalesReturnService.php`
+- `app/Services/Returns/ReturnableQuantityService.php`
 - `app/Services/Sales/CustomerReceivableService.php`
 - `app/Services/Sales/CustomerReceiptService.php`
 - `app/Services/Treasury/CheckRegistrationService.php`
@@ -186,6 +189,7 @@ npm run build
 - `PurchaseInvoiceController`
 - `SupplierPaymentController`
 - `CheckController`
+- `InvoiceReturnController`
 - `FinancialReportsController`
 
 ### UI
@@ -195,6 +199,7 @@ npm run build
 - `resources/js/pages/sales`
 - `resources/js/pages/receipts`
 - `resources/js/pages/checks`
+- `resources/js/pages/returns`
 - `resources/js/pages/purchases`
 - `resources/js/pages/payments`
 - `resources/js/pages/reports`
@@ -220,7 +225,7 @@ npm run build
 - محصولات هنوز `store_id` ندارند؛ کاتالوگ در MVP سراسری است.
 - تاریخ‌های UI هنوز با input میلادی وارد می‌شوند.
 - Datepicker شمسی پیاده‌سازی نشده است.
-- UI برگشت خرید و برگشت فروش وجود ندارد.
+- UI برگشت خرید و فروش اضافه شده است؛ ویرایش Draft مرجوعی هنوز وجود ندارد.
 - UI مدیریت حساب‌های خزانه وجود ندارد؛ UI چک و وصول/خرج/برگشت در Phase 8A
   اضافه شد.
 - هزینه‌های جانبی خرید و حمل پیاده‌سازی نشده‌اند.
@@ -233,12 +238,13 @@ npm run build
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی Phase 8A در دسکتاپ و موبایل
-2. commit و push hardening چک توسط کاربر و سپس تأیید CI روی commit جدید
-3. شروع یک فاز محدود برای رابط برگشت خرید/فروش یا مدیریت حساب‌های خزانه
+1. بررسی دستی Phase 9A در دسکتاپ و موبایل
+2. commit و push رابط مرجوعی توسط کاربر و سپس تأیید CI روی commit جدید
+3. شروع یک فاز محدود برای مدیریت حساب‌های خزانه
 
 جزئیات Phase 8A در `.codex/phase-8a-treasury-checks-ui.md` ثبت شده است.
 اصلاحات بازبینی آن در `.codex/phase-8a-check-hardening.md` آمده است.
+جزئیات Phase 9A در `.codex/phase-9a-return-ui.md` آمده است.
 
 ## الگوی درخواست از Agent بعدی
 
