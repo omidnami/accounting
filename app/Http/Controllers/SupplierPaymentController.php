@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\CheckStatus;
+use App\Enums\CheckType;
 use App\Enums\PaymentMethod;
 use App\Enums\TreasuryAccountType;
 use App\Enums\TreasuryDocumentStatus;
 use App\Http\Requests\SupplierPaymentRequest;
 use App\Models\Branch;
+use App\Models\Check;
 use App\Models\FiscalYear;
 use App\Models\Invoice;
 use App\Models\Payment;
@@ -110,6 +113,7 @@ class SupplierPaymentController extends Controller
         ]);
         $initialSupplier = null;
         $initialInvoices = [];
+        $initialChecks = [];
         $focusInvoiceId = null;
         $supplierId = isset($validated['supplier_id']) ? (int) $validated['supplier_id'] : null;
 
@@ -127,6 +131,7 @@ class SupplierPaymentController extends Controller
                 $payables->openInvoices($supplier, $store->id, $focusInvoiceId),
                 $payables,
             );
+            $initialChecks = $this->pendingChecks($supplier, $store->id, $branch->id);
             $initialSupplier = $this->mapSupplier($supplier);
         }
 
@@ -142,6 +147,7 @@ class SupplierPaymentController extends Controller
             ],
             'initial_supplier' => $initialSupplier,
             'initial_invoices' => $initialInvoices,
+            'initial_checks' => $initialChecks,
             'initial_invoice_id' => $focusInvoiceId,
             'treasury_accounts' => $this->treasuryAccounts($store, $branch),
         ]);
@@ -174,6 +180,11 @@ class SupplierPaymentController extends Controller
                 $payables->openInvoices($supplier, $store->id, $focusInvoiceId),
                 $payables,
             ),
+            'checks' => $this->pendingChecks(
+                $supplier,
+                $store->id,
+                $this->defaultBranch($store)->id,
+            ),
         ]);
     }
 
@@ -199,6 +210,9 @@ class SupplierPaymentController extends Controller
                 idempotencyKey: $data['submission_token'],
                 treasuryAccountId: isset($data['treasury_account_id'])
                     ? (int) $data['treasury_account_id']
+                    : null,
+                checkId: isset($data['check_id'])
+                    ? (int) $data['check_id']
                     : null,
                 reference: $data['reference'] ?? null,
                 description: $data['description'] ?? null,
@@ -293,6 +307,33 @@ class SupplierPaymentController extends Controller
             'total' => $invoice->total,
             'outstanding' => $payables->outstandingForInvoice($invoice),
         ])->all();
+    }
+
+    /**
+     * @return array<int, array{
+     *     id: int, check_number: string, bank_name: string,
+     *     due_date: string, amount: string
+     * }>
+     */
+    private function pendingChecks(Supplier $supplier, int $storeId, int $branchId): array
+    {
+        return Check::query()
+            ->where('store_id', $storeId)
+            ->where('branch_id', $branchId)
+            ->where('supplier_id', $supplier->id)
+            ->where('type', CheckType::Payable)
+            ->where('status', CheckStatus::Pending)
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->get(['id', 'check_number', 'bank_name', 'due_date', 'amount'])
+            ->map(fn (Check $check): array => [
+                'id' => $check->id,
+                'check_number' => $check->check_number,
+                'bank_name' => $check->bank_name,
+                'due_date' => $check->due_date->toDateString(),
+                'amount' => $check->amount,
+            ])
+            ->all();
     }
 
     /**

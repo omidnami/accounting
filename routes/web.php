@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CheckController;
 use App\Http\Controllers\CustomerReceiptController;
 use App\Http\Controllers\FinancialReportsController;
 use App\Http\Controllers\PartyController;
@@ -30,6 +31,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('receipts/create', [CustomerReceiptController::class, 'create'])->name('receipts.create');
     Route::post('receipts', [CustomerReceiptController::class, 'store'])->name('receipts.store');
     Route::get('receipts/{receipt}', [CustomerReceiptController::class, 'show'])->name('receipts.show');
+    Route::get('checks', [CheckController::class, 'index'])->name('checks.index');
+    Route::get('checks/create', [CheckController::class, 'create'])->name('checks.create');
+    Route::post('checks', [CheckController::class, 'store'])->name('checks.store');
+    Route::get('checks/{check}', [CheckController::class, 'show'])->name('checks.show');
+    Route::post('checks/{check}/settle', [CheckController::class, 'settle'])->name('checks.settle');
+    Route::post('checks/{check}/bounce', [CheckController::class, 'bounce'])->name('checks.bounce');
     Route::get('purchases/lookups/suppliers', [PurchaseLookupController::class, 'suppliers'])
         ->name('purchases.lookups.suppliers');
     Route::get('purchases/lookups/products', [PurchaseLookupController::class, 'products'])

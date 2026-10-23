@@ -185,6 +185,7 @@ class CustomerReceiptService
                     || $check->status !== CheckStatus::Pending
                     || (int) $check->customer_id !== $customer->id
                     || (int) $check->store_id !== $storeId
+                    || (int) $check->branch_id !== $branchId
                     || Decimal::compare($check->amount, $amountTotal, 2) !== 0) {
                     throw new DomainException('چک دریافتی با مشتری یا مبلغ دریافت سازگار نیست.');
                 }

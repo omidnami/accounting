@@ -194,6 +194,7 @@ class SupplierPaymentService
                     || $check->status !== CheckStatus::Pending
                     || (int) $check->supplier_id !== $supplier->id
                     || (int) $check->store_id !== $storeId
+                    || (int) $check->branch_id !== $branchId
                     || Decimal::compare($check->amount, $paymentAmount, Decimal::MONEY_SCALE) !== 0) {
                     throw new DomainException('چک پرداختی با تأمین‌کننده یا مبلغ پرداخت سازگار نیست.');
                 }

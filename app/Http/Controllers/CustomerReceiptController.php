@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\CheckStatus;
+use App\Enums\CheckType;
 use App\Enums\PaymentMethod;
 use App\Enums\TreasuryAccountType;
 use App\Enums\TreasuryDocumentStatus;
 use App\Http\Requests\CustomerReceiptRequest;
 use App\Models\Branch;
+use App\Models\Check;
 use App\Models\Customer;
 use App\Models\FiscalYear;
 use App\Models\Invoice;
@@ -110,6 +113,7 @@ class CustomerReceiptController extends Controller
         ]);
         $initialCustomer = null;
         $initialInvoices = [];
+        $initialChecks = [];
         $focusInvoiceId = null;
         $customerId = isset($validated['customer_id']) ? (int) $validated['customer_id'] : null;
 
@@ -127,6 +131,7 @@ class CustomerReceiptController extends Controller
                 $receivables->openInvoices($customer, $store->id, $focusInvoiceId),
                 $receivables,
             );
+            $initialChecks = $this->pendingChecks($customer, $store->id, $branch->id);
             $initialCustomer = $this->mapCustomer($customer);
         }
 
@@ -142,6 +147,7 @@ class CustomerReceiptController extends Controller
             ],
             'initial_customer' => $initialCustomer,
             'initial_invoices' => $initialInvoices,
+            'initial_checks' => $initialChecks,
             'initial_invoice_id' => $focusInvoiceId,
             'treasury_accounts' => $this->treasuryAccounts($store, $branch),
         ]);
@@ -174,6 +180,11 @@ class CustomerReceiptController extends Controller
                 $receivables->openInvoices($customer, $store->id, $focusInvoiceId),
                 $receivables,
             ),
+            'checks' => $this->pendingChecks(
+                $customer,
+                $store->id,
+                $this->defaultBranch($store)->id,
+            ),
         ]);
     }
 
@@ -199,6 +210,9 @@ class CustomerReceiptController extends Controller
                 idempotencyKey: $data['submission_token'],
                 treasuryAccountId: isset($data['treasury_account_id'])
                     ? (int) $data['treasury_account_id']
+                    : null,
+                checkId: isset($data['check_id'])
+                    ? (int) $data['check_id']
                     : null,
                 reference: $data['reference'] ?? null,
                 description: $data['description'] ?? null,
@@ -293,6 +307,33 @@ class CustomerReceiptController extends Controller
             'total' => $invoice->total,
             'outstanding' => $receivables->outstandingForInvoice($invoice),
         ])->all();
+    }
+
+    /**
+     * @return array<int, array{
+     *     id: int, check_number: string, bank_name: string,
+     *     due_date: string, amount: string
+     * }>
+     */
+    private function pendingChecks(Customer $customer, int $storeId, int $branchId): array
+    {
+        return Check::query()
+            ->where('store_id', $storeId)
+            ->where('branch_id', $branchId)
+            ->where('customer_id', $customer->id)
+            ->where('type', CheckType::Receivable)
+            ->where('status', CheckStatus::Pending)
+            ->orderBy('due_date')
+            ->orderBy('id')
+            ->get(['id', 'check_number', 'bank_name', 'due_date', 'amount'])
+            ->map(fn (Check $check): array => [
+                'id' => $check->id,
+                'check_number' => $check->check_number,
+                'bank_name' => $check->bank_name,
+                'due_date' => $check->due_date->toDateString(),
+                'amount' => $check->amount,
+            ])
+            ->all();
     }
 
     /**

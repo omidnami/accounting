@@ -50,7 +50,14 @@ class CustomerReceiptRequest extends FormRequest
                     'before_or_equal:'.$fiscalYear->ends_on->toDateString(),
                 ] : []),
             ],
-            'payment_method' => ['required', 'string', 'in:cash,bank,card'],
+            'payment_method' => ['required', 'string', 'in:cash,bank,card,check'],
+            'check_id' => [
+                Rule::requiredIf($this->input('payment_method') === 'check'),
+                Rule::prohibitedIf($this->input('payment_method') !== 'check'),
+                'nullable',
+                'integer',
+                'exists:checks,id',
+            ],
             'treasury_account_id' => ['nullable', 'integer', 'exists:treasury_accounts,id'],
             'reference' => ['nullable', 'string', 'max:120'],
             'description' => ['nullable', 'string', 'max:2000'],
@@ -84,6 +91,9 @@ class CustomerReceiptRequest extends FormRequest
             'customer_id' => is_string($this->input('customer_id'))
                 ? Digits::toLatin($this->input('customer_id'))
                 : $this->input('customer_id'),
+            'check_id' => is_string($this->input('check_id'))
+                ? Digits::toLatin($this->input('check_id'))
+                : $this->input('check_id'),
             'allocations' => $allocations,
         ]);
     }

@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\CheckStatus;
 use App\Enums\CheckType;
 use App\Enums\JournalEntryStatus;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -13,8 +14,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 /**
+ * @property string $amount
+ * @property CarbonImmutable|null $issue_date
+ * @property CarbonImmutable $due_date
  * @property CheckType $type
  * @property CheckStatus $status
+ * @property CarbonImmutable|null $created_at
+ * @property CarbonImmutable|null $settled_at
+ * @property CarbonImmutable|null $bounced_at
  */
 class Check extends Model
 {
@@ -40,6 +47,8 @@ class Check extends Model
         'customer_id',
         'supplier_id',
         'created_by',
+        'idempotency_key',
+        'idempotency_request_hash',
         'description',
         'settled_at',
         'bounced_at',
@@ -135,11 +144,7 @@ class Check extends Model
                 if ($check->customer_id === null || $check->supplier_id !== null) {
                     throw new DomainException('چک دریافتی باید فقط به مشتری متصل باشد.');
                 }
-
-                return;
-            }
-
-            if ($check->supplier_id === null || $check->customer_id !== null) {
+            } elseif ($check->supplier_id === null || $check->customer_id !== null) {
                 throw new DomainException('چک پرداختی باید فقط به تأمین‌کننده متصل باشد.');
             }
 

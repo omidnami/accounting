@@ -9,6 +9,7 @@ import {
     ShoppingBag,
     ShoppingCart,
     UsersRound,
+    WalletCards,
 } from '@lucide/vue';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
@@ -24,6 +25,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
+import { index as checks } from '@/routes/checks';
 import { index as parties } from '@/routes/parties';
 import { index as products } from '@/routes/products';
 import { index as payments } from '@/routes/payments';
@@ -87,6 +89,11 @@ const mainNavItems = computed<NavItem[]>(() => {
             title: 'پرداخت‌ها',
             href: payments(),
             icon: CircleDollarSign,
+        });
+        items.push({
+            title: 'چک‌ها',
+            href: checks(),
+            icon: WalletCards,
         });
     }
 

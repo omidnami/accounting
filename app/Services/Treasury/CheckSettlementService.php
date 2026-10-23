@@ -248,8 +248,8 @@ class CheckSettlementService
     {
         return AccountingPeriod::query()
             ->where('store_id', $storeId)
-            ->where('starts_on', '<=', $date)
-            ->where('ends_on', '>=', $date)
+            ->whereDate('starts_on', '<=', $date)
+            ->whereDate('ends_on', '>=', $date)
             ->firstOrFail();
     }
 

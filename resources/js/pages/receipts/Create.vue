@@ -9,6 +9,7 @@ import {
     CreditCard,
     HandCoins,
     Landmark,
+    ReceiptText,
     Search,
     UserRound,
 } from '@lucide/vue';
@@ -19,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { normalizeNumber, parseNumber } from '@/lib/number';
+import { create as createCheck } from '@/routes/checks';
 import { customers as customerLookup } from '@/routes/sales/lookups';
 import { invoices as invoiceLookup } from '@/routes/receipts/lookups';
 import {
@@ -56,7 +58,15 @@ type TreasuryOption = {
     is_default: boolean;
 };
 
-type PaymentMethod = 'cash' | 'bank' | 'card';
+type PendingCheck = {
+    id: number;
+    check_number: string;
+    bank_name: string;
+    due_date: string;
+    amount: string;
+};
+
+type PaymentMethod = 'cash' | 'bank' | 'card' | 'check';
 
 const props = defineProps<{
     defaults: {
@@ -70,6 +80,7 @@ const props = defineProps<{
     };
     initial_customer: CustomerOption | null;
     initial_invoices: OpenInvoice[];
+    initial_checks: PendingCheck[];
     initial_invoice_id: number | null;
     treasury_accounts: TreasuryOption[];
 }>();
@@ -89,6 +100,7 @@ const form = useForm({
     customer_id: props.initial_customer?.id.toString() ?? '',
     receipt_date: props.defaults.receipt_date,
     payment_method: 'cash' as PaymentMethod,
+    check_id: '',
     treasury_account_id: '',
     reference: '',
     description: '',
@@ -99,6 +111,7 @@ const customerSearch = ref('');
 const customerResults = ref<CustomerOption[]>([]);
 const customerLoading = ref(false);
 const openInvoices = ref<OpenInvoice[]>(props.initial_invoices);
+const pendingChecks = ref<PendingCheck[]>(props.initial_checks);
 const invoiceLoading = ref(false);
 const lookupError = ref('');
 const clientError = ref('');
@@ -125,6 +138,9 @@ const eligibleAccounts = computed(() => {
 
     return props.treasury_accounts.filter((account) => account.type === type);
 });
+const selectedCheck = computed(() =>
+    pendingChecks.value.find((check) => check.id.toString() === form.check_id),
+);
 const fieldError = (key: string) =>
     (form.errors as Record<string, string>)[key];
 const allocationError = (index: number) =>
@@ -184,6 +200,7 @@ const loadInvoices = async () => {
         const response = await getJson<{
             customer: CustomerOption;
             invoices: OpenInvoice[];
+            checks: PendingCheck[];
         }>(
             invoiceLookup.url({
                 query: { customer_id: Number(form.customer_id) },
@@ -191,6 +208,7 @@ const loadInvoices = async () => {
         );
         selectedCustomer.value = response.customer;
         openInvoices.value = response.invoices;
+        pendingChecks.value = response.checks;
     } catch {
         lookupError.value = 'دریافت فاکتورهای باز انجام نشد.';
     } finally {
@@ -207,6 +225,13 @@ watch(customerSearch, () => {
 watch(
     () => form.payment_method,
     () => {
+        form.check_id = '';
+
+        if (form.payment_method === 'check') {
+            form.treasury_account_id = '';
+            return;
+        }
+
         const defaultAccount = eligibleAccounts.value.find(
             (account) => account.is_default,
         );
@@ -239,6 +264,7 @@ const selectCustomer = async (customer: CustomerOption) => {
     selectedCustomer.value = customer;
     form.customer_id = customer.id.toString();
     form.allocations = [];
+    pendingChecks.value = [];
     customerSearch.value = '';
     customerResults.value = [];
     await loadInvoices();
@@ -249,6 +275,7 @@ const clearCustomer = () => {
     form.customer_id = '';
     form.allocations = [];
     openInvoices.value = [];
+    pendingChecks.value = [];
     void loadCustomers();
 };
 
@@ -295,8 +322,30 @@ const submit = () => {
         return;
     }
 
+    if (form.payment_method === 'check') {
+        if (!selectedCheck.value) {
+            clientError.value = 'چک دریافتی مورد استفاده را انتخاب کنید.';
+            return;
+        }
+
+        if (
+            Math.abs(parseNumber(selectedCheck.value.amount) - total.value) >
+            0.009
+        ) {
+            clientError.value =
+                'مبلغ چک باید دقیقاً برابر جمع تخصیص فاکتورها باشد.';
+            return;
+        }
+    }
+
     form.transform((data) => ({
         ...data,
+        check_id:
+            data.payment_method === 'check' ? Number(data.check_id) : null,
+        treasury_account_id:
+            data.payment_method === 'check'
+                ? null
+                : data.treasury_account_id || null,
         allocations: data.allocations.map((allocation) => ({
             invoice_id: allocation.id,
             amount: normalizeNumber(allocation.amount),
@@ -625,7 +674,7 @@ defineOptions({
 
                     <div class="mt-5">
                         <Label>روش دریافت *</Label>
-                        <div class="mt-2 grid gap-3 sm:grid-cols-3">
+                        <div class="mt-2 grid gap-3 sm:grid-cols-4">
                             <button
                                 v-for="method in [
                                     {
@@ -642,6 +691,11 @@ defineOptions({
                                         value: 'card',
                                         label: 'کارتی',
                                         icon: CreditCard,
+                                    },
+                                    {
+                                        value: 'check',
+                                        label: 'چکی',
+                                        icon: ReceiptText,
                                     },
                                 ] as const"
                                 :key="method.value"
@@ -669,7 +723,66 @@ defineOptions({
                         />
                     </div>
 
-                    <div class="mt-5 grid gap-2">
+                    <div
+                        v-if="form.payment_method === 'check'"
+                        class="mt-5 grid gap-2"
+                    >
+                        <div
+                            class="flex flex-wrap items-center justify-between gap-2"
+                        >
+                            <Label for="check_id">چک دریافتی *</Label>
+                            <Button
+                                v-if="selectedCustomer"
+                                as-child
+                                variant="ghost"
+                                size="sm"
+                                class="h-8"
+                            >
+                                <Link
+                                    :href="
+                                        createCheck.url({
+                                            query: {
+                                                type: 'receivable',
+                                                customer_id:
+                                                    selectedCustomer.id,
+                                            },
+                                        })
+                                    "
+                                >
+                                    ثبت چک جدید
+                                </Link>
+                            </Button>
+                        </div>
+                        <select
+                            id="check_id"
+                            v-model="form.check_id"
+                            class="h-11 rounded-xl border border-input bg-background px-3 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"
+                        >
+                            <option value="">انتخاب چک در انتظار</option>
+                            <option
+                                v-for="check in pendingChecks"
+                                :key="check.id"
+                                :value="check.id.toString()"
+                            >
+                                {{ check.check_number }} ·
+                                {{ check.bank_name }} ·
+                                {{ money.format(Number(check.amount)) }} ریال
+                            </option>
+                        </select>
+                        <p
+                            v-if="selectedCustomer && !pendingChecks.length"
+                            class="text-[10px] leading-5 text-muted-foreground"
+                        >
+                            برای این مشتری چک در انتظار وجود ندارد. ابتدا چک
+                            جدید را ثبت کنید.
+                        </p>
+                        <InputError :message="form.errors.check_id" />
+                    </div>
+
+                    <div
+                        v-if="form.payment_method !== 'check'"
+                        class="mt-5 grid gap-2"
+                    >
                         <Label for="treasury_account_id"
                             >حساب خزانه (اختیاری)</Label
                         >
