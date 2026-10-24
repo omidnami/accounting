@@ -16,6 +16,7 @@ use App\Models\Payment;
 use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\TreasuryAccount;
+use App\Services\Branches\BranchContextService;
 use App\Services\Purchasing\SupplierPayableService;
 use App\Services\Purchasing\SupplierPaymentService;
 use App\Support\Digits;
@@ -38,13 +39,16 @@ class SupplierPaymentController extends Controller
         abort_unless($request->user()?->canManagePayments(), 403);
 
         $store = $this->mainStore();
+        $branch = $this->defaultBranch($store);
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:100'],
             'payment_method' => ['nullable', Rule::enum(PaymentMethod::class)],
         ]);
         $search = trim(Digits::toLatin((string) ($validated['search'] ?? '')));
         $paymentMethod = $validated['payment_method'] ?? null;
-        $base = Payment::query()->where('store_id', $store->id);
+        $base = Payment::query()
+            ->where('store_id', $store->id)
+            ->where('branch_id', $branch->id);
         $payments = (clone $base)
             ->with(['supplier.party:id,code,name,phone', 'allocations'])
             ->when($search !== '', function (Builder $query) use ($search): void {
@@ -145,7 +149,12 @@ class SupplierPaymentController extends Controller
             }
 
             $initialInvoices = $this->mapOpenInvoices(
-                $payables->openInvoices($supplier, $store->id, $focusInvoiceId),
+                $payables->openInvoices(
+                    $supplier,
+                    $store->id,
+                    $focusInvoiceId,
+                    $branch->id,
+                ),
                 $payables,
             );
             $initialChecks = $this->pendingChecks($supplier, $store->id, $branch->id);
@@ -187,6 +196,7 @@ class SupplierPaymentController extends Controller
             'invoice_id' => ['nullable', 'integer', 'exists:invoices,id'],
         ]);
         $store = $this->mainStore();
+        $branch = $this->defaultBranch($store);
         $supplier = Supplier::query()
             ->with('party')
             ->whereKey((int) $validated['supplier_id'])
@@ -200,13 +210,18 @@ class SupplierPaymentController extends Controller
         return response()->json([
             'supplier' => $this->mapSupplier($supplier),
             'invoices' => $this->mapOpenInvoices(
-                $payables->openInvoices($supplier, $store->id, $focusInvoiceId),
+                $payables->openInvoices(
+                    $supplier,
+                    $store->id,
+                    $focusInvoiceId,
+                    $branch->id,
+                ),
                 $payables,
             ),
             'checks' => $this->pendingChecks(
                 $supplier,
                 $store->id,
-                $this->defaultBranch($store)->id,
+                $branch->id,
             ),
         ]);
     }
@@ -257,7 +272,11 @@ class SupplierPaymentController extends Controller
     public function show(Request $request, Payment $payment): Response
     {
         abort_unless($request->user()?->canManagePayments(), 403);
-        abort_unless($payment->store_id === $this->mainStore()->id, 404);
+        abort_unless(
+            $payment->store_id === $this->mainStore()->id
+            && (int) $payment->branch_id === (int) $this->defaultBranch($this->mainStore())->id,
+            404,
+        );
         $payment->load([
             'supplier.party',
             'allocations.invoice',
@@ -404,7 +423,7 @@ class SupplierPaymentController extends Controller
 
     private function defaultBranch(Store $store): Branch
     {
-        return $store->defaultBranch()->where('is_active', true)->firstOrFail();
+        return app(BranchContextService::class)->active(request()->user(), $store);
     }
 
     private function currentFiscalYear(Store $store): FiscalYear

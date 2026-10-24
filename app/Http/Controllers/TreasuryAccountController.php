@@ -12,6 +12,7 @@ use App\Models\Account;
 use App\Models\Branch;
 use App\Models\Store;
 use App\Models\TreasuryAccount;
+use App\Services\Branches\BranchContextService;
 use App\Services\Treasury\TreasuryAccountService;
 use App\Support\Digits;
 use DomainException;
@@ -249,7 +250,8 @@ class TreasuryAccountController extends Controller
     private function assertAccountScope(TreasuryAccount $account): void
     {
         abort_unless(
-            (int) $account->store_id === $this->mainStore()->id,
+            (int) $account->store_id === $this->mainStore()->id
+            && (int) $account->branch_id === (int) $this->defaultBranch($this->mainStore())->id,
             404,
         );
     }
@@ -281,8 +283,6 @@ class TreasuryAccountController extends Controller
 
     private function defaultBranch(Store $store): Branch
     {
-        return $store->defaultBranch()
-            ->where('is_active', true)
-            ->firstOrFail();
+        return app(BranchContextService::class)->active(request()->user(), $store);
     }
 }

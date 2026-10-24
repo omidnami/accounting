@@ -12,7 +12,7 @@ class UserManagementService
 {
     /**
      * @param  array{
-     *     name: string, email: string, role: string,
+     *     name: string, email: string, role: string, branch_id: int|null,
      *     password: string, version: int
      * }  $data
      */
@@ -26,6 +26,7 @@ class UserManagementService
                 $user->password = $data['password'];
                 $user->email_verified_at = now();
                 $user->role = UserRole::from($data['role']);
+                $user->branch_id = $data['branch_id'];
                 $user->version = 0;
                 $user->save();
 
@@ -38,7 +39,7 @@ class UserManagementService
 
     /**
      * @param  array{
-     *     name: string, email: string, role: string,
+     *     name: string, email: string, role: string, branch_id: int|null,
      *     password?: string|null, version: int
      * }  $data
      */
@@ -74,6 +75,7 @@ class UserManagementService
                 $locked->name = trim($data['name']);
                 $locked->email = strtolower(trim($data['email']));
                 $locked->role = $newRole;
+                $locked->branch_id = $data['branch_id'];
 
                 if (isset($data['password']) && $data['password'] !== '') {
                     $locked->password = $data['password'];

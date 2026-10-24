@@ -16,6 +16,7 @@ use App\Models\Invoice;
 use App\Models\Receipt;
 use App\Models\Store;
 use App\Models\TreasuryAccount;
+use App\Services\Branches\BranchContextService;
 use App\Services\Sales\CustomerReceiptService;
 use App\Services\Sales\CustomerReceivableService;
 use App\Support\Digits;
@@ -38,13 +39,16 @@ class CustomerReceiptController extends Controller
         abort_unless($request->user()?->canManageReceipts(), 403);
 
         $store = $this->mainStore();
+        $branch = $this->defaultBranch($store);
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:100'],
             'payment_method' => ['nullable', Rule::enum(PaymentMethod::class)],
         ]);
         $search = trim(Digits::toLatin((string) ($validated['search'] ?? '')));
         $paymentMethod = $validated['payment_method'] ?? null;
-        $base = Receipt::query()->where('store_id', $store->id);
+        $base = Receipt::query()
+            ->where('store_id', $store->id)
+            ->where('branch_id', $branch->id);
         $receipts = (clone $base)
             ->with(['customer.party:id,code,name,phone', 'allocations'])
             ->when($search !== '', function (Builder $query) use ($search): void {
@@ -145,7 +149,12 @@ class CustomerReceiptController extends Controller
             }
 
             $initialInvoices = $this->mapOpenInvoices(
-                $receivables->openInvoices($customer, $store->id, $focusInvoiceId),
+                $receivables->openInvoices(
+                    $customer,
+                    $store->id,
+                    $focusInvoiceId,
+                    branchId: $branch->id,
+                ),
                 $receivables,
             );
             $initialChecks = $this->pendingChecks($customer, $store->id, $branch->id);
@@ -187,6 +196,7 @@ class CustomerReceiptController extends Controller
             'invoice_id' => ['nullable', 'integer', 'exists:invoices,id'],
         ]);
         $store = $this->mainStore();
+        $branch = $this->defaultBranch($store);
         $customer = Customer::query()
             ->with('party')
             ->whereKey((int) $validated['customer_id'])
@@ -200,13 +210,18 @@ class CustomerReceiptController extends Controller
         return response()->json([
             'customer' => $this->mapCustomer($customer),
             'invoices' => $this->mapOpenInvoices(
-                $receivables->openInvoices($customer, $store->id, $focusInvoiceId),
+                $receivables->openInvoices(
+                    $customer,
+                    $store->id,
+                    $focusInvoiceId,
+                    branchId: $branch->id,
+                ),
                 $receivables,
             ),
             'checks' => $this->pendingChecks(
                 $customer,
                 $store->id,
-                $this->defaultBranch($store)->id,
+                $branch->id,
             ),
         ]);
     }
@@ -257,7 +272,11 @@ class CustomerReceiptController extends Controller
     public function show(Request $request, Receipt $receipt): Response
     {
         abort_unless($request->user()?->canManageReceipts(), 403);
-        abort_unless($receipt->store_id === $this->mainStore()->id, 404);
+        abort_unless(
+            $receipt->store_id === $this->mainStore()->id
+            && (int) $receipt->branch_id === (int) $this->defaultBranch($this->mainStore())->id,
+            404,
+        );
         $receipt->load([
             'customer.party',
             'allocations.invoice',
@@ -404,9 +423,7 @@ class CustomerReceiptController extends Controller
 
     private function defaultBranch(Store $store): Branch
     {
-        return $store->defaultBranch()
-            ->where('is_active', true)
-            ->firstOrFail();
+        return app(BranchContextService::class)->active(request()->user(), $store);
     }
 
     private function currentFiscalYear(Store $store): FiscalYear

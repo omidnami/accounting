@@ -87,9 +87,11 @@ class CustomerReceivableService
         int $storeId,
         ?int $focusInvoiceId = null,
         ?int $limit = null,
+        ?int $branchId = null,
     ): Collection {
         $invoices = Invoice::query()
             ->where('store_id', $storeId)
+            ->when($branchId !== null, fn ($query) => $query->where('branch_id', $branchId))
             ->where('customer_id', $customer->id)
             ->where('type', InvoiceType::Sales)
             ->whereIn('status', [

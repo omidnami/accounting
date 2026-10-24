@@ -2,8 +2,11 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Store;
+use App\Services\Branches\BranchContextService;
 use App\Support\Digits;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StockCountRequest extends FormRequest
 {
@@ -17,9 +20,19 @@ class StockCountRequest extends FormRequest
      */
     public function rules(): array
     {
+        $store = Store::query()->where('code', 'MAIN')->firstOrFail();
+        $branch = app(BranchContextService::class)
+            ->active($this->user(), $store);
+
         return [
             'submission_token' => ['required', 'uuid'],
-            'warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
+            'warehouse_id' => [
+                'required',
+                'integer',
+                Rule::exists('warehouses', 'id')
+                    ->where('store_id', $store->id)
+                    ->where('branch_id', $branch->id),
+            ],
             'count_date' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'items' => ['required', 'array', 'min:1', 'max:500'],

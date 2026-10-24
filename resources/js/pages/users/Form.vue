@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { Head, Link, useForm } from '@inertiajs/vue3';
-import { ArrowRight, Mail, ShieldCheck, UserCog, UserPlus } from '@lucide/vue';
+import {
+    ArrowRight,
+    Building2,
+    Mail,
+    ShieldCheck,
+    UserCog,
+    UserPlus,
+} from '@lucide/vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,15 +26,18 @@ const props = defineProps<{
         name: string;
         email: string;
         role: Role;
+        branch_id: number | null;
         version: number;
         is_self: boolean;
     } | null;
+    branches: Array<{ id: number; code: string; name: string }>;
 }>();
 
 const form = useForm({
     name: props.user?.name ?? '',
     email: props.user?.email ?? '',
     role: props.user?.role ?? ('viewer' as Role),
+    branch_id: props.user?.branch_id ?? null,
     password: '',
     password_confirmation: '',
     version: props.user?.version ?? 0,
@@ -217,6 +227,38 @@ defineOptions({
                         نقش حساب کاربری خودتان قابل تغییر نیست.
                     </p>
                     <InputError :message="form.errors.role" />
+
+                    <label class="mt-5 block">
+                        <span
+                            class="mb-2 flex items-center gap-2 text-sm font-bold"
+                        >
+                            <Building2 class="size-4 text-primary" />
+                            شعبهٔ کاری
+                        </span>
+                        <select
+                            v-model="form.branch_id"
+                            class="h-11 w-full rounded-xl border bg-background px-3 text-sm"
+                        >
+                            <option :value="null">همه شعب</option>
+                            <option
+                                v-for="branch in branches"
+                                :key="branch.id"
+                                :value="branch.id"
+                            >
+                                {{ branch.name }} — {{ branch.code }}
+                            </option>
+                        </select>
+                        <p
+                            class="mt-2 text-[10px] leading-5 text-muted-foreground"
+                        >
+                            صندوق‌دار و انباردار باید به یک شعبه محدود شوند.
+                            مدیر و حسابدار می‌توانند همهٔ شعب را داشته باشند.
+                        </p>
+                        <InputError
+                            class="mt-1"
+                            :message="form.errors.branch_id"
+                        />
+                    </label>
                 </section>
             </div>
 

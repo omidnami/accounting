@@ -10,6 +10,7 @@ use App\Models\Branch;
 use App\Models\FiscalYear;
 use App\Models\Invoice;
 use App\Models\Store;
+use App\Services\Branches\BranchContextService;
 use App\Services\Purchasing\PurchaseReturnService;
 use App\Services\Purchasing\PurchaseService;
 use App\Services\Purchasing\SupplierPayableService;
@@ -31,6 +32,7 @@ class PurchaseInvoiceController extends Controller
         abort_unless($request->user()?->canManagePurchases(), 403);
 
         $store = $this->mainStore();
+        $branch = $this->defaultBranch($store);
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:100'],
             'status' => ['nullable', Rule::enum(InvoiceStatus::class)],
@@ -39,6 +41,7 @@ class PurchaseInvoiceController extends Controller
         $status = $validated['status'] ?? null;
         $base = Invoice::query()
             ->where('store_id', $store->id)
+            ->where('branch_id', $branch->id)
             ->where('type', InvoiceType::Purchase);
         $invoices = (clone $base)
             ->with('supplier.party:id,code,name,phone')
@@ -286,7 +289,8 @@ class PurchaseInvoiceController extends Controller
     {
         abort_unless(
             $invoice->type === InvoiceType::Purchase
-            && $invoice->store_id === $this->mainStore()->id,
+            && $invoice->store_id === $this->mainStore()->id
+            && $invoice->branch_id === $this->defaultBranch($this->mainStore())->id,
             404,
         );
     }
@@ -298,9 +302,7 @@ class PurchaseInvoiceController extends Controller
 
     private function defaultBranch(Store $store): Branch
     {
-        return $store->defaultBranch()
-            ->where('is_active', true)
-            ->firstOrFail();
+        return app(BranchContextService::class)->active(request()->user(), $store);
     }
 
     private function currentFiscalYear(Store $store): FiscalYear

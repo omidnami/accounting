@@ -16,13 +16,13 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی و remote: `6567e19`
-- پیام: `feat(printing): add configurable thermal receipts`
+- آخرین کامیت محلی و remote: `7f24278`
+- پیام: `feat(printing): add A5/A4 invoice formats and print overrides`
 - CI همین commit در GitHub موفق است.
-- تنظیمات قالب حرارتی ۵۸/۸۰، A5/A4، متن سربرگ، انتخاب موقت هنگام چاپ و
-  قرارداد Print Agent اکنون در worktree آماده commit هستند.
-- migration `2026_10_24_000003_add_invoice_print_format_to_branches` هنوز
-  Pending است؛ پس از commit باید `php artisan migrate` اجرا شود.
+- مدل تک‌مستاجری، مدیریت شعبه و کارمند، انتخاب شعبهٔ فعال و محدودسازی
+  عملیات به شعبه اکنون در worktree آماده commit هستند.
+- migration `2026_10_24_000004_add_branch_assignment_to_users` هنوز Pending
+  است؛ پس از commit باید `php artisan migrate` اجرا شود.
 - commit تغییرات بر عهده
   کاربر است.
 
@@ -41,7 +41,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `291 tests`, `2262 assertions`
+- Pest: `296 tests`, `2319 assertions`
 - Node calendar: `3 tests`
 - PHPStan: صفر خطا
 - Pint: موفق
@@ -227,6 +227,7 @@ npm run build
 - `/inventory/cardex/export`
 - `/audit-logs/export`
 - `/settings/print`
+- `/branches`
 - `/settings/profile`
 - `/settings/security`
 
@@ -261,6 +262,7 @@ npm run build
 - `phase-15e`: دفتر معین، صورتحساب، Aging و گزارش‌های فروش
 - `phase-15f`: خروجی CSV، چاپ گزارش و چاپ حرارتی فاکتور
 - `phase-15f2`: تنظیمات چاپ هر شعبه و قرارداد Print Agent
+- `phase-15g1`: تک‌مستاجری، مدیریت شعبه و تخصیص کارمند
 
 ## فایل‌های کلیدی
 
@@ -278,6 +280,8 @@ npm run build
 - `app/Services/Reporting/CsvExportService.php`
 - `app/Services/Reporting/AuditLogReportService.php`
 - `app/Services/Printing/PrintSettingsService.php`
+- `app/Services/Branches/BranchContextService.php`
+- `app/Services/Branches/BranchManagementService.php`
 - `app/Enums/InvoicePrintFormat.php`
 - `app/Services/Accounting/AccountingPeriodLockService.php`
 - `app/Services/Inventory/InventoryService.php`
@@ -324,6 +328,8 @@ npm run build
 - `OperationalReportsController`
 - `ReportExportController`
 - `Settings\PrintSettingsController`
+- `BranchManagementController`
+- `ActiveBranchController`
 
 ### UI
 
@@ -351,6 +357,8 @@ npm run build
 - `resources/js/pages/sales/SalesReceipt.vue`
 - `resources/js/pages/sales/SalesInvoicePage.vue`
 - `resources/js/pages/settings/Print.vue`
+- `resources/js/pages/branches/Index.vue`
+- `resources/js/pages/branches/Form.vue`
 
 ## قواعد اجباری ادامه کار
 
@@ -389,6 +397,10 @@ npm run build
 - بررسی دستی قالب‌های A4/A5 و چاپگرهای حرارتی ۵۸/۸۰ انجام نشده است.
 - چاپ بی‌صدا و Print Agent پیاده نشده‌اند؛ فقط قرارداد امنیتی و معماری آن‌ها
   در `.codex/print-agent-architecture.md` آماده شده است.
+- هر کارمند فعلاً یک شعبهٔ اصلی دارد؛ تخصیص چندشعبه‌ای و انتقال گروهی کارمندان
+  وجود ندارد.
+- First-run setup برای ساخت امن مدیر اولیه، فروشگاه و دوره مالی هنوز پیاده
+  نشده است.
 - Audit Log و مدیریت کاربران/نقش‌ها وجود دارد؛ غیرفعال‌سازی کاربر، retention و
   alerting برای Audit هنوز پیاده‌سازی نشده‌اند.
 - سند افتتاحیه تکراری وجود ندارد؛ انتقال مانده ترازنامه با دفتر پیوسته انجام
@@ -402,9 +414,11 @@ npm run build
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی چاپ ۵۸/۸۰، A5 و A4 و commit فاز 15F2 توسط کاربر
-2. Phase 15G: آماده‌سازی production
-3. پیش از production، pagination/cache گزارش‌های تجمیعی را در صورت حجم بالا
+1. بررسی دستی چندشعبه، تخصیص کارمند و commit فاز 15G1 توسط کاربر
+2. First-run setup و ساخت امن مدیر اولیه
+3. غیرفعال‌سازی کاربر و reset کنترل‌شده 2FA
+4. backup/restore، retention Audit و چک‌لیست deployment
+5. پیش از production، pagination/cache گزارش‌های تجمیعی را در صورت حجم بالا
    اضافه کنید.
 
 جزئیات Phase 8A در `.codex/phase-8a-treasury-checks-ui.md` ثبت شده است.
@@ -423,6 +437,8 @@ npm run build
 جزئیات Phase 15E در `.codex/phase-15e-operational-reports.md` آمده است.
 جزئیات Phase 15F در `.codex/phase-15f-report-exports-print.md` آمده است.
 قرارداد Print Agent در `.codex/print-agent-architecture.md` آمده است.
+جزئیات Phase 15G1 در `.codex/phase-15g1-single-tenant-branches-employees.md`
+آمده است.
 نقشه مراحل تکمیل در `.codex/phase-15-roadmap.md` آمده است.
 
 ## الگوی درخواست از Agent بعدی

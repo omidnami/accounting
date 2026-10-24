@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Store;
+use App\Services\Branches\BranchContextService;
 use App\Services\Dashboard\DashboardService;
+use DomainException;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -13,7 +15,16 @@ class DashboardController extends Controller
     public function __invoke(Request $request, DashboardService $dashboard): Response
     {
         $store = Store::query()->where('code', 'MAIN')->first();
-        $branch = $store?->defaultBranch()->where('is_active', true)->first();
+        $branch = null;
+
+        if ($store !== null) {
+            try {
+                $branch = app(BranchContextService::class)
+                    ->active($request->user(), $store);
+            } catch (DomainException) {
+                $branch = null;
+            }
+        }
         $fiscalYear = $store?->fiscalYears()->where('is_current', true)->first();
 
         if (! $store || ! $branch || ! $fiscalYear) {

@@ -26,6 +26,7 @@ type UserRow = {
     name: string;
     email: string;
     role: Role;
+    branch: { id: number; code: string; name: string } | null;
     email_verified: boolean;
     created_at: string | null;
 };
@@ -225,6 +226,7 @@ defineOptions({
                         <tr>
                             <th class="px-5 py-3">کاربر</th>
                             <th class="px-4 py-3">نقش</th>
+                            <th class="px-4 py-3">شعبه</th>
                             <th class="px-4 py-3">ایمیل</th>
                             <th class="px-4 py-3">تاریخ ایجاد</th>
                             <th class="px-5 py-3"></th>
@@ -267,6 +269,15 @@ defineOptions({
                                     class="mt-1 text-[9px] text-muted-foreground"
                                 >
                                     {{ roleMeta[user.role].description }}
+                                </p>
+                            </td>
+                            <td class="px-4 py-4 text-xs">
+                                {{ user.branch?.name ?? 'همه شعب' }}
+                                <p
+                                    v-if="user.branch"
+                                    class="mt-1 font-mono text-[9px] text-muted-foreground"
+                                >
+                                    {{ user.branch.code }}
                                 </p>
                             </td>
                             <td class="px-4 py-4 text-xs">

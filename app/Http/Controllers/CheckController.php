@@ -16,6 +16,7 @@ use App\Models\JournalEntry;
 use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\TreasuryAccount;
+use App\Services\Branches\BranchContextService;
 use App\Services\Treasury\CheckRegistrationService;
 use App\Services\Treasury\CheckSettlementService;
 use App\Support\Digits;
@@ -36,6 +37,7 @@ class CheckController extends Controller
         abort_unless($request->user()?->canManageChecks(), 403);
 
         $store = $this->mainStore();
+        $branch = $this->defaultBranch($store);
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:100'],
             'type' => ['nullable', Rule::enum(CheckType::class)],
@@ -46,7 +48,9 @@ class CheckController extends Controller
         $type = $validated['type'] ?? null;
         $status = $validated['status'] ?? null;
         $dueState = $validated['due_state'] ?? null;
-        $base = Check::query()->where('store_id', $store->id);
+        $base = Check::query()
+            ->where('store_id', $store->id)
+            ->where('branch_id', $branch->id);
         $checks = (clone $base)
             ->with([
                 'customer.party:id,code,name,phone',
@@ -244,7 +248,11 @@ class CheckController extends Controller
     public function show(Request $request, Check $check): Response
     {
         abort_unless($request->user()?->canManageChecks(), 403);
-        abort_unless((int) $check->store_id === $this->mainStore()->id, 404);
+        abort_unless(
+            (int) $check->store_id === $this->mainStore()->id
+            && (int) $check->branch_id === $this->defaultBranch($this->mainStore())->id,
+            404,
+        );
         $check->load([
             'customer.party',
             'supplier.party',
@@ -319,7 +327,11 @@ class CheckController extends Controller
         Check $check,
         CheckSettlementService $settlements,
     ): RedirectResponse {
-        abort_unless((int) $check->store_id === $this->mainStore()->id, 404);
+        abort_unless(
+            (int) $check->store_id === $this->mainStore()->id
+            && (int) $check->branch_id === $this->defaultBranch($this->mainStore())->id,
+            404,
+        );
         $data = $request->validated();
 
         try {
@@ -363,7 +375,11 @@ class CheckController extends Controller
         Check $check,
         CheckSettlementService $settlements,
     ): RedirectResponse {
-        abort_unless((int) $check->store_id === $this->mainStore()->id, 404);
+        abort_unless(
+            (int) $check->store_id === $this->mainStore()->id
+            && (int) $check->branch_id === $this->defaultBranch($this->mainStore())->id,
+            404,
+        );
         $data = $request->validated();
 
         try {
@@ -477,9 +493,7 @@ class CheckController extends Controller
 
     private function defaultBranch(Store $store): Branch
     {
-        return $store->defaultBranch()
-            ->where('is_active', true)
-            ->firstOrFail();
+        return app(BranchContextService::class)->active(request()->user(), $store);
     }
 
     private function currentFiscalYear(Store $store): FiscalYear

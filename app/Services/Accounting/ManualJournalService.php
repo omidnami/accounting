@@ -34,10 +34,14 @@ class ManualJournalService
      * @param  array<string, mixed>  $filters
      * @return array{entries: LengthAwarePaginator<int, array<string, mixed>>, summary: array<string, int>}
      */
-    public function paginate(Store $store, array $filters): array
-    {
+    public function paginate(
+        Store $store,
+        array $filters,
+        ?Branch $branch = null,
+    ): array {
         $base = JournalEntry::query()
             ->where('store_id', $store->id)
+            ->when($branch !== null, fn (Builder $query) => $query->where('branch_id', $branch->id))
             ->whereIn('entry_kind', [
                 JournalEntryKind::Manual,
                 JournalEntryKind::Opening,
@@ -148,11 +152,15 @@ class ManualJournalService
     /**
      * @param  array<string, mixed>  $data
      */
-    public function createDraft(Store $store, array $data, User $author): JournalEntry
-    {
-        return DB::transaction(function () use ($store, $data, $author): JournalEntry {
+    public function createDraft(
+        Store $store,
+        array $data,
+        User $author,
+        ?Branch $branch = null,
+    ): JournalEntry {
+        return DB::transaction(function () use ($store, $data, $author, $branch): JournalEntry {
             $kind = $this->manualKind((string) $data['entry_kind']);
-            $context = $this->resolveContext($store, (string) $data['entry_date']);
+            $context = $this->resolveContext($store, (string) $data['entry_date'], $branch);
             $lines = $this->normalizeLines($data['lines']);
             $this->validateLines(
                 $store,
@@ -187,8 +195,9 @@ class ManualJournalService
         Store $store,
         JournalEntry $entry,
         array $data,
+        ?Branch $branch = null,
     ): JournalEntry {
-        return DB::transaction(function () use ($store, $entry, $data): JournalEntry {
+        return DB::transaction(function () use ($store, $entry, $data, $branch): JournalEntry {
             $locked = JournalEntry::query()
                 ->whereKey($entry->getKey())
                 ->where('store_id', $store->id)
@@ -209,7 +218,7 @@ class ManualJournalService
                 throw new DomainException('نوع سند پس از ایجاد قابل تغییر نیست.');
             }
 
-            $context = $this->resolveContext($store, (string) $data['entry_date']);
+            $context = $this->resolveContext($store, (string) $data['entry_date'], $branch);
             $lines = $this->normalizeLines($data['lines']);
             $this->validateLines(
                 $store,
@@ -262,7 +271,11 @@ class ManualJournalService
                 throw new DomainException('سند انتخاب‌شده برای ثبت دستی معتبر نیست.');
             }
 
-            $context = $this->resolveContext($store, $locked->entry_date->toDateString());
+            $context = $this->resolveContext(
+                $store,
+                $locked->entry_date->toDateString(),
+                $locked->branch,
+            );
             $lines = $locked->lines()->get()->map(fn ($line): array => [
                 'account_id' => $line->account_id,
                 'party_id' => $line->party_id,
@@ -379,16 +392,21 @@ class ManualJournalService
     /**
      * @return array{branch: Branch, fiscal_year: FiscalYear, period: AccountingPeriod}
      */
-    private function resolveContext(Store $store, string $entryDate): array
-    {
+    private function resolveContext(
+        Store $store,
+        string $entryDate,
+        ?Branch $branch = null,
+    ): array {
         $date = CarbonImmutable::parse($entryDate, 'Asia/Tehran')->startOfDay();
-        $branch = Branch::query()
+        $branch ??= Branch::query()
             ->where('store_id', $store->id)
             ->where('is_default', true)
             ->where('is_active', true)
             ->first();
 
-        if (! $branch) {
+        if (! $branch
+            || (int) $branch->store_id !== (int) $store->id
+            || ! $branch->is_active) {
             throw new DomainException('برای ثبت سند، شعبه پیش‌فرض فعال الزامی است.');
         }
 

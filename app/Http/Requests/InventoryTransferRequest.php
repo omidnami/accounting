@@ -2,8 +2,11 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Store;
+use App\Services\Branches\BranchContextService;
 use App\Support\Digits;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class InventoryTransferRequest extends FormRequest
 {
@@ -17,10 +20,17 @@ class InventoryTransferRequest extends FormRequest
      */
     public function rules(): array
     {
+        $store = Store::query()->where('code', 'MAIN')->firstOrFail();
+        $branch = app(BranchContextService::class)
+            ->active($this->user(), $store);
+        $warehouseRule = Rule::exists('warehouses', 'id')
+            ->where('store_id', $store->id)
+            ->where('branch_id', $branch->id);
+
         return [
             'submission_token' => ['required', 'uuid'],
-            'source_warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
-            'destination_warehouse_id' => ['required', 'integer', 'exists:warehouses,id'],
+            'source_warehouse_id' => ['required', 'integer', $warehouseRule],
+            'destination_warehouse_id' => ['required', 'integer', $warehouseRule],
             'product_id' => ['required', 'integer', 'exists:products,id'],
             'quantity' => ['required', 'numeric', 'gt:0', 'decimal:0,3'],
             'transfer_date' => ['required', 'date'],

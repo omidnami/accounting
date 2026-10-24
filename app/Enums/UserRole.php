@@ -105,6 +105,16 @@ enum UserRole: string
         return $this === self::Manager;
     }
 
+    public function canManageBranches(): bool
+    {
+        return $this === self::Manager;
+    }
+
+    public function canSwitchBranches(): bool
+    {
+        return in_array($this, [self::Manager, self::Accountant], true);
+    }
+
     public function canCloseAccountingPeriods(): bool
     {
         return in_array($this, [self::Manager, self::Accountant], true);

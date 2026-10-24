@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\UserRole;
 use App\Http\Requests\UserManagementRequest;
+use App\Models\Store;
 use App\Models\User;
 use App\Services\Users\UserManagementService;
 use App\Support\Digits;
@@ -11,6 +12,7 @@ use DomainException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -30,6 +32,7 @@ class UserManagementController extends Controller
         $role = $validated['role'] ?? null;
         $base = User::query();
         $users = (clone $base)
+            ->with('branch:id,code,name')
             ->when($search !== '', function (Builder $query) use ($search): void {
                 $term = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
                 $query->where(fn (Builder $query) => $query
@@ -45,6 +48,13 @@ class UserManagementController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role->value,
+                'branch' => $user->branch
+                    ? [
+                        'id' => $user->branch->id,
+                        'code' => $user->branch->code,
+                        'name' => $user->branch->name,
+                    ]
+                    : null,
                 'email_verified' => $user->email_verified_at !== null,
                 'created_at' => $user->created_at?->toDateTimeString(),
             ]);
@@ -71,7 +81,10 @@ class UserManagementController extends Controller
     {
         abort_unless($request->user()?->canManageUsers(), 403);
 
-        return Inertia::render('users/Form', ['user' => null]);
+        return Inertia::render('users/Form', [
+            'user' => null,
+            'branches' => $this->branches(),
+        ]);
     }
 
     public function store(
@@ -104,9 +117,11 @@ class UserManagementController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role->value,
+                'branch_id' => $user->branch_id,
                 'version' => $user->version,
                 'is_self' => (int) $user->id === (int) $request->user()->id,
             ],
+            'branches' => $this->branches(),
         ]);
     }
 
@@ -138,7 +153,7 @@ class UserManagementController extends Controller
     /**
      * @param  array<string, mixed>  $data
      * @return array{
-     *     name: string, email: string, role: string,
+     *     name: string, email: string, role: string, branch_id: int|null,
      *     password: string, version: int
      * }
      */
@@ -148,8 +163,30 @@ class UserManagementController extends Controller
             'name' => (string) $data['name'],
             'email' => (string) $data['email'],
             'role' => (string) $data['role'],
+            'branch_id' => isset($data['branch_id']) ? (int) $data['branch_id'] : null,
             'password' => (string) ($data['password'] ?? ''),
             'version' => (int) $data['version'],
         ];
+    }
+
+    /**
+     * @return Collection<int, array{id: int<0, max>, code: string, name: string}>
+     */
+    private function branches(): Collection
+    {
+        return Store::query()
+            ->where('code', 'MAIN')
+            ->firstOrFail()
+            ->branches()
+            ->where('is_active', true)
+            ->orderByDesc('is_default')
+            ->orderBy('name')
+            ->get(['id', 'code', 'name'])
+            ->map(fn ($branch): array => [
+                'id' => $branch->id,
+                'code' => $branch->code,
+                'name' => $branch->name,
+            ])
+            ->values();
     }
 }

@@ -85,9 +85,11 @@ class SupplierPayableService
         Supplier $supplier,
         int $storeId,
         ?int $focusInvoiceId = null,
+        ?int $branchId = null,
     ): Collection {
         return Invoice::query()
             ->where('store_id', $storeId)
+            ->when($branchId !== null, fn ($query) => $query->where('branch_id', $branchId))
             ->where('supplier_id', $supplier->id)
             ->where('type', InvoiceType::Purchase)
             ->whereIn('status', [

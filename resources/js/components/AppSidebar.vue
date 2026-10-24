@@ -4,6 +4,7 @@ import {
     BarChart3,
     ArrowLeftRight,
     BookOpen,
+    Building2,
     CalendarDays,
     ClipboardCheck,
     CircleDollarSign,
@@ -38,6 +39,7 @@ import { index as checks } from '@/routes/checks';
 import { index as treasuryAccounts } from '@/routes/treasury-accounts';
 import { index as auditLogs } from '@/routes/audit-logs';
 import { index as users } from '@/routes/users';
+import { index as branches } from '@/routes/branches';
 import { edit as printSettings } from '@/routes/print-settings';
 import { index as fiscalYears } from '@/routes/fiscal-years';
 import { index as parties } from '@/routes/parties';
@@ -160,6 +162,11 @@ const mainNavItems = computed<NavItem[]>(() => {
     }
 
     if (user.value?.role === 'manager') {
+        items.push({
+            title: 'شعبه‌ها',
+            href: branches(),
+            icon: Building2,
+        });
         items.push({
             title: 'تنظیمات چاپ',
             href: printSettings(),

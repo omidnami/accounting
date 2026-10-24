@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Enums\JournalEntryKind;
 use App\Enums\JournalEntryStatus;
 use App\Http\Requests\ManualJournalRequest;
+use App\Models\Branch;
 use App\Models\JournalEntry;
 use App\Models\Store;
 use App\Services\Accounting\ManualJournalService;
+use App\Services\Branches\BranchContextService;
 use App\Support\Digits;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -36,7 +38,8 @@ class ManualJournalController extends Controller
             'from' => $validated['from'] ?? null,
             'to' => $validated['to'] ?? null,
         ];
-        $result = $journals->paginate($this->mainStore(), $filters);
+        $store = $this->mainStore();
+        $result = $journals->paginate($store, $filters, $this->activeBranch($store));
 
         return Inertia::render('journals/Index', [
             ...$result,
@@ -70,6 +73,7 @@ class ManualJournalController extends Controller
                 $this->mainStore(),
                 $request->validated(),
                 $request->user(),
+                $this->activeBranch($this->mainStore()),
             );
         } catch (DomainException $exception) {
             throw ValidationException::withMessages([
@@ -93,7 +97,9 @@ class ManualJournalController extends Controller
         $this->authorizeAccess($request);
 
         try {
-            $detail = $journals->detailForStore($this->mainStore(), $journalEntry);
+            $store = $this->mainStore();
+            $this->assertActiveBranch($journalEntry, $store);
+            $detail = $journals->detailForStore($store, $journalEntry);
         } catch (DomainException $exception) {
             abort(404, $exception->getMessage());
         }
@@ -111,8 +117,10 @@ class ManualJournalController extends Controller
         $this->authorizeAccess($request);
 
         try {
+            $store = $this->mainStore();
+            $this->assertActiveBranch($journalEntry, $store);
             $entry = $journals->editablePayload(
-                $this->mainStore(),
+                $store,
                 $journalEntry,
             );
         } catch (DomainException $exception) {
@@ -131,11 +139,14 @@ class ManualJournalController extends Controller
         JournalEntry $journalEntry,
         ManualJournalService $journals,
     ): RedirectResponse {
+        $this->assertActiveBranch($journalEntry, $this->mainStore());
+
         try {
             $entry = $journals->updateDraft(
                 $this->mainStore(),
                 $journalEntry,
                 $request->validated(),
+                $this->activeBranch($this->mainStore()),
             );
         } catch (DomainException $exception) {
             throw ValidationException::withMessages([
@@ -157,6 +168,7 @@ class ManualJournalController extends Controller
         ManualJournalService $journals,
     ): RedirectResponse {
         $this->authorizeAccess($request);
+        $this->assertActiveBranch($journalEntry, $this->mainStore());
 
         try {
             $entry = $journals->post(
@@ -184,6 +196,7 @@ class ManualJournalController extends Controller
         ManualJournalService $journals,
     ): RedirectResponse {
         $this->authorizeAccess($request);
+        $this->assertActiveBranch($journalEntry, $this->mainStore());
 
         try {
             $journals->deleteDraft($this->mainStore(), $journalEntry);
@@ -209,5 +222,19 @@ class ManualJournalController extends Controller
     private function mainStore(): Store
     {
         return Store::query()->where('code', 'MAIN')->firstOrFail();
+    }
+
+    private function activeBranch(Store $store): Branch
+    {
+        return app(BranchContextService::class)->active(request()->user(), $store);
+    }
+
+    private function assertActiveBranch(JournalEntry $entry, Store $store): void
+    {
+        abort_unless(
+            (int) $entry->store_id === (int) $store->id
+            && (int) $entry->branch_id === (int) $this->activeBranch($store)->id,
+            404,
+        );
     }
 }

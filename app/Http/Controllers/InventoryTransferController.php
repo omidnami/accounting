@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Http\Requests\InventoryTransferRequest;
 use App\Models\Product;
 use App\Models\Store;
+use App\Services\Branches\BranchContextService;
 use App\Services\Inventory\InventoryTransferService;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -19,8 +21,15 @@ class InventoryTransferController extends Controller
     {
         abort_unless($request->user()?->canTransferInventory(), 403);
         $store = $this->mainStore();
+        $branch = app(BranchContextService::class)->active($request->user(), $store);
         $validated = $request->validate([
-            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
+            'warehouse_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('warehouses', 'id')
+                    ->where('store_id', $store->id)
+                    ->where('branch_id', $branch->id),
+            ],
         ]);
 
         return Inertia::render('inventory/transfers/Index', [
@@ -82,7 +91,11 @@ class InventoryTransferController extends Controller
 
     private function warehouses(Store $store): mixed
     {
+        $branch = app(BranchContextService::class)
+            ->active(request()->user(), $store);
+
         return $store->warehouses()
+            ->where('branch_id', $branch->id)
             ->where('is_active', true)
             ->orderByDesc('is_default')
             ->orderBy('name')

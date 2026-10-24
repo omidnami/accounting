@@ -7,6 +7,7 @@ use App\Enums\InventoryMovementType;
 use App\Http\Requests\InventoryCardexRequest;
 use App\Models\Product;
 use App\Models\Store;
+use App\Services\Branches\BranchContextService;
 use App\Services\Inventory\InventoryCardexReportService;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -19,6 +20,7 @@ class InventoryCardexController extends Controller
     ): Response {
         $user = $request->user();
         $store = Store::query()->where('code', 'MAIN')->firstOrFail();
+        $branch = app(BranchContextService::class)->active($user, $store);
         $validated = $request->validated();
         $from = $validated['from'];
         $to = $validated['to'];
@@ -59,6 +61,7 @@ class InventoryCardexController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'code', 'name', 'unit', 'is_active']),
             'warehouses' => $store->warehouses()
+                ->where('branch_id', $branch->id)
                 ->orderByDesc('is_active')
                 ->orderByDesc('is_default')
                 ->orderBy('name')

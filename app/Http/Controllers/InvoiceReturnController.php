@@ -8,8 +8,10 @@ use App\Http\Requests\ConfirmPurchaseReturnRequest;
 use App\Http\Requests\ConfirmSalesReturnRequest;
 use App\Http\Requests\StorePurchaseReturnRequest;
 use App\Http\Requests\StoreSalesReturnRequest;
+use App\Models\Branch;
 use App\Models\Invoice;
 use App\Models\Store;
+use App\Services\Branches\BranchContextService;
 use App\Services\Purchasing\PurchaseReturnService;
 use App\Services\Sales\SalesReturnService;
 use DomainException;
@@ -320,7 +322,8 @@ class InvoiceReturnController extends Controller
     {
         abort_unless(
             $invoice->type === $type
-            && (int) $invoice->store_id === $this->mainStore()->id,
+            && (int) $invoice->store_id === $this->mainStore()->id
+            && (int) $invoice->branch_id === (int) $this->activeBranch()->id,
             404,
         );
     }
@@ -329,7 +332,8 @@ class InvoiceReturnController extends Controller
     {
         abort_unless(
             $invoice->type === $type
-            && (int) $invoice->store_id === $this->mainStore()->id,
+            && (int) $invoice->store_id === $this->mainStore()->id
+            && (int) $invoice->branch_id === (int) $this->activeBranch()->id,
             404,
         );
     }
@@ -337,6 +341,12 @@ class InvoiceReturnController extends Controller
     private function mainStore(): Store
     {
         return Store::query()->where('code', 'MAIN')->firstOrFail();
+    }
+
+    private function activeBranch(): Branch
+    {
+        return app(BranchContextService::class)
+            ->active(request()->user(), $this->mainStore());
     }
 
     private function deleteDraft(Invoice $return, InvoiceType $type): void
@@ -354,6 +364,7 @@ class InvoiceReturnController extends Controller
 
             if ($locked->type !== $type
                 || (int) $locked->store_id !== $this->mainStore()->id
+                || (int) $locked->branch_id !== (int) $this->activeBranch()->id
                 || $locked->status !== InvoiceStatus::Draft) {
                 throw ValidationException::withMessages([
                     'return' => 'فقط پیش‌نویس برگشت قابل حذف است.',

@@ -6,6 +6,7 @@ use App\Enums\InventoryDirection;
 use App\Enums\InventoryMovementType;
 use App\Models\FiscalYear;
 use App\Models\Store;
+use App\Services\Branches\BranchContextService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -24,6 +25,12 @@ class InventoryCardexRequest extends FormRequest
     public function rules(): array
     {
         $storeId = Store::query()->where('code', 'MAIN')->value('id');
+        $store = $storeId !== null
+            ? Store::query()->whereKey((int) $storeId)->first()
+            : null;
+        $branchId = $store
+            ? app(BranchContextService::class)->active($this->user(), $store)->id
+            : null;
 
         return [
             'from' => ['required', 'date'],
@@ -33,7 +40,9 @@ class InventoryCardexRequest extends FormRequest
                 'nullable',
                 'integer',
                 Rule::exists('warehouses', 'id')->where(
-                    fn ($query) => $query->where('store_id', $storeId),
+                    fn ($query) => $query
+                        ->where('store_id', $storeId)
+                        ->where('branch_id', $branchId),
                 ),
             ],
             'movement_type' => ['nullable', Rule::enum(InventoryMovementType::class)],

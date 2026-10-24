@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Enums\StockCountStatus;
 use App\Http\Requests\StockCountRequest;
+use App\Models\Branch;
 use App\Models\Product;
 use App\Models\StockCount;
 use App\Models\Store;
+use App\Services\Branches\BranchContextService;
 use App\Services\Inventory\StockCountService;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -22,9 +24,16 @@ class StockCountController extends Controller
     {
         $this->authorizeAccess($request);
         $store = $this->mainStore();
+        $branch = $this->activeBranch($store);
         $validated = $request->validate([
             'status' => ['nullable', Rule::enum(StockCountStatus::class)],
-            'warehouse_id' => ['nullable', 'integer', 'exists:warehouses,id'],
+            'warehouse_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('warehouses', 'id')
+                    ->where('store_id', $store->id)
+                    ->where('branch_id', $branch->id),
+            ],
         ]);
         $filters = [
             'status' => $validated['status'] ?? null,
@@ -80,6 +89,7 @@ class StockCountController extends Controller
         StockCountService $counts,
     ): Response {
         $this->authorizeAccess($request);
+        $this->assertBranch($stockCount);
 
         try {
             $detail = $counts->detail(
@@ -104,6 +114,7 @@ class StockCountController extends Controller
         StockCountService $counts,
     ): Response {
         $this->authorizeAccess($request);
+        $this->assertBranch($stockCount);
 
         if ((int) $stockCount->store_id !== (int) $this->mainStore()->id
             || $stockCount->status !== StockCountStatus::Draft) {
@@ -126,6 +137,8 @@ class StockCountController extends Controller
         StockCount $stockCount,
         StockCountService $counts,
     ): RedirectResponse {
+        $this->assertBranch($stockCount);
+
         try {
             $count = $counts->updateDraft(
                 $this->mainStore(),
@@ -151,6 +164,7 @@ class StockCountController extends Controller
         StockCountService $counts,
     ): RedirectResponse {
         abort_unless($request->user()?->canPostStockCounts(), 403);
+        $this->assertBranch($stockCount);
 
         try {
             $count = $counts->postCount(
@@ -176,6 +190,7 @@ class StockCountController extends Controller
         StockCountService $counts,
     ): RedirectResponse {
         $this->authorizeAccess($request);
+        $this->assertBranch($stockCount);
 
         try {
             $counts->deleteDraft(
@@ -211,7 +226,11 @@ class StockCountController extends Controller
 
     private function warehouses(Store $store): mixed
     {
+        $branch = app(BranchContextService::class)
+            ->active(request()->user(), $store);
+
         return $store->warehouses()
+            ->where('branch_id', $branch->id)
             ->where('is_active', true)
             ->orderByDesc('is_default')
             ->orderBy('name')
@@ -226,5 +245,18 @@ class StockCountController extends Controller
     private function mainStore(): Store
     {
         return Store::query()->where('code', 'MAIN')->firstOrFail();
+    }
+
+    private function activeBranch(Store $store): Branch
+    {
+        return app(BranchContextService::class)->active(request()->user(), $store);
+    }
+
+    private function assertBranch(StockCount $count): void
+    {
+        abort_unless(
+            (int) $count->branch_id === (int) $this->activeBranch($this->mainStore())->id,
+            404,
+        );
     }
 }
