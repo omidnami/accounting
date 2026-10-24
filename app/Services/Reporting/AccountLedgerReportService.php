@@ -7,10 +7,20 @@ use App\Models\JournalEntryLine;
 use App\Support\Decimal;
 use App\Support\ReportDateRange;
 use DomainException;
+use Illuminate\Support\Collection;
 
 class AccountLedgerReportService
 {
-    /** @return array<string, mixed> */
+    /**
+     * @return array{
+     *     account: Account,
+     *     opening_balance: string,
+     *     debit_total: string,
+     *     credit_total: string,
+     *     closing_balance: string,
+     *     rows: Collection<int, mixed>
+     * }
+     */
     public function report(
         Account $account,
         int $storeId,

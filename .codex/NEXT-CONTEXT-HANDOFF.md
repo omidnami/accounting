@@ -1,6 +1,6 @@
 # Store Accounting System - Context Handoff
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۴ (پس از hardening فاز 15E)
+آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۴ (پس از تکمیل فاز 15F)
 
 ## شروع کانتکست جدید
 
@@ -16,10 +16,14 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `57cc029`
-- پیام: `feat(reports): add ledger, statements, aging and sales analytics`
-- شاخه با `origin/main` هم‌سطح است؛ اصلاحات hardening فاز 15E اکنون در
-  worktree آماده commit هستند.
+- آخرین کامیت محلی: `0195972`
+- پیام: `fix(reports): harden historical boundaries and MySQL migration`
+- شاخه یک کامیت از `origin/main` جلوتر است؛ تغییرات فاز 15F در worktree
+  آماده commit هستند.
+- آخرین CI خارجی متعلق به `57cc029` است و به علت نام طولانی index در
+  MySQL شکست خورده؛ اصلاح محلی آن در `0195972` است و هنوز push/CI نشده است.
+- migration محلی `2026_10_24_000001_create_stock_counts_and_inventory_transfers`
+  هنوز Pending است؛ پس از commit باید `php artisan migrate` اجرا شود.
 - commit تغییرات بر عهده
   کاربر است.
 
@@ -38,7 +42,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `282 tests`, `2126 assertions`
+- Pest: `287 tests`, `2194 assertions`
 - Node calendar: `3 tests`
 - PHPStan: صفر خطا
 - Pint: موفق
@@ -135,6 +139,8 @@ npm run build
 - صورتحساب مشتری/تأمین‌کننده از ردیف‌های Party
 - Aging مطالبات/بدهی‌ها تا تاریخ گزارش
 - فروش روزانه، فروش کالا، COGS، سود ناخالص و حاشیه سود
+- خروجی CSV سازگار با Excel برای گزارش‌های مالی، عملیاتی، کاردکس و Audit
+- چاپ A4 Landscape گزارش‌ها و چاپ حرارتی ۸۰ میلی‌متری فاکتور فروش
 - بازه یک‌طرفه گزارش‌ها اعتبارسنجی می‌شود و خطای 500 نمی‌دهد.
 - حساب و شعبه غیرفعال برای گزارش تاریخی قابل انتخاب‌اند.
 - ردیف فروش بدون COGS snapshot، سود را «نامشخص» نشان می‌دهد.
@@ -210,6 +216,10 @@ npm run build
 - `/inventory/counts`
 - `/inventory/transfers`
 - `/reports/operations`
+- `/reports/export/financial`
+- `/reports/export/operations`
+- `/inventory/cardex/export`
+- `/audit-logs/export`
 - `/settings/profile`
 - `/settings/security`
 
@@ -242,6 +252,7 @@ npm run build
 - `phase-15c2`: اختتامیه سالانه و انتقال سود
 - `phase-15d`: شمارش، تعدیل و انتقال انبار
 - `phase-15e`: دفتر معین، صورتحساب، Aging و گزارش‌های فروش
+- `phase-15f`: خروجی CSV، چاپ گزارش و چاپ حرارتی فاکتور
 
 ## فایل‌های کلیدی
 
@@ -255,6 +266,9 @@ npm run build
 - `app/Services/Reporting/PartyStatementReportService.php`
 - `app/Services/Reporting/AgingReportService.php`
 - `app/Services/Reporting/SalesOperationsReportService.php`
+- `app/Services/Reporting/ReportExportService.php`
+- `app/Services/Reporting/CsvExportService.php`
+- `app/Services/Reporting/AuditLogReportService.php`
 - `app/Services/Accounting/AccountingPeriodLockService.php`
 - `app/Services/Inventory/InventoryService.php`
 - `app/Services/Purchasing/PurchaseService.php`
@@ -298,6 +312,7 @@ npm run build
 - `StockCountController`
 - `InventoryTransferController`
 - `OperationalReportsController`
+- `ReportExportController`
 
 ### UI
 
@@ -320,6 +335,8 @@ npm run build
 - `resources/js/pages/inventory/counts`
 - `resources/js/pages/inventory/transfers`
 - `resources/js/pages/reports/Operations.vue`
+- `resources/js/pages/audit/Index.vue`
+- `resources/js/pages/sales/Show.vue`
 
 ## قواعد اجباری ادامه کار
 
@@ -351,10 +368,11 @@ npm run build
 - شمارش، جست‌وجوی پیشرفته کالا و ورود انبارگردانی از فایل ندارد.
 - صورتحساب/Aging/فروش فعلاً بدون pagination هستند و برای داده زیاد نیاز به
   صفحه‌بندی یا cache دارند.
-- خروجی PDF/Excel گزارش‌ها هنوز وجود ندارد.
+- خروجی Excel در قالب CSV سازگار با Excel است، نه فایل بومی `.xlsx`.
+- خروجی PDF از Print to PDF مرورگر است، نه فایل PDF سمت سرور.
 - کاردکس موجودی پیاده‌سازی شده است؛ فیلتر کالای آن فعلاً select ساده است و
   برای کاتالوگ بسیار بزرگ به combobox جست‌وجوشونده نیاز دارد.
-- خروجی PDF/Excel گزارش کاردکس هنوز وجود ندارد.
+- بررسی دستی چاپ A4 و چاپگر حرارتی ۸۰ میلی‌متری انجام نشده است.
 - Audit Log و مدیریت کاربران/نقش‌ها وجود دارد؛ غیرفعال‌سازی کاربر، retention و
   alerting برای Audit هنوز پیاده‌سازی نشده‌اند.
 - سند افتتاحیه تکراری وجود ندارد؛ انتقال مانده ترازنامه با دفتر پیوسته انجام
@@ -368,10 +386,9 @@ npm run build
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی و commit اصلاحات hardening فاز 15E توسط کاربر
-2. Phase 15F: PDF/Excel و چاپ حرفه‌ای
-3. Phase 15G: آماده‌سازی production
-4. پیش از production، pagination/cache گزارش‌های تجمیعی را در صورت حجم بالا
+1. بررسی دستی خروجی‌ها و commit فاز 15F توسط کاربر
+2. Phase 15G: آماده‌سازی production
+3. پیش از production، pagination/cache گزارش‌های تجمیعی را در صورت حجم بالا
    اضافه کنید.
 
 جزئیات Phase 8A در `.codex/phase-8a-treasury-checks-ui.md` ثبت شده است.
@@ -388,6 +405,7 @@ npm run build
 جزئیات Phase 15C2 در `.codex/phase-15c2-year-end-closing.md` آمده است.
 جزئیات Phase 15D در `.codex/phase-15d-stock-count-transfer.md` آمده است.
 جزئیات Phase 15E در `.codex/phase-15e-operational-reports.md` آمده است.
+جزئیات Phase 15F در `.codex/phase-15f-report-exports-print.md` آمده است.
 نقشه مراحل تکمیل در `.codex/phase-15-roadmap.md` آمده است.
 
 ## الگوی درخواست از Agent بعدی

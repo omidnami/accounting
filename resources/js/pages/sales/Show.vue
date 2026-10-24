@@ -181,16 +181,18 @@ defineOptions({
 <template>
     <Head :title="`فاکتور ${invoice.invoice_number}`" />
 
-    <div class="mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
+    <div
+        class="print-invoice mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8"
+    >
         <section
             class="relative overflow-hidden rounded-3xl border border-primary/10 bg-[linear-gradient(135deg,hsl(var(--card))_0%,hsl(var(--primary)/.09)_100%)] p-6 sm:p-8 print:border-none print:bg-white"
         >
             <div
                 class="relative flex flex-col justify-between gap-5 md:flex-row md:items-end"
             >
-                <div>
+                <div class="text-center print:mb-2">
                     <div
-                        class="mb-3 flex flex-wrap items-center gap-2 text-primary"
+                        class="mb-3 flex flex-wrap items-center justify-center gap-2 text-primary print:mb-1"
                     >
                         <FileText class="size-5" />
                         <span class="text-xs font-bold">فاکتور فروش</span>
@@ -267,7 +269,7 @@ defineOptions({
                             </p>
                         </div>
                     </div>
-                    <div class="flex items-start gap-3">
+                    <div class="thermal-hide flex items-start gap-3">
                         <span
                             class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600"
                         >
@@ -322,10 +324,14 @@ defineOptions({
                                     <th class="px-3 py-3 font-semibold">
                                         قیمت واحد
                                     </th>
-                                    <th class="px-3 py-3 font-semibold">
+                                    <th
+                                        class="thermal-hide px-3 py-3 font-semibold"
+                                    >
                                         تخفیف
                                     </th>
-                                    <th class="px-3 py-3 font-semibold">
+                                    <th
+                                        class="thermal-hide px-3 py-3 font-semibold"
+                                    >
                                         مالیات
                                     </th>
                                     <th class="px-5 py-3 font-semibold">
@@ -344,7 +350,7 @@ defineOptions({
                                         </p>
                                         <p
                                             dir="ltr"
-                                            class="mt-1 text-right font-mono text-[9px] text-muted-foreground"
+                                            class="thermal-hide mt-1 text-right font-mono text-[9px] text-muted-foreground"
                                         >
                                             {{ item.product_code }}
                                         </p>
@@ -364,14 +370,16 @@ defineOptions({
                                             )
                                         }}
                                     </td>
-                                    <td class="px-3 py-4 text-xs text-red-600">
+                                    <td
+                                        class="thermal-hide px-3 py-4 text-xs text-red-600"
+                                    >
                                         {{
                                             money.format(
                                                 Number(item.discount_amount),
                                             )
                                         }}
                                     </td>
-                                    <td class="px-3 py-4 text-xs">
+                                    <td class="thermal-hide px-3 py-4 text-xs">
                                         {{
                                             money.format(
                                                 Number(item.tax_amount),
@@ -406,8 +414,44 @@ defineOptions({
                 </section>
 
                 <section
+                    class="hidden rounded-2xl border border-border/70 bg-card p-4 shadow-sm print:block"
+                >
+                    <div class="space-y-2 text-xs">
+                        <div class="flex justify-between">
+                            <span>جمع کالاها</span>
+                            <span>{{
+                                money.format(Number(invoice.subtotal))
+                            }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>تخفیف</span>
+                            <span>{{
+                                money.format(Number(invoice.discount_total))
+                            }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>مالیات</span>
+                            <span>{{
+                                money.format(Number(invoice.tax_total))
+                            }}</span>
+                        </div>
+                        <div
+                            class="thermal-total flex items-end justify-between border-t border-dashed pt-2"
+                        >
+                            <span class="font-bold">جمع نهایی</span>
+                            <span class="text-lg font-black">
+                                {{ money.format(Number(invoice.total)) }}
+                                <small class="text-[8px] font-medium"
+                                    >ریال</small
+                                >
+                            </span>
+                        </div>
+                    </div>
+                </section>
+
+                <section
                     v-if="returns.length"
-                    class="overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm"
+                    class="thermal-hide overflow-hidden rounded-2xl border border-border/70 bg-card shadow-sm"
                 >
                     <div class="border-b border-border/70 px-5 py-4">
                         <h2 class="text-sm font-bold">برگشت‌های این فاکتور</h2>

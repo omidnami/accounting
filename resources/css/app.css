@@ -78,6 +78,125 @@
     }
 }
 
+@media print {
+    @page report-sheet {
+        size: A4 landscape;
+        margin: 10mm;
+    }
+
+    @page thermal-receipt {
+        size: 80mm auto;
+        margin: 3mm;
+    }
+
+    html,
+    body {
+        background: white !important;
+        color: black !important;
+    }
+
+    [data-slot='sidebar'],
+    [data-slot='sidebar-header'],
+    [data-slot='sonner'],
+    .print\:hidden {
+        display: none !important;
+    }
+
+    [data-slot='sidebar-inset'] {
+        width: 100% !important;
+        margin: 0 !important;
+        overflow: visible !important;
+        border-radius: 0 !important;
+        background: white !important;
+        box-shadow: none !important;
+    }
+
+    .print-report {
+        page: report-sheet;
+        max-width: none !important;
+        padding: 0 !important;
+        color: black !important;
+    }
+
+    .print-report .overflow-x-auto {
+        overflow: visible !important;
+    }
+
+    .print-report table {
+        width: 100% !important;
+        min-width: 0 !important;
+        font-size: 8.5pt;
+    }
+
+    .print-report thead {
+        display: table-header-group;
+    }
+
+    .print-report tr,
+    .print-report article,
+    .print-report section {
+        break-inside: avoid;
+    }
+
+    .print-report .shadow-sm,
+    .print-report .shadow-md,
+    .print-report .shadow-xl {
+        box-shadow: none !important;
+    }
+
+    .print-invoice {
+        page: thermal-receipt;
+        width: 74mm !important;
+        max-width: 74mm !important;
+        margin: 0 auto !important;
+        padding: 0 !important;
+        color: black !important;
+        font-size: 9pt;
+    }
+
+    .print-invoice .thermal-hide {
+        display: none !important;
+    }
+
+    .print-invoice .thermal-only {
+        display: block !important;
+    }
+
+    .print-invoice .grid {
+        display: block !important;
+    }
+
+    .print-invoice .overflow-x-auto {
+        overflow: visible !important;
+    }
+
+    .print-invoice section {
+        margin: 0 0 3mm !important;
+        border: 1px solid #bbb !important;
+        border-radius: 2mm !important;
+        padding: 2mm !important;
+        box-shadow: none !important;
+    }
+
+    .print-invoice table {
+        width: 100% !important;
+        min-width: 0 !important;
+        table-layout: fixed;
+        font-size: 7.5pt;
+    }
+
+    .print-invoice th,
+    .print-invoice td {
+        padding: 1.2mm !important;
+        word-break: break-word;
+    }
+
+    .print-invoice .thermal-total {
+        break-inside: avoid;
+        font-size: 10pt;
+    }
+}
+
 @layer utilities {
     body,
     html {

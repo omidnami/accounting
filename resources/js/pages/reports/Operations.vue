@@ -5,6 +5,8 @@ import {
     BarChart3,
     Building2,
     CalendarClock,
+    Download,
+    Printer,
     ReceiptText,
     UsersRound,
 } from '@lucide/vue';
@@ -12,6 +14,7 @@ import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import JalaliDatePicker from '@/components/JalaliDatePicker.vue';
 import { operations as operationsReport } from '@/routes/reports';
+import { operations as exportOperations } from '@/routes/reports/export';
 
 type StatementRow = {
     entry_id: number;
@@ -151,6 +154,17 @@ const applyFilters = () => {
         { preserveState: true, preserveScroll: true, replace: true },
     );
 };
+const exportHref = (report: string) =>
+    exportOperations({
+        query: {
+            report,
+            from: props.filters.from,
+            to: props.filters.to,
+            branch_id: props.filters.branch_id ?? undefined,
+            party_id: props.filters.party_id ?? undefined,
+        },
+    }).url;
+const printReport = () => window.print();
 
 defineOptions({
     layout: {
@@ -162,7 +176,9 @@ defineOptions({
 <template>
     <Head title="گزارش‌های عملیاتی" />
 
-    <div class="mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
+    <div
+        class="print-report mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8"
+    >
         <section
             class="rounded-3xl border border-primary/10 bg-card p-6 shadow-sm sm:p-8"
         >
@@ -177,10 +193,55 @@ defineOptions({
                 صورتحساب از اسناد Posted، Aging از مانده واقعی فاکتورها و سود
                 کالا از COGS snapshot همان فروش محاسبه می‌شود.
             </p>
+            <div class="mt-5 flex flex-wrap gap-2 print:hidden">
+                <template v-if="activeTab === 'statement'">
+                    <Button
+                        v-if="statement"
+                        as-child
+                        variant="outline"
+                        class="rounded-xl"
+                    >
+                        <a :href="exportHref('statement')"
+                            ><Download class="size-4" /> CSV (Excel)</a
+                        >
+                    </Button>
+                </template>
+                <template v-else-if="activeTab === 'aging'">
+                    <Button as-child variant="outline" class="rounded-xl">
+                        <a
+                            :href="
+                                exportHref(
+                                    agingSide === 'receivable'
+                                        ? 'aging_receivable'
+                                        : 'aging_payable',
+                                )
+                            "
+                        >
+                            <Download class="size-4" /> CSV (Excel)
+                        </a>
+                    </Button>
+                </template>
+                <template v-else>
+                    <Button as-child variant="outline" class="rounded-xl">
+                        <a :href="exportHref('sales_daily')"
+                            ><Download class="size-4" /> CSV روزانه (Excel)</a
+                        >
+                    </Button>
+                    <Button as-child variant="outline" class="rounded-xl">
+                        <a :href="exportHref('sales_products')"
+                            ><Download class="size-4" /> CSV کالا و سود
+                            (Excel)</a
+                        >
+                    </Button>
+                </template>
+                <Button type="button" class="rounded-xl" @click="printReport">
+                    <Printer class="size-4" /> چاپ / PDF
+                </Button>
+            </div>
         </section>
 
         <form
-            class="grid gap-3 rounded-2xl border bg-card p-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.5fr_auto]"
+            class="grid gap-3 rounded-2xl border bg-card p-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.5fr_auto] print:hidden"
             @submit.prevent="applyFilters"
         >
             <JalaliDatePicker v-model="from" />
@@ -222,7 +283,9 @@ defineOptions({
             </Button>
         </form>
 
-        <div class="flex gap-2 overflow-x-auto rounded-2xl border bg-card p-2">
+        <div
+            class="flex gap-2 overflow-x-auto rounded-2xl border bg-card p-2 print:hidden"
+        >
             <button
                 v-for="tab in tabs"
                 :key="tab.key"

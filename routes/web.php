@@ -15,6 +15,7 @@ use App\Http\Controllers\PartyController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\PurchaseLookupController;
+use App\Http\Controllers\ReportExportController;
 use App\Http\Controllers\SalesInvoiceController;
 use App\Http\Controllers\SalesLookupController;
 use App\Http\Controllers\StockCountController;
@@ -30,6 +31,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('reports', FinancialReportsController::class)->name('reports.index');
     Route::get('reports/operations', OperationalReportsController::class)
         ->name('reports.operations');
+    Route::get('reports/export/financial', [ReportExportController::class, 'financial'])
+        ->name('reports.export.financial');
+    Route::get('reports/export/operations', [ReportExportController::class, 'operations'])
+        ->name('reports.export.operations');
+    Route::get('inventory/cardex/export', [ReportExportController::class, 'cardex'])
+        ->name('inventory.cardex.export');
     Route::get('fiscal-years', [FiscalYearController::class, 'index'])
         ->name('fiscal-years.index');
     Route::post('fiscal-years', [FiscalYearController::class, 'store'])
@@ -87,6 +94,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('inventory-transfers.create');
     Route::post('inventory/transfers', [InventoryTransferController::class, 'store'])
         ->name('inventory-transfers.store');
+    Route::get('audit-logs/export', [AuditLogController::class, 'export'])
+        ->name('audit-logs.export');
     Route::get('audit-logs', AuditLogController::class)->name('audit-logs.index');
     Route::resource('users', UserManagementController::class)
         ->except(['show', 'destroy']);

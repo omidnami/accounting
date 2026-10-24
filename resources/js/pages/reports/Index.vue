@@ -4,9 +4,11 @@ import {
     ArrowLeft,
     BarChart3,
     BookOpen,
+    Download,
     BookText,
     Building2,
     Landmark,
+    Printer,
     ReceiptText,
     Scale,
 } from '@lucide/vue';
@@ -14,6 +16,7 @@ import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
 import JalaliDatePicker from '@/components/JalaliDatePicker.vue';
 import { index as reports } from '@/routes/reports';
+import { financial as exportFinancial } from '@/routes/reports/export';
 
 type ReportRow = {
     code: string;
@@ -144,6 +147,17 @@ const typeLabel = computed<Record<string, string>>(() => ({
 }));
 const format = (value: string | null) =>
     value ? money.format(Number(value)) : '—';
+const exportHref = () =>
+    exportFinancial({
+        query: {
+            report: activeTab.value,
+            from: props.filters.from,
+            to: props.filters.to,
+            branch_id: props.filters.branch_id ?? undefined,
+            account_id: props.filters.account_id ?? undefined,
+        },
+    }).url;
+const printReport = () => window.print();
 
 const applyFilters = () => {
     router.get(
@@ -193,7 +207,9 @@ defineOptions({
 <template>
     <Head title="گزارش‌های مالی" />
 
-    <div class="mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
+    <div
+        class="print-report mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8"
+    >
         <section
             class="relative overflow-hidden rounded-3xl border border-primary/10 bg-[linear-gradient(135deg,hsl(var(--card))_0%,hsl(var(--primary)/.08)_100%)] p-6 sm:p-8"
         >
@@ -236,11 +252,27 @@ defineOptions({
                             : 'عدم توازن دفاتر'
                     }}
                 </span>
+                <div class="flex gap-2 print:hidden">
+                    <Button as-child variant="outline" class="rounded-xl">
+                        <a :href="exportHref()">
+                            <Download class="size-4" />
+                            CSV (Excel)
+                        </a>
+                    </Button>
+                    <Button
+                        type="button"
+                        class="rounded-xl"
+                        @click="printReport"
+                    >
+                        <Printer class="size-4" />
+                        چاپ / PDF
+                    </Button>
+                </div>
             </div>
         </section>
 
         <form
-            class="grid gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1.2fr_1.5fr_auto]"
+            class="grid gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1.2fr_1.5fr_auto] print:hidden"
             @submit.prevent="applyFilters"
         >
             <label class="space-y-1.5">
@@ -304,7 +336,7 @@ defineOptions({
         </form>
 
         <div
-            class="flex gap-2 overflow-x-auto rounded-2xl border border-border/70 bg-card p-2 shadow-sm"
+            class="flex gap-2 overflow-x-auto rounded-2xl border border-border/70 bg-card p-2 shadow-sm print:hidden"
         >
             <button
                 v-for="tab in tabs"

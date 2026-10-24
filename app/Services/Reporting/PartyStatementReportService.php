@@ -7,11 +7,19 @@ use App\Models\Party;
 use App\Support\Decimal;
 use App\Support\ReportDateRange;
 use DomainException;
+use Illuminate\Support\Collection;
 
 class PartyStatementReportService
 {
     /**
-     * @return array<string, mixed>
+     * @return array{
+     *     party: array{id: int, code: string, name: string, kind: string},
+     *     opening_balance: string,
+     *     debit_total: string,
+     *     credit_total: string,
+     *     closing_balance: string,
+     *     rows: Collection<int, mixed>
+     * }
      */
     public function report(
         Party $party,

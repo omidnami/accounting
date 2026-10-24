@@ -12,7 +12,11 @@ use Illuminate\Support\Collection;
 class SalesOperationsReportService
 {
     /**
-     * @return array<string, mixed>
+     * @return array{
+     *     summary: array<string, string|int|bool>,
+     *     daily: Collection<int, mixed>,
+     *     products: Collection<int, mixed>
+     * }
      */
     public function report(
         int $storeId,

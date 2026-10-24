@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\Inventory\InventoryService;
 use App\Services\Purchasing\PurchaseService;
 use App\Services\Reporting\AgingReportService;
+use App\Services\Reporting\CsvExportService;
 use App\Services\Reporting\PartyStatementReportService;
 use App\Services\Reporting\SalesOperationsReportService;
 use App\Services\Sales\SalesReturnService;
@@ -20,6 +21,7 @@ use App\Services\Sales\SalesService;
 use Database\Seeders\AccountingSetupSeeder;
 use Database\Seeders\AccountSeeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
 
 /**
@@ -267,4 +269,145 @@ it('validates effective report ranges when only one date side is provided', func
     $this->actingAs($context['manager'])
         ->get(route('reports.index', ['to' => '2000-01-01']))
         ->assertSessionHasErrors('to');
+});
+
+it('exports every financial and operational report as CSV', function () {
+    $context = operationalReportContext();
+    $cash = Account::query()
+        ->where('store_id', $context['store']->id)
+        ->where('code', '1101')
+        ->firstOrFail();
+    $range = [
+        'from' => $context['fiscalYear']->starts_on->toDateString(),
+        'to' => $context['fiscalYear']->ends_on->toDateString(),
+    ];
+    $financialReports = [
+        'trial' => 'کد حساب',
+        'income' => 'مبلغ',
+        'balance' => 'مبلغ',
+        'journal' => 'شماره سند',
+        'ledger' => 'مانده',
+    ];
+
+    foreach ($financialReports as $report => $expectedHeader) {
+        $response = $this->actingAs($context['manager'])->get(route('reports.export.financial', [
+            ...$range,
+            'report' => $report,
+            'account_id' => $cash->id,
+        ]));
+        $content = $response->streamedContent();
+
+        expect($response->getStatusCode())->toBe(200)
+            ->and($response->headers->get('content-type'))->toBe('text/csv; charset=UTF-8')
+            ->and($content)->toStartWith("\xEF\xBB\xBF")
+            ->and($content)->toContain($expectedHeader);
+    }
+
+    $operationalReports = [
+        'statement' => 'شماره سند',
+        'aging_receivable' => 'روز تأخیر',
+        'aging_payable' => 'روز تأخیر',
+        'sales_daily' => 'COGS کامل',
+        'sales_products' => 'حاشیه سود',
+    ];
+
+    foreach ($operationalReports as $report => $expectedHeader) {
+        $response = $this->actingAs($context['manager'])->get(route('reports.export.operations', [
+            ...$range,
+            'report' => $report,
+            'party_id' => $context['customerParty']->id,
+        ]));
+        $content = $response->streamedContent();
+
+        expect($response->getStatusCode())->toBe(200)
+            ->and($content)->toStartWith("\xEF\xBB\xBF")
+            ->and($content)->toContain($expectedHeader);
+    }
+});
+
+it('exports cardex without financial columns for warehouse users', function () {
+    $context = operationalReportContext();
+    $range = [
+        'product_id' => $context['product']->id,
+        'warehouse_id' => $context['warehouse']->id,
+        'from' => $context['fiscalYear']->starts_on->toDateString(),
+        'to' => $context['fiscalYear']->ends_on->toDateString(),
+    ];
+
+    $managerCardex = $this->actingAs($context['manager'])
+        ->get(route('inventory.cardex.export', $range));
+    $managerCardex->assertOk();
+    expect($managerCardex->streamedContent())->toContain('بهای واحد');
+
+    $warehouseUser = User::factory()->create();
+    $warehouseUser->forceFill(['role' => UserRole::Warehouse])->save();
+    $warehouseCardex = $this->actingAs($warehouseUser)
+        ->get(route('inventory.cardex.export', $range));
+    $warehouseCardex->assertOk();
+    $content = $warehouseCardex->streamedContent();
+
+    expect($content)->not->toContain('بهای واحد')
+        ->and($content)->not->toContain('بهای کل')
+        ->and($content)->not->toContain('ارزش پس از گردش');
+});
+
+it('protects report exports by role', function () {
+    $context = operationalReportContext();
+    $financeRange = [
+        'report' => 'trial',
+        'from' => $context['fiscalYear']->starts_on->toDateString(),
+        'to' => $context['fiscalYear']->ends_on->toDateString(),
+    ];
+
+    foreach ([UserRole::Cashier, UserRole::Warehouse] as $role) {
+        $user = User::factory()->create();
+        $user->forceFill(['role' => $role])->save();
+
+        $this->actingAs($user)
+            ->get(route('reports.export.financial', $financeRange))
+            ->assertForbidden();
+        $this->actingAs($user)
+            ->get(route('reports.export.operations', [
+                ...$financeRange,
+                'report' => 'sales_daily',
+            ]))
+            ->assertForbidden();
+    }
+
+    $cashier = User::factory()->create();
+    $cashier->forceFill(['role' => UserRole::Cashier])->save();
+    $this->actingAs($cashier)
+        ->get(route('inventory.cardex.export', [
+            'product_id' => $context['product']->id,
+            'warehouse_id' => $context['warehouse']->id,
+            'from' => $context['fiscalYear']->starts_on->toDateString(),
+            'to' => $context['fiscalYear']->ends_on->toDateString(),
+        ]))
+        ->assertForbidden();
+});
+
+it('neutralizes spreadsheet formulas in CSV text cells', function () {
+    $response = app(CsvExportService::class)->download("unsafe\r\n/path.csv", ['value'], [
+        ['=1+1'],
+        ['  -2+3'],
+        ['+CMD'],
+        ['@SUM(A1:A2)'],
+        ["\t=1+1"],
+        ['-12.50'],
+        ['متن عادی'],
+    ]);
+    $content = (new TestResponse($response))->streamedContent();
+    $disposition = (string) $response->headers->get('content-disposition');
+
+    expect($content)->toContain("'=1+1")
+        ->and($content)->toContain("'  -2+3")
+        ->and($content)->toContain("'+CMD")
+        ->and($content)->toContain("'@SUM(A1:A2)")
+        ->and($content)->not->toContain("'-12.50")
+        ->and($content)->toContain('-12.50')
+        ->and($content)->toContain('متن عادی')
+        ->and($disposition)->toContain('unsafe---path.csv')
+        ->and($disposition)->not->toContain("\r")
+        ->and($disposition)->not->toContain("\n")
+        ->and($disposition)->not->toContain('/');
 });

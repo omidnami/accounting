@@ -4,6 +4,7 @@ import {
     ChevronLeft,
     ChevronRight,
     Clock3,
+    Download,
     FilterX,
     History,
     Search,
@@ -12,7 +13,10 @@ import {
 } from '@lucide/vue';
 import { reactive } from 'vue';
 import { Button } from '@/components/ui/button';
-import { index as auditLogsIndex } from '@/routes/audit-logs';
+import {
+    exportMethod as exportAuditLogs,
+    index as auditLogsIndex,
+} from '@/routes/audit-logs';
 
 type Event = 'created' | 'updated' | 'deleted';
 type AuditRow = {
@@ -104,6 +108,15 @@ const resetFilters = () => {
     filters.date = '';
     router.get(auditLogsIndex(), {}, { preserveScroll: true });
 };
+const exportHref = () =>
+    exportAuditLogs({
+        query: {
+            search: props.filters.search || undefined,
+            event: props.filters.event ?? undefined,
+            entity: props.filters.entity ?? undefined,
+            date: props.filters.date ?? undefined,
+        },
+    }).url;
 
 defineOptions({
     layout: {
@@ -130,6 +143,14 @@ defineOptions({
                 ایجاد، ویرایش و حذف مدل‌های حساس همراه با کاربر، زمان، IP و
                 تغییرات قبل/بعد ثبت می‌شود.
             </p>
+            <div class="mt-5">
+                <Button as-child variant="outline" class="rounded-xl">
+                    <a :href="exportHref()">
+                        <Download class="size-4" />
+                        خروجی CSV (Excel)
+                    </a>
+                </Button>
+            </div>
         </section>
 
         <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

@@ -34,6 +34,7 @@ function userManagementPayload(array $overrides = []): array
 it('protects user management and audit logs by role', function () {
     $this->get(route('users.index'))->assertRedirect(route('login'));
     $this->get(route('audit-logs.index'))->assertRedirect(route('login'));
+    $this->get(route('audit-logs.export'))->assertRedirect(route('login'));
     $accountant = userManagementUser(UserRole::Accountant);
 
     $this->actingAs($accountant)
@@ -42,6 +43,10 @@ it('protects user management and audit logs by role', function () {
 
     $this->actingAs($accountant)
         ->get(route('audit-logs.index'))
+        ->assertForbidden();
+
+    $this->actingAs($accountant)
+        ->get(route('audit-logs.export'))
         ->assertForbidden();
 });
 
@@ -167,6 +172,31 @@ it('filters audit logs by event and entity', function () {
             ->where('filters.event', 'updated')
             ->where('filters.entity', 'User')
             ->where('logs.total', fn ($total) => $total >= 1));
+});
+
+it('exports filtered audit logs as CSV only for managers', function () {
+    $manager = userManagementUser(UserRole::Manager);
+    $target = userManagementUser(UserRole::Viewer);
+    $this->actingAs($manager);
+    $target->update(['name' => 'نام قابل حسابرسی']);
+
+    $response = $this->actingAs($manager)->get(route('audit-logs.export', [
+        'event' => 'updated',
+        'entity' => 'User',
+    ]));
+    $content = $response->streamedContent();
+
+    expect($response->getStatusCode())->toBe(200)
+        ->and($response->headers->get('content-type'))->toBe('text/csv; charset=UTF-8')
+        ->and($content)->toStartWith("\xEF\xBB\xBF")
+        ->and($content)->toContain('زمان')
+        ->and($content)->toContain($manager->name)
+        ->and($content)->toContain($manager->email)
+        ->and($content)->toContain((string) $target->id);
+
+    $this->actingAs(userManagementUser(UserRole::Accountant))
+        ->get(route('audit-logs.export'))
+        ->assertForbidden();
 });
 
 it('keeps audit records immutable', function () {

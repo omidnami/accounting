@@ -9,8 +9,10 @@ import {
     ChevronLeft,
     ChevronRight,
     ClipboardList,
+    Download,
     FilterX,
     PackageSearch,
+    Printer,
     Warehouse,
 } from '@lucide/vue';
 import { computed, reactive } from 'vue';
@@ -18,6 +20,7 @@ import InputError from '@/components/InputError.vue';
 import JalaliDatePicker from '@/components/JalaliDatePicker.vue';
 import { Button } from '@/components/ui/button';
 import { cardex as cardexIndex } from '@/routes/inventory';
+import { exportMethod as exportCardex } from '@/routes/inventory/cardex';
 
 type MovementType =
     | 'opening'
@@ -168,6 +171,19 @@ const reportTitle = computed(() =>
 );
 const formatDate = (value: string) =>
     date.format(new Date(`${value}T12:00:00Z`));
+const exportHref = computed(() =>
+    props.report
+        ? exportCardex({
+              query: {
+                  product_id: props.filters.product_id ?? undefined,
+                  warehouse_id: props.filters.warehouse_id ?? undefined,
+                  from: props.filters.from,
+                  to: props.filters.to,
+              },
+          }).url
+        : null,
+);
+const printReport = () => window.print();
 
 const applyFilters = () => {
     router.get(
@@ -231,7 +247,9 @@ defineOptions({
 <template>
     <Head :title="reportTitle" />
 
-    <div class="mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
+    <div
+        class="print-report mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8"
+    >
         <section
             class="relative overflow-hidden rounded-3xl border border-primary/10 bg-[linear-gradient(135deg,hsl(var(--card))_0%,hsl(var(--primary)/.09)_100%)] p-6 sm:p-8"
         >
@@ -269,11 +287,28 @@ defineOptions({
                         }}</span>
                     </p>
                 </div>
+                <div
+                    v-if="exportHref"
+                    class="flex flex-wrap gap-2 print:hidden"
+                >
+                    <Button as-child variant="outline" class="rounded-xl">
+                        <a :href="exportHref"
+                            ><Download class="size-4" /> CSV (Excel)</a
+                        >
+                    </Button>
+                    <Button
+                        type="button"
+                        class="rounded-xl"
+                        @click="printReport"
+                    >
+                        <Printer class="size-4" /> چاپ / PDF
+                    </Button>
+                </div>
             </div>
         </section>
 
         <form
-            class="grid gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-sm md:grid-cols-2 xl:grid-cols-4"
+            class="grid gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-sm md:grid-cols-2 xl:grid-cols-4 print:hidden"
             @submit.prevent="applyFilters"
         >
             <label class="space-y-1.5">
@@ -693,7 +728,7 @@ defineOptions({
 
                 <div
                     v-if="report.movements.last_page > 1"
-                    class="flex flex-col gap-3 border-t border-border/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"
+                    class="flex flex-col gap-3 border-t border-border/70 px-5 py-4 sm:flex-row sm:items-center sm:justify-between print:hidden"
                 >
                     <p class="text-[11px] text-muted-foreground">
                         نمایش

@@ -7,6 +7,7 @@ use App\Support\ReportDateRange;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\LazyCollection;
 
 class JournalReportService
 {
@@ -22,6 +23,44 @@ class JournalReportService
         $range = ReportDateRange::between($from, $to);
 
         return $this->query($storeId, $range->from, $range->to, $branchId)->get();
+    }
+
+    /**
+     * @return LazyCollection<int, array{
+     *     date: string,
+     *     entry_number: string,
+     *     entry_description: string,
+     *     account_code: string,
+     *     account_name: string,
+     *     debit: string,
+     *     credit: string,
+     *     line_description: string|null
+     * }>
+     */
+    public function lineRows(
+        int $storeId,
+        string $from,
+        string $to,
+        ?int $branchId = null,
+    ): LazyCollection {
+        $range = ReportDateRange::between($from, $to);
+
+        return LazyCollection::make(function () use ($storeId, $range, $branchId) {
+            foreach ($this->query($storeId, $range->from, $range->to, $branchId)->cursor() as $entry) {
+                foreach ($entry->lines as $line) {
+                    yield [
+                        'date' => $entry->entry_date->toDateString(),
+                        'entry_number' => $entry->entry_number,
+                        'entry_description' => $entry->description,
+                        'account_code' => $line->account->code,
+                        'account_name' => $line->account->name,
+                        'debit' => $line->debit,
+                        'credit' => $line->credit,
+                        'line_description' => $line->description,
+                    ];
+                }
+            }
+        });
     }
 
     /**
