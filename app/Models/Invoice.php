@@ -252,20 +252,48 @@ class Invoice extends Model
 
     public function syncSettlementStatus(): self
     {
-        $settled = $this->type === InvoiceType::Sales
-            ? (string) $this->receiptAllocations()
-                ->whereHas('receipt', fn ($query) => $query->where('status', 'confirmed'))
-                ->sum('amount')
-            : (string) $this->paymentAllocations()
-                ->whereHas('payment', fn ($query) => $query->where('status', 'confirmed'))
-                ->sum('amount');
-        $returned = (string) self::query()
+        $settled = '0.00';
+        $settlementRows = $this->type === InvoiceType::Sales
+            ? ReceiptAllocation::query()
+                ->join('receipts', 'receipts.id', '=', 'receipt_allocations.receipt_id')
+                ->where('receipt_allocations.invoice_id', $this->id)
+                ->where('receipts.status', 'confirmed')
+            : PaymentAllocation::query()
+                ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
+                ->where('payment_allocations.invoice_id', $this->id)
+                ->where('payments.status', 'confirmed');
+
+        foreach ($settlementRows
+            ->select([
+                $this->type === InvoiceType::Sales
+                    ? 'receipt_allocations.amount as amount'
+                    : 'payment_allocations.amount as amount',
+            ])
+            ->orderBy(
+                $this->type === InvoiceType::Sales
+                    ? 'receipt_allocations.id'
+                    : 'payment_allocations.id',
+            )
+            ->lockForUpdate()
+            ->get() as $allocation) {
+            $settled = Decimal::add($settled, $allocation->amount, Decimal::MONEY_SCALE);
+        }
+
+        $returned = '0.00';
+        $returnRows = self::query()
             ->where('parent_invoice_id', $this->id)
             ->where('type', $this->type === InvoiceType::Sales
                 ? InvoiceType::SalesReturn
                 : InvoiceType::PurchaseReturn)
             ->where('status', InvoiceStatus::Confirmed)
-            ->sum('total');
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get(['total']);
+
+        foreach ($returnRows as $return) {
+            $returned = Decimal::add($returned, $return->total, Decimal::MONEY_SCALE);
+        }
+
         $remaining = Decimal::subtract($this->total, $settled, 2);
         $remaining = Decimal::subtract($remaining, $returned, 2);
 

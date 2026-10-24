@@ -177,7 +177,11 @@ class SupplierPaymentService
                 $amount = Decimal::normalize($allocation['amount'], Decimal::MONEY_SCALE);
 
                 if (! Decimal::isPositive($amount)
-                    || Decimal::compare($amount, $this->payables->outstandingForInvoice($invoice), Decimal::MONEY_SCALE) > 0) {
+                    || Decimal::compare(
+                        $amount,
+                        $this->payables->outstandingForInvoice($invoice, true),
+                        Decimal::MONEY_SCALE,
+                    ) > 0) {
                     throw new DomainException('مبلغ تخصیص از مانده فاکتور بیشتر است.');
                 }
 

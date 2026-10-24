@@ -12,6 +12,7 @@ use App\Models\Invoice;
 use App\Models\Store;
 use App\Services\Branches\BranchContextService;
 use App\Services\Inventory\InventoryTraceabilityService;
+use App\Services\Invoices\InvoiceDeletionService;
 use App\Services\Purchasing\PurchaseReturnService;
 use App\Services\Purchasing\PurchaseService;
 use App\Services\Purchasing\SupplierPayableService;
@@ -276,18 +277,26 @@ class PurchaseInvoiceController extends Controller
         return to_route('purchases.show', $invoice);
     }
 
-    public function destroy(Request $request, Invoice $invoice): RedirectResponse
-    {
+    public function destroy(
+        Request $request,
+        Invoice $invoice,
+        InvoiceDeletionService $deletions,
+    ): RedirectResponse {
         abort_unless($request->user()?->canManagePurchases(), 403);
         $this->assertPurchaseInvoice($invoice);
 
-        if ($invoice->status !== InvoiceStatus::Draft) {
+        try {
+            $deletions->deleteDraft(
+                $invoice,
+                InvoiceType::Purchase,
+                $this->mainStore()->id,
+                $this->defaultBranch($this->mainStore())->id,
+            );
+        } catch (DomainException $exception) {
             throw ValidationException::withMessages([
-                'purchase' => 'فقط پیش‌نویس فاکتور خرید قابل حذف است.',
+                'purchase' => $exception->getMessage(),
             ]);
         }
-
-        $invoice->delete();
 
         Inertia::flash('toast', [
             'type' => 'success',

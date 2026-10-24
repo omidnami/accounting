@@ -168,7 +168,11 @@ class CustomerReceiptService
                 $amount = Decimal::normalize($allocation['amount'], 2);
 
                 if (! Decimal::isPositive($amount)
-                    || Decimal::compare($amount, $this->receivables->outstandingForInvoice($invoice), 2) > 0) {
+                    || Decimal::compare(
+                        $amount,
+                        $this->receivables->outstandingForInvoice($invoice, true),
+                        2,
+                    ) > 0) {
                     throw new DomainException('مبلغ دریافت از مانده فاکتور بیشتر است.');
                 }
 

@@ -13,6 +13,7 @@ use App\Models\PrintStation;
 use App\Models\Store;
 use App\Services\Branches\BranchContextService;
 use App\Services\Inventory\InventoryTraceabilityService;
+use App\Services\Invoices\InvoiceDeletionService;
 use App\Services\Printing\PrintSettingsService;
 use App\Services\Sales\CustomerReceivableService;
 use App\Services\Sales\SalesReturnService;
@@ -289,18 +290,26 @@ class SalesInvoiceController extends Controller
         return to_route('sales.show', $invoice);
     }
 
-    public function destroy(Request $request, Invoice $invoice): RedirectResponse
-    {
+    public function destroy(
+        Request $request,
+        Invoice $invoice,
+        InvoiceDeletionService $deletions,
+    ): RedirectResponse {
         abort_unless($request->user()?->canManageSales(), 403);
         $this->assertSalesInvoice($invoice);
 
-        if ($invoice->status !== InvoiceStatus::Draft) {
+        try {
+            $deletions->deleteDraft(
+                $invoice,
+                InvoiceType::Sales,
+                $this->mainStore()->id,
+                $this->defaultBranch($this->mainStore())->id,
+            );
+        } catch (DomainException $exception) {
             throw ValidationException::withMessages([
-                'sale' => 'فقط پیش‌نویس فاکتور فروش قابل حذف است.',
+                'sale' => $exception->getMessage(),
             ]);
         }
-
-        $invoice->delete();
 
         Inertia::flash('toast', [
             'type' => 'success',

@@ -7,6 +7,7 @@ use App\Enums\InvoiceType;
 use App\Enums\TreasuryDocumentStatus;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\ReceiptAllocation;
 use App\Support\Decimal;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -41,8 +42,43 @@ class CustomerReceivableService
         return $total;
     }
 
-    public function outstandingForInvoice(Invoice $invoice): string
-    {
+    public function outstandingForInvoice(
+        Invoice $invoice,
+        bool $lockForUpdate = false,
+    ): string {
+        if ($lockForUpdate) {
+            $received = '0.00';
+
+            foreach (ReceiptAllocation::query()
+                ->join('receipts', 'receipts.id', '=', 'receipt_allocations.receipt_id')
+                ->where('receipt_allocations.invoice_id', $invoice->id)
+                ->where('receipts.status', 'confirmed')
+                ->orderBy('receipt_allocations.id')
+                ->lockForUpdate()
+                ->get(['receipt_allocations.amount']) as $allocation) {
+                $received = Decimal::add($received, $allocation->amount, Decimal::MONEY_SCALE);
+            }
+
+            $returned = '0.00';
+
+            foreach (Invoice::query()
+                ->where('parent_invoice_id', $invoice->id)
+                ->where('type', InvoiceType::SalesReturn)
+                ->where('status', InvoiceStatus::Confirmed)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get(['total']) as $return) {
+                $returned = Decimal::add($returned, $return->total, Decimal::MONEY_SCALE);
+            }
+
+            $remaining = Decimal::subtract($invoice->total, $received, Decimal::MONEY_SCALE);
+            $remaining = Decimal::subtract($remaining, $returned, Decimal::MONEY_SCALE);
+
+            return Decimal::compare($remaining, '0', Decimal::MONEY_SCALE) > 0
+                ? $remaining
+                : '0.00';
+        }
+
         $invoice->loadMissing([
             'receiptAllocations.receipt',
             'childInvoices',

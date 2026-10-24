@@ -675,11 +675,13 @@ class InventoryService
         }
 
         if ($product->track_serials) {
-            $nextStatus = $movementType === InventoryMovementType::PurchaseReturn
-                ? ProductSerialStatus::Returned
-                : ($movementType === InventoryMovementType::Adjustment
-                    ? ProductSerialStatus::Void
-                    : ProductSerialStatus::Sold);
+            $nextStatus = match ($movementType) {
+                InventoryMovementType::Sale => ProductSerialStatus::Sold,
+                InventoryMovementType::PurchaseReturn => ProductSerialStatus::Returned,
+                InventoryMovementType::Adjustment => ProductSerialStatus::Void,
+                InventoryMovementType::Transfer => ProductSerialStatus::Available,
+                default => ProductSerialStatus::Available,
+            };
 
             foreach ($selectedSerials as $serial) {
                 $serial->forceFill([

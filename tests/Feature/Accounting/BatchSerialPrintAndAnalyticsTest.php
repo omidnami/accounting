@@ -5,8 +5,10 @@ use App\Enums\ProductSerialStatus;
 use App\Enums\UserRole;
 use App\Models\Customer;
 use App\Models\InventoryAlert;
+use App\Models\InventoryBalance;
 use App\Models\InventoryMovement;
 use App\Models\Invoice;
+use App\Models\JournalEntry;
 use App\Models\Party;
 use App\Models\PrintStation;
 use App\Models\Product;
@@ -16,9 +18,11 @@ use App\Models\ProductSerial;
 use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\User;
+use App\Models\Warehouse;
 use App\Services\Inventory\InventoryExpiryAlertService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Printing\PrintJobService;
+use App\Services\Products\ProductTrackingService;
 use App\Services\Purchasing\PurchaseReturnService;
 use App\Services\Purchasing\PurchaseService;
 use App\Services\Reporting\InventorySalesAnalyticsService;
@@ -235,6 +239,201 @@ it('tracks purchased batch and serial and returns them to supplier', function ()
         ->and(ProductSerial::query()
             ->whereIn('serial_number', ['P-1', 'P-2'])
             ->where('status', ProductSerialStatus::Available->value)
+            ->count())->toBe(1);
+});
+
+it('does not return a serial that was sold again after an earlier return', function () {
+    $context = traceabilityContext();
+    $batch = ProductBatch::query()->create([
+        'product_id' => $context['product']->id,
+        'batch_number' => 'REUSE-BATCH',
+        'expiry_date' => now()->addDays(60)->toDateString(),
+    ]);
+    app(InventoryService::class)->receive(
+        warehouseId: $context['warehouse']->id,
+        productId: $context['product']->id,
+        quantity: 2,
+        unitCost: 100,
+        movementDate: $context['date'],
+        idempotencyKey: 'reuse-opening',
+        movementType: InventoryMovementType::Opening,
+        productBatchId: $batch->id,
+        serialNumbers: ['REUSE-A', 'REUSE-B'],
+    );
+    $sales = app(SalesService::class);
+    $sale = $sales->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'customer_id' => $context['customer']->id,
+            'invoice_date' => $context['date'],
+            'created_by' => $context['manager']->id,
+        ],
+        [[
+            'product_id' => $context['product']->id,
+            'quantity' => 2,
+            'unit_price' => 200,
+            'discount_amount' => 0,
+            'tax_rate' => 0,
+        ]],
+        'reuse-sale-first',
+    );
+    $sale = $sales->confirm($sale, $context['warehouse']->id, $context['manager']);
+    $returns = app(SalesReturnService::class);
+    $firstReturn = $returns->createDraft(
+        $sale,
+        [[
+            'invoice_item_id' => $sale->items()->firstOrFail()->id,
+            'quantity' => 1,
+        ]],
+        $context['date'],
+        $context['manager']->id,
+        'reuse-return-first',
+    );
+    $returns->confirm($firstReturn, $context['warehouse']->id, $context['manager']);
+    $secondSale = $sales->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'customer_id' => $context['customer']->id,
+            'invoice_date' => $context['date'],
+            'created_by' => $context['manager']->id,
+        ],
+        [[
+            'product_id' => $context['product']->id,
+            'quantity' => 1,
+            'unit_price' => 200,
+            'discount_amount' => 0,
+            'tax_rate' => 0,
+        ]],
+        'reuse-sale-second',
+    );
+    $sales->confirm($secondSale, $context['warehouse']->id, $context['manager']);
+    $secondReturn = $returns->createDraft(
+        $sale,
+        [[
+            'invoice_item_id' => $sale->items()->firstOrFail()->id,
+            'quantity' => 1,
+        ]],
+        $context['date'],
+        $context['manager']->id,
+        'reuse-return-second',
+    );
+    $returns->confirm($secondReturn, $context['warehouse']->id, $context['manager']);
+
+    expect(ProductSerial::query()->where('serial_number', 'REUSE-A')->firstOrFail()->status)
+        ->toBe(ProductSerialStatus::Sold)
+        ->and(ProductSerial::query()->where('serial_number', 'REUSE-B')->firstOrFail()->status)
+        ->toBe(ProductSerialStatus::Available);
+});
+
+it('transfers tracked serials without marking them sold', function () {
+    $context = traceabilityContext();
+    $destination = Warehouse::query()->create([
+        'store_id' => $context['store']->id,
+        'branch_id' => $context['branch']->id,
+        'code' => 'TRACE-DEST',
+        'name' => 'انبار مقصد ردیابی',
+        'is_active' => true,
+    ]);
+    $batch = ProductBatch::query()->create([
+        'product_id' => $context['product']->id,
+        'batch_number' => 'TRANSFER-BATCH',
+        'expiry_date' => now()->addDays(60)->toDateString(),
+    ]);
+    app(InventoryService::class)->receive(
+        warehouseId: $context['warehouse']->id,
+        productId: $context['product']->id,
+        quantity: 1,
+        unitCost: 100,
+        movementDate: $context['date'],
+        idempotencyKey: 'transfer-serial-opening',
+        movementType: InventoryMovementType::Opening,
+        productBatchId: $batch->id,
+        serialNumbers: ['TRANSFER-SN-1'],
+    );
+    app(InventoryService::class)->transfer(
+        sourceWarehouseId: $context['warehouse']->id,
+        destinationWarehouseId: $destination->id,
+        productId: $context['product']->id,
+        quantity: 1,
+        movementDate: $context['date'],
+        idempotencyKey: 'serial-transfer',
+    );
+
+    $serial = ProductSerial::query()->where('serial_number', 'TRANSFER-SN-1')->firstOrFail();
+
+    expect($serial->status)->toBe(ProductSerialStatus::Available)
+        ->and($serial->warehouse_id)->toBe($destination->id)
+        ->and(InventoryBalance::query()
+            ->where('warehouse_id', $destination->id)
+            ->where('product_id', $context['product']->id)
+            ->value('quantity'))->toBe('1.000');
+});
+
+it('voids predefined serials without inventory effect', function () {
+    $predefinedContext = traceabilityContext();
+    $predefinedBatch = ProductBatch::query()->create([
+        'product_id' => $predefinedContext['product']->id,
+        'batch_number' => 'PREDEFINED',
+    ]);
+    app(ProductTrackingService::class)->createSerials(
+        $predefinedContext['product'],
+        ['PREDEFINED-SN'],
+        $predefinedBatch->id,
+        $predefinedContext['warehouse']->id,
+        $predefinedContext['date'],
+        null,
+    );
+    $predefined = ProductSerial::query()->where('serial_number', 'PREDEFINED-SN')->firstOrFail();
+    app(ProductTrackingService::class)->voidSerial($predefined, $predefinedContext['manager']);
+
+    expect($predefined->refresh()->status)->toBe(ProductSerialStatus::Void)
+        ->and(InventoryMovement::query()
+            ->where('source_type', ProductSerial::class)
+            ->where('source_id', $predefined->id)
+            ->count())->toBe(0)
+        ->and(JournalEntry::query()
+            ->where('source_type', ProductSerial::class)
+            ->where('source_id', $predefined->id)
+            ->count())->toBe(0);
+});
+
+it('voids entered serials with inventory and accounting adjustment', function () {
+    $enteredContext = traceabilityContext();
+    $batch = ProductBatch::query()->create([
+        'product_id' => $enteredContext['product']->id,
+        'batch_number' => 'VOID-BATCH',
+    ]);
+    app(InventoryService::class)->receive(
+        warehouseId: $enteredContext['warehouse']->id,
+        productId: $enteredContext['product']->id,
+        quantity: 1,
+        unitCost: 100,
+        movementDate: $enteredContext['date'],
+        idempotencyKey: 'void-entered-opening',
+        movementType: InventoryMovementType::Opening,
+        productBatchId: $batch->id,
+        serialNumbers: ['ENTERED-SN'],
+    );
+    $entered = ProductSerial::query()->where('serial_number', 'ENTERED-SN')->firstOrFail();
+    app(ProductTrackingService::class)->voidSerial($entered, $enteredContext['manager']);
+    $balance = InventoryBalance::query()
+        ->where('warehouse_id', $enteredContext['warehouse']->id)
+        ->where('product_id', $enteredContext['product']->id)
+        ->firstOrFail();
+
+    expect($entered->refresh()->status)->toBe(ProductSerialStatus::Void)
+        ->and($balance->quantity)->toBe('0.000')
+        ->and(InventoryMovement::query()
+            ->where('source_type', ProductSerial::class)
+            ->where('source_id', $entered->id)
+            ->count())->toBe(1)
+        ->and(JournalEntry::query()
+            ->where('source_type', ProductSerial::class)
+            ->where('source_id', $entered->id)
             ->count())->toBe(1);
 });
 

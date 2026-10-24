@@ -224,6 +224,13 @@ class StockCountService
                     continue;
                 }
 
+                if ($item->product->track_serials) {
+                    throw new DomainException(
+                        'تعدیل شمارش برای کالای سریال‌دار فعلاً مجاز نیست؛ '
+                        .'ابتدا سریال‌های فیزیکی را وارد یا از مسیر ابطال سریال اصلاح کنید.',
+                    );
+                }
+
                 if (Decimal::compare($difference, '0', Decimal::QUANTITY_SCALE) > 0) {
                     $unitCost = $this->surplusUnitCost($item, $balance, $item->product);
                     $movement = $this->inventory->receive(

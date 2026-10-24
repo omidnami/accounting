@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\InventoryMovementType;
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Enums\PaymentMethod;
@@ -16,6 +17,7 @@ use App\Models\Supplier;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\Accounting\FiscalYearSetupService;
+use App\Services\Inventory\InventoryService;
 use App\Services\Purchasing\PurchaseReturnService;
 use App\Services\Purchasing\PurchaseService;
 use App\Services\Purchasing\SupplierPaymentService;
@@ -141,6 +143,53 @@ it('rejects returning more than the remaining purchased quantity', function () {
         $context['manager']->id,
     );
 })->throws(DomainException::class);
+
+it('books a positive purchase-return price difference as credit', function () {
+    $context = createReturnPaymentContext();
+    $product = Product::query()->create([
+        'code' => 'RETURN-DIFF-001',
+        'name' => 'کالای اختلاف برگشت',
+        'purchase_price' => 100,
+    ]);
+    app(InventoryService::class)->receive(
+        warehouseId: $context['warehouse']->id,
+        productId: $product->id,
+        quantity: 10,
+        unitCost: 50,
+        movementDate: '2026-04-30',
+        idempotencyKey: 'return-difference-opening',
+        movementType: InventoryMovementType::Opening,
+    );
+    $purchase = createConfirmedPurchase($context, $product, 'PUR-RET-DIFF', 1, 100);
+    $returns = app(PurchaseReturnService::class);
+    $return = $returns->createDraft(
+        $purchase,
+        [[
+            'invoice_item_id' => $purchase->items->firstOrFail()->id,
+            'quantity' => 1,
+        ]],
+        '2026-05-02',
+        $context['manager']->id,
+    );
+    $confirmed = $returns->confirm(
+        $return,
+        $context['warehouse']->id,
+        $context['manager'],
+    );
+    $journal = JournalEntry::query()
+        ->where('source_type', Invoice::class)
+        ->where('source_id', $confirmed->id)
+        ->with('lines.account')
+        ->firstOrFail();
+    $difference = $journal->lines->first(
+        fn ($line): bool => $line->account->code === '5106',
+    );
+
+    expect($difference)->not->toBeNull()
+        ->and($difference->debit)->toBe('0.00')
+        ->and($difference->credit)->toBe('45.45')
+        ->and($journal->totalDebit())->toBe($journal->totalCredit());
+});
 
 it('allocates multiple payments across purchase invoices until paid', function () {
     $context = createReturnPaymentContext();

@@ -166,6 +166,7 @@ class SalesReturnService
                     $state = $this->returnableQuantities->stateFor(
                         $originalItem,
                         InvoiceType::SalesReturn,
+                        true,
                     );
                     $remaining = $state['remaining_quantity'];
 
@@ -322,6 +323,7 @@ class SalesReturnService
                 $state = $this->returnableQuantities->stateFor(
                     $originalItem,
                     InvoiceType::SalesReturn,
+                    true,
                 );
                 $remaining = $state['remaining_quantity'];
 
@@ -509,6 +511,7 @@ class SalesReturnService
                 $state = $this->returnableQuantities->stateFor(
                     $originalItem,
                     InvoiceType::SalesReturn,
+                    true,
                 );
                 $remaining = $state['remaining_quantity'];
 
@@ -685,29 +688,16 @@ class SalesReturnService
             throw new DomainException('حرکت انبار فروش برای ردیابی برگشت پیدا نشد.');
         }
 
-        $serialIds = [];
-
-        if ($product->track_serials) {
-            $serialIds = $saleMovement->serialAssignments
-                ->map(fn ($assignment): ?ProductSerial => $assignment->serial)
-                ->filter(fn (?ProductSerial $serial): bool => $serial?->status === ProductSerialStatus::Sold)
-                ->take((int) round((float) $returnQuantity))
-                ->pluck('id')
-                ->map(fn ($id): int => (int) $id)
-                ->values()
-                ->all();
-        }
-
-        if (! $product->track_batches) {
-            return ['serial_ids' => $serialIds, 'batch_allocations' => []];
-        }
-
         $returnedByBatch = [];
+        $returnedSerialIds = [];
         $returnedInvoices = Invoice::query()
             ->where('parent_invoice_id', $original->id)
             ->where('type', InvoiceType::SalesReturn)
             ->where('status', InvoiceStatus::Confirmed)
-            ->pluck('id');
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get(['id'])
+            ->map(fn (Invoice $return): int => (int) $return->id);
 
         if ($returnedInvoices->isNotEmpty()) {
             $previousMovements = InventoryMovement::query()
@@ -715,7 +705,10 @@ class SalesReturnService
                 ->whereIn('source_id', $returnedInvoices)
                 ->where('product_id', $product->id)
                 ->where('direction', 'in')
-                ->with('batchAssignments')
+                ->where('movement_type', InventoryMovementType::SalesReturn)
+                ->with(['batchAssignments', 'serialAssignments'])
+                ->orderBy('id')
+                ->lockForUpdate()
                 ->get();
 
             foreach ($previousMovements as $previousMovement) {
@@ -726,7 +719,35 @@ class SalesReturnService
                         Decimal::QUANTITY_SCALE,
                     );
                 }
+
+                foreach ($previousMovement->serialAssignments as $assignment) {
+                    $returnedSerialIds[] = (int) $assignment->product_serial_id;
+                }
             }
+        }
+
+        $serialIds = [];
+
+        if ($product->track_serials) {
+            $serialIds = $saleMovement->serialAssignments
+                ->map(fn ($assignment): ?ProductSerial => $assignment->serial)
+                ->filter(fn (?ProductSerial $serial): bool => $serial?->status === ProductSerialStatus::Sold
+                    && ! in_array((int) $serial->id, $returnedSerialIds, true))
+                ->take((int) round((float) $returnQuantity))
+                ->pluck('id')
+                ->map(fn ($id): int => (int) $id)
+                ->values()
+                ->all();
+
+            if (count($serialIds) !== (int) round((float) $returnQuantity)) {
+                throw new DomainException(
+                    'تعداد سریال قابل برگشت این فاکتور با مقدار درخواستی برابر نیست.',
+                );
+            }
+        }
+
+        if (! $product->track_batches) {
+            return ['serial_ids' => $serialIds, 'batch_allocations' => []];
         }
 
         $remaining = Decimal::normalize($returnQuantity, Decimal::QUANTITY_SCALE);

@@ -19,8 +19,13 @@ class ReturnableQuantityService
     public function stateFor(
         InvoiceItem $originalItem,
         InvoiceType $returnType,
+        bool $lockForUpdate = false,
     ): array {
-        $totals = $this->confirmedTotalsFor($originalItem, $returnType);
+        $totals = $this->confirmedTotalsFor(
+            $originalItem,
+            $returnType,
+            $lockForUpdate,
+        );
         $remaining = Decimal::subtract(
             $originalItem->quantity,
             $totals['quantity'],
@@ -83,6 +88,7 @@ class ReturnableQuantityService
     private function confirmedTotalsFor(
         InvoiceItem $originalItem,
         InvoiceType $returnType,
+        bool $lockForUpdate = false,
     ): array {
         if (! in_array($returnType, [
             InvoiceType::SalesReturn,
@@ -92,28 +98,45 @@ class ReturnableQuantityService
         }
 
         $query = InvoiceItem::query()
-            ->where('parent_invoice_item_id', $originalItem->id)
-            ->whereHas('invoice', fn ($query) => $query
-                ->where('type', $returnType)
-                ->where('status', InvoiceStatus::Confirmed));
+            ->join('invoices', 'invoices.id', '=', 'invoice_items.invoice_id')
+            ->where('invoice_items.parent_invoice_item_id', $originalItem->id)
+            ->where('invoices.type', $returnType)
+            ->where('invoices.status', InvoiceStatus::Confirmed)
+            ->orderBy('invoice_items.id');
+        $rows = $lockForUpdate
+            ? $query->lockForUpdate()->get([
+                'invoice_items.quantity',
+                'invoice_items.discount_amount',
+                'invoice_items.tax_amount',
+                'invoice_items.total_cost_snapshot',
+            ])
+            : $query->get([
+                'invoice_items.quantity',
+                'invoice_items.discount_amount',
+                'invoice_items.tax_amount',
+                'invoice_items.total_cost_snapshot',
+            ]);
+        $quantity = '0.000';
+        $discount = '0.00';
+        $tax = '0.00';
+        $cost = '0.00';
+
+        foreach ($rows as $row) {
+            $quantity = Decimal::add($quantity, $row->quantity, 3);
+            $discount = Decimal::add($discount, $row->discount_amount, 2);
+            $tax = Decimal::add($tax, $row->tax_amount, 2);
+            $cost = Decimal::add(
+                $cost,
+                $row->total_cost_snapshot ?? 0,
+                Decimal::MONEY_SCALE,
+            );
+        }
 
         return [
-            'quantity' => Decimal::normalize(
-                (string) (clone $query)->sum('quantity'),
-                Decimal::QUANTITY_SCALE,
-            ),
-            'discount' => Decimal::normalize(
-                (string) (clone $query)->sum('discount_amount'),
-                Decimal::MONEY_SCALE,
-            ),
-            'tax' => Decimal::normalize(
-                (string) (clone $query)->sum('tax_amount'),
-                Decimal::MONEY_SCALE,
-            ),
-            'cost' => Decimal::normalize(
-                (string) (clone $query)->sum('total_cost_snapshot'),
-                Decimal::MONEY_SCALE,
-            ),
+            'quantity' => $quantity,
+            'discount' => $discount,
+            'tax' => $tax,
+            'cost' => $cost,
         ];
     }
 }

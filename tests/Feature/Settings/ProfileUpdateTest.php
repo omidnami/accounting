@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Settings;
 
+use App\Enums\UserRole;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -95,5 +96,46 @@ class ProfileUpdateTest extends TestCase
             ->assertRedirect(route('profile.edit'));
 
         $this->assertNotNull($user->fresh());
+    }
+
+    public function test_last_manager_cannot_delete_their_account()
+    {
+        $manager = User::factory()->create();
+        $manager->forceFill(['role' => UserRole::Manager])->save();
+
+        $response = $this
+            ->actingAs($manager)
+            ->from(route('profile.edit'))
+            ->delete(route('profile.destroy'), [
+                'password' => 'password',
+            ]);
+
+        $response
+            ->assertSessionHasErrors('password')
+            ->assertRedirect(route('profile.edit'));
+
+        $this->assertNotNull($manager->fresh());
+    }
+
+    public function test_manager_can_delete_their_account_when_another_manager_exists()
+    {
+        $manager = User::factory()->create();
+        $manager->forceFill(['role' => UserRole::Manager])->save();
+        $otherManager = User::factory()->create();
+        $otherManager->forceFill(['role' => UserRole::Manager])->save();
+
+        $response = $this
+            ->actingAs($manager)
+            ->delete(route('profile.destroy'), [
+                'password' => 'password',
+            ]);
+
+        $response
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('home'));
+
+        $this->assertGuest();
+        $this->assertNull($manager->fresh());
+        $this->assertNotNull($otherManager->fresh());
     }
 }

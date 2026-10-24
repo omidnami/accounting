@@ -177,6 +177,7 @@ class PurchaseReturnService
                     $state = $this->returnableQuantities->stateFor(
                         $originalItem,
                         InvoiceType::PurchaseReturn,
+                        true,
                     );
                     $remaining = $state['remaining_quantity'];
 
@@ -337,6 +338,7 @@ class PurchaseReturnService
                 $state = $this->returnableQuantities->stateFor(
                     $originalItem,
                     InvoiceType::PurchaseReturn,
+                    true,
                 );
                 $remaining = $state['remaining_quantity'];
 
@@ -522,6 +524,7 @@ class PurchaseReturnService
                 $state = $this->returnableQuantities->stateFor(
                     $originalItem,
                     InvoiceType::PurchaseReturn,
+                    true,
                 );
                 $remaining = $state['remaining_quantity'];
 
@@ -637,14 +640,14 @@ class PurchaseReturnService
                 $lines[] = Decimal::isPositive($difference)
                     ? [
                         'account_id' => $differenceAccount,
-                        'debit' => $difference,
-                        'credit' => '0.00',
+                        'debit' => '0.00',
+                        'credit' => $difference,
                         'description' => 'اختلاف قیمت برگشت خرید',
                     ]
                     : [
                         'account_id' => $differenceAccount,
-                        'debit' => '0.00',
-                        'credit' => ltrim($difference, '-'),
+                        'debit' => ltrim($difference, '-'),
+                        'credit' => '0.00',
                         'description' => 'اختلاف قیمت برگشت خرید',
                     ];
             }

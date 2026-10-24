@@ -6,6 +6,7 @@ use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Enums\TreasuryDocumentStatus;
 use App\Models\Invoice;
+use App\Models\PaymentAllocation;
 use App\Models\Supplier;
 use App\Support\Decimal;
 use Illuminate\Database\Eloquent\Collection;
@@ -40,8 +41,43 @@ class SupplierPayableService
         return $total;
     }
 
-    public function outstandingForInvoice(Invoice $invoice): string
-    {
+    public function outstandingForInvoice(
+        Invoice $invoice,
+        bool $lockForUpdate = false,
+    ): string {
+        if ($lockForUpdate) {
+            $paid = '0.00';
+
+            foreach (PaymentAllocation::query()
+                ->join('payments', 'payments.id', '=', 'payment_allocations.payment_id')
+                ->where('payment_allocations.invoice_id', $invoice->id)
+                ->where('payments.status', 'confirmed')
+                ->orderBy('payment_allocations.id')
+                ->lockForUpdate()
+                ->get(['payment_allocations.amount']) as $allocation) {
+                $paid = Decimal::add($paid, $allocation->amount, Decimal::MONEY_SCALE);
+            }
+
+            $returned = '0.00';
+
+            foreach (Invoice::query()
+                ->where('parent_invoice_id', $invoice->id)
+                ->where('type', InvoiceType::PurchaseReturn)
+                ->where('status', InvoiceStatus::Confirmed)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get(['total']) as $return) {
+                $returned = Decimal::add($returned, $return->total, Decimal::MONEY_SCALE);
+            }
+
+            $remaining = Decimal::subtract($invoice->total, $paid, Decimal::MONEY_SCALE);
+            $remaining = Decimal::subtract($remaining, $returned, Decimal::MONEY_SCALE);
+
+            return Decimal::compare($remaining, '0', Decimal::MONEY_SCALE) > 0
+                ? $remaining
+                : '0.00';
+        }
+
         $invoice->loadMissing([
             'paymentAllocations.payment',
             'childInvoices',

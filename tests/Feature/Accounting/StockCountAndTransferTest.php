@@ -11,6 +11,7 @@ use App\Models\InventoryMovement;
 use App\Models\InventoryTransfer;
 use App\Models\JournalEntry;
 use App\Models\Product;
+use App\Models\ProductBatch;
 use App\Models\StockCount;
 use App\Models\Store;
 use App\Models\User;
@@ -408,4 +409,57 @@ it('does not let a warehouse user delete a count created by a manager', function
         ->assertSessionHasErrors('count');
 
     expect(StockCount::query()->whereKey($count->id)->exists())->toBeTrue();
+});
+
+it('blocks serial-tracked stock adjustments with a clear domain error', function () {
+    $context = stockOperationsContext();
+    $manager = stockOperationsUser(UserRole::Manager);
+    $product = Product::query()->create([
+        'code' => 'SERIAL-COUNT-P',
+        'name' => 'کالای شمارش سریال‌دار',
+        'purchase_price' => 100,
+        'track_batches' => true,
+        'track_serials' => true,
+    ]);
+    $batch = ProductBatch::query()->create([
+        'product_id' => $product->id,
+        'batch_number' => 'SERIAL-COUNT-BATCH',
+    ]);
+    app(InventoryService::class)->receive(
+        warehouseId: $context['warehouse']->id,
+        productId: $product->id,
+        quantity: 1,
+        unitCost: 100,
+        movementDate: $context['fiscal_year']->starts_on->toDateString(),
+        idempotencyKey: 'serial-count-opening',
+        movementType: InventoryMovementType::Opening,
+        productBatchId: $batch->id,
+        serialNumbers: ['SERIAL-COUNT-1'],
+    );
+    $count = app(StockCountService::class)->createDraft(
+        $context['store'],
+        [
+            'submission_token' => fake()->uuid(),
+            'warehouse_id' => $context['warehouse']->id,
+            'count_date' => $context['fiscal_year']->starts_on->toDateString(),
+            'items' => [[
+                'product_id' => $product->id,
+                'counted_quantity' => '0',
+                'unit_cost' => null,
+            ]],
+        ],
+        $manager,
+    );
+
+    expect(fn () => app(StockCountService::class)->postCount(
+        $context['store'],
+        $count,
+        $manager,
+    ))->toThrow(
+        DomainException::class,
+        'تعدیل شمارش برای کالای سریال‌دار فعلاً مجاز نیست',
+    )->and(InventoryBalance::query()
+        ->where('warehouse_id', $context['warehouse']->id)
+        ->where('product_id', $product->id)
+        ->value('quantity'))->toBe('1.000');
 });
