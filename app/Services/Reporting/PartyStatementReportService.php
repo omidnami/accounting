@@ -5,9 +5,11 @@ namespace App\Services\Reporting;
 use App\Models\JournalEntryLine;
 use App\Models\Party;
 use App\Support\Decimal;
+use App\Support\PaginationPayload;
 use App\Support\ReportDateRange;
 use DomainException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 class PartyStatementReportService
 {
@@ -95,6 +97,38 @@ class PartyStatementReportService
             'credit_total' => $creditTotal,
             'closing_balance' => $running,
             'rows' => $rows,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function pageReport(
+        Party $party,
+        int $storeId,
+        string $from,
+        string $to,
+        ?int $branchId,
+        int $page,
+    ): array {
+        $build = fn (): array => $this->report(
+            $party,
+            $storeId,
+            $from,
+            $to,
+            $branchId,
+        );
+        $data = app()->environment('testing')
+            ? $build()
+            : Cache::remember(
+                "party-statement:{$storeId}:{$branchId}:{$party->id}:{$from}:{$to}",
+                now()->addMinute(),
+                $build,
+            );
+
+        return [
+            ...$data,
+            'rows' => PaginationPayload::from($data['rows'], $page),
         ];
     }
 }

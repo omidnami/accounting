@@ -26,6 +26,18 @@ const props = defineProps<{
             source_warehouse: { id: number; code: string; name: string };
             destination_warehouse: { id: number; code: string; name: string };
             product: { id: number; code: string; name: string; unit: string };
+            items: Array<{
+                product: {
+                    id: number;
+                    code: string;
+                    name: string;
+                    unit: string;
+                };
+                quantity: string;
+                unit_cost: string | null;
+                total_cost: string | null;
+            }>;
+            item_count: number;
             creator: string | null;
             unit_cost?: string | null;
             total_cost?: string | null;
@@ -141,8 +153,7 @@ defineOptions({
                         <tr>
                             <th class="px-5 py-3">انتقال</th>
                             <th class="px-4 py-3">مسیر</th>
-                            <th class="px-4 py-3">کالا</th>
-                            <th class="px-4 py-3">مقدار</th>
+                            <th class="px-4 py-3">اقلام</th>
                             <th class="px-4 py-3">تاریخ</th>
                             <template v-if="can_view_costs">
                                 <th class="px-5 py-3">ارزش</th>
@@ -172,18 +183,51 @@ defineOptions({
                                 {{ transfer.destination_warehouse.name }}
                             </td>
                             <td class="px-4 py-4 text-xs">
-                                {{ transfer.product.name }}
+                                <p class="font-bold">
+                                    {{
+                                        transfer.items[0]?.product.name ??
+                                        transfer.product.name
+                                    }}
+                                </p>
+                                <p
+                                    v-if="transfer.items[0]"
+                                    class="mt-1 text-[10px] font-semibold tabular-nums"
+                                >
+                                    {{
+                                        quantity.format(
+                                            Number(transfer.items[0].quantity),
+                                        )
+                                    }}
+                                    {{ transfer.items[0].product.unit }}
+                                </p>
                                 <p
                                     class="mt-1 font-mono text-[9px] text-muted-foreground"
                                 >
-                                    {{ transfer.product.code }}
+                                    {{
+                                        transfer.items[0]?.product.code ??
+                                        transfer.product.code
+                                    }}
+                                    <template v-if="transfer.item_count > 1">
+                                        · {{ transfer.item_count }} قلم
+                                    </template>
                                 </p>
-                            </td>
-                            <td
-                                class="px-4 py-4 text-xs font-bold tabular-nums"
-                            >
-                                {{ quantity.format(Number(transfer.quantity)) }}
-                                {{ transfer.product.unit }}
+                                <div
+                                    v-if="transfer.item_count > 1"
+                                    class="mt-2 space-y-1 text-[9px] text-muted-foreground"
+                                >
+                                    <p
+                                        v-for="item in transfer.items.slice(1)"
+                                        :key="item.product.id"
+                                    >
+                                        {{ item.product.name }}:
+                                        {{
+                                            quantity.format(
+                                                Number(item.quantity),
+                                            )
+                                        }}
+                                        {{ item.product.unit }}
+                                    </p>
+                                </div>
                             </td>
                             <td class="px-4 py-4 text-xs">
                                 {{

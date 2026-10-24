@@ -3,6 +3,7 @@
 namespace App\Services\Inventory;
 
 use App\Models\InventoryTransfer;
+use App\Models\InventoryTransferItem;
 use App\Models\Product;
 use App\Models\Store;
 use App\Models\User;
@@ -39,9 +40,15 @@ class InventoryTransferService
                 if ($existing) {
                     $this->assertIdempotentMatch($existing, $requestHash);
 
-                    return $existing->load(['sourceWarehouse', 'destinationWarehouse', 'product']);
+                    return $existing->load([
+                        'sourceWarehouse',
+                        'destinationWarehouse',
+                        'product',
+                        'items.product',
+                    ]);
                 }
 
+                $items = $this->normalizedItems($data['items']);
                 $source = $this->warehouse($store, (int) $data['source_warehouse_id']);
                 $destination = $this->warehouse($store, (int) $data['destination_warehouse_id']);
 
@@ -51,21 +58,6 @@ class InventoryTransferService
 
                 if ($source->branch_id !== $destination->branch_id) {
                     throw new DomainException('انتقال فعلی فقط بین انبارهای یک شعبه مجاز است.');
-                }
-
-                $product = Product::query()
-                    ->whereKey((int) $data['product_id'])
-                    ->where('is_active', true)
-                    ->first();
-
-                if (! $product) {
-                    throw new DomainException('کالای انتقال باید فعال و معتبر باشد.');
-                }
-
-                $quantity = Decimal::normalize($data['quantity'], 3);
-
-                if (! Decimal::isPositive($quantity)) {
-                    throw new DomainException('مقدار انتقال باید بزرگ‌تر از صفر باشد.');
                 }
 
                 $context = $this->periods->lockCurrentOpenPeriod(
@@ -78,39 +70,63 @@ class InventoryTransferService
                     'branch_id' => $source->branch_id,
                     'source_warehouse_id' => $source->id,
                     'destination_warehouse_id' => $destination->id,
-                    'product_id' => $product->id,
+                    'product_id' => $items[0]['product_id'],
                     'fiscal_year_id' => $context['fiscal_year']->id,
                     'accounting_period_id' => $context['period']->id,
                     'transfer_number' => 'TRF-'.strtoupper((string) Str::ulid()),
                     'transfer_date' => (string) $data['transfer_date'],
-                    'quantity' => $quantity,
+                    'quantity' => $this->totalQuantity($items),
                     'reference' => $data['reference'] ?? null,
                     'notes' => $data['notes'] ?? null,
                     'idempotency_key' => (string) $data['submission_token'],
                     'idempotency_request_hash' => $requestHash,
                     'created_by' => $creator->id,
                 ]);
-                $movements = $this->inventory->transfer(
-                    sourceWarehouseId: $source->id,
-                    destinationWarehouseId: $destination->id,
-                    productId: $product->id,
-                    quantity: $quantity,
-                    movementDate: $transfer->transfer_date->toDateString(),
-                    idempotencyKey: "inventory-transfer:{$transfer->id}",
-                    createdBy: $creator->id,
-                    reference: $transfer->transfer_number,
-                    description: 'انتقال بین انبارها',
-                    source: $transfer,
-                );
+                $totalCost = '0.00';
+
+                foreach ($items as $itemData) {
+                    $item = InventoryTransferItem::query()->create([
+                        'inventory_transfer_id' => $transfer->id,
+                        'product_id' => $itemData['product_id'],
+                        'quantity' => $itemData['quantity'],
+                    ]);
+                    $movements = $this->inventory->transfer(
+                        sourceWarehouseId: $source->id,
+                        destinationWarehouseId: $destination->id,
+                        productId: $item->product_id,
+                        quantity: $item->quantity,
+                        movementDate: $transfer->transfer_date->toDateString(),
+                        idempotencyKey: "inventory-transfer:{$transfer->id}:item:{$item->id}",
+                        createdBy: $creator->id,
+                        reference: $transfer->transfer_number,
+                        description: 'انتقال بین انبارها',
+                        source: $transfer,
+                    );
+                    $item->recordCostSnapshot(
+                        (string) $movements['out']->unit_cost,
+                        (string) $movements['out']->total_cost,
+                    );
+                    $totalCost = Decimal::add(
+                        $totalCost,
+                        $movements['out']->total_cost,
+                        Decimal::MONEY_SCALE,
+                    );
+                }
+
                 $transfer->recordCostSnapshot(
-                    (string) $movements['out']->unit_cost,
-                    (string) $movements['out']->total_cost,
+                    Decimal::divide(
+                        $totalCost,
+                        $transfer->quantity,
+                        Decimal::UNIT_COST_SCALE,
+                    ),
+                    $totalCost,
                 );
 
                 return $transfer->refresh()->load([
                     'sourceWarehouse',
                     'destinationWarehouse',
                     'product',
+                    'items.product',
                 ]);
             }, attempts: 3);
         } catch (QueryException $exception) {
@@ -125,7 +141,12 @@ class InventoryTransferService
             if ($existing) {
                 $this->assertIdempotentMatch($existing, $requestHash);
 
-                return $existing->load(['sourceWarehouse', 'destinationWarehouse', 'product']);
+                return $existing->load([
+                    'sourceWarehouse',
+                    'destinationWarehouse',
+                    'product',
+                    'items.product',
+                ]);
             }
 
             throw $exception;
@@ -139,14 +160,17 @@ class InventoryTransferService
     public function paginate(
         Store $store,
         array $filters,
+        int $branchId,
         bool $includeCosts,
     ): LengthAwarePaginator {
         return InventoryTransfer::query()
             ->where('store_id', $store->id)
+            ->where('branch_id', $branchId)
             ->with([
                 'sourceWarehouse:id,code,name',
                 'destinationWarehouse:id,code,name',
                 'product:id,code,name,unit',
+                'items.product:id,code,name,unit',
                 'creator:id,name',
             ])
             ->when($filters['warehouse_id'] ?? null, fn ($query, $warehouseId) => $query
@@ -163,11 +187,22 @@ class InventoryTransferService
                     'transfer_number' => $transfer->transfer_number,
                     'transfer_date' => $transfer->transfer_date->toDateString(),
                     'quantity' => Decimal::normalize($transfer->quantity, 3),
+                    'item_count' => $transfer->items->count(),
                     'reference' => $transfer->reference,
                     'notes' => $transfer->notes,
                     'source_warehouse' => $transfer->sourceWarehouse->only(['id', 'code', 'name']),
                     'destination_warehouse' => $transfer->destinationWarehouse->only(['id', 'code', 'name']),
                     'product' => $transfer->product->only(['id', 'code', 'name', 'unit']),
+                    'items' => $transfer->items->map(fn (InventoryTransferItem $item): array => [
+                        'product' => $item->product->only(['id', 'code', 'name', 'unit']),
+                        'quantity' => Decimal::normalize($item->quantity, 3),
+                        'unit_cost' => $includeCosts && $item->unit_cost !== null
+                            ? Decimal::normalize($item->unit_cost, 4)
+                            : null,
+                        'total_cost' => $includeCosts && $item->total_cost !== null
+                            ? Decimal::normalize($item->total_cost, 2)
+                            : null,
+                    ])->values(),
                     'creator' => $transfer->creator?->name,
                 ];
 
@@ -207,8 +242,7 @@ class InventoryTransferService
         return hash('sha256', json_encode([
             'source_warehouse_id' => (int) ($data['source_warehouse_id'] ?? 0),
             'destination_warehouse_id' => (int) ($data['destination_warehouse_id'] ?? 0),
-            'product_id' => (int) ($data['product_id'] ?? 0),
-            'quantity' => Decimal::normalize($data['quantity'] ?? 0, 3),
+            'items' => $this->normalizedItems($data['items'] ?? []),
             'transfer_date' => (string) ($data['transfer_date'] ?? ''),
             'reference' => $data['reference'] ?? null,
             'notes' => $data['notes'] ?? null,
@@ -220,5 +254,55 @@ class InventoryTransferService
         if ($transfer->idempotency_request_hash !== $hash) {
             throw new DomainException('کلید تکرارپذیری قبلاً برای انتقال دیگری استفاده شده است.');
         }
+    }
+
+    /**
+     * @return array<int, array{product_id: int, quantity: string}>
+     */
+    private function normalizedItems(mixed $items): array
+    {
+        if (! is_array($items) || $items === []) {
+            throw new DomainException('انتقال باید حداقل یک کالا داشته باشد.');
+        }
+
+        $normalized = collect($items)->map(function (mixed $item): array {
+            if (! is_array($item)) {
+                throw new DomainException('ردیف انتقال معتبر نیست.');
+            }
+
+            $productId = (int) ($item['product_id'] ?? 0);
+            $quantity = Decimal::normalize($item['quantity'] ?? 0, 3);
+
+            if (! Product::query()->whereKey($productId)->where('is_active', true)->exists()) {
+                throw new DomainException('کالای انتقال باید فعال و معتبر باشد.');
+            }
+
+            if (! Decimal::isPositive($quantity)) {
+                throw new DomainException('مقدار انتقال باید بزرگ‌تر از صفر باشد.');
+            }
+
+            return [
+                'product_id' => $productId,
+                'quantity' => $quantity,
+            ];
+        });
+
+        if ($normalized->pluck('product_id')->duplicates()->isNotEmpty()) {
+            throw new DomainException('هر کالا فقط یک بار در انتقال قابل ثبت است.');
+        }
+
+        return $normalized->sortBy('product_id')->values()->all();
+    }
+
+    /**
+     * @param  array<int, array{product_id: int, quantity: string}>  $items
+     */
+    private function totalQuantity(array $items): string
+    {
+        return array_reduce(
+            $items,
+            fn (string $total, array $item): string => Decimal::add($total, $item['quantity'], 3),
+            '0.000',
+        );
     }
 }

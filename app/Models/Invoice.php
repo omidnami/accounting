@@ -48,6 +48,7 @@ class Invoice extends Model
         'subtotal',
         'discount_total',
         'tax_total',
+        'additional_cost_total',
         'total',
         'notes',
         'created_by',
@@ -63,6 +64,7 @@ class Invoice extends Model
             'subtotal' => 'decimal:2',
             'discount_total' => 'decimal:2',
             'tax_total' => 'decimal:2',
+            'additional_cost_total' => 'decimal:2',
             'total' => 'decimal:2',
         ];
     }
@@ -129,6 +131,14 @@ class Invoice extends Model
     public function items(): HasMany
     {
         return $this->hasMany(InvoiceItem::class)->orderBy('sort_order');
+    }
+
+    /**
+     * @return HasMany<PurchaseAdditionalCost, $this>
+     */
+    public function additionalCosts(): HasMany
+    {
+        return $this->hasMany(PurchaseAdditionalCost::class)->orderBy('sort_order');
     }
 
     /**

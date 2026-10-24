@@ -55,6 +55,7 @@ const props = defineProps<{
         subtotal: string;
         discount_total: string;
         tax_total: string;
+        additional_cost_total: string;
         total: string;
         notes: string | null;
         supplier: {
@@ -74,6 +75,11 @@ const props = defineProps<{
             tax_rate: string;
             tax_amount: string;
             line_total: string;
+        }>;
+        additional_costs: Array<{
+            id: number;
+            description: string;
+            amount: string;
         }>;
     };
     warehouses: Array<{ id: number; name: string; is_default: boolean }>;
@@ -332,6 +338,14 @@ defineOptions({
                                 money.format(Number(invoice.tax_total))
                             }}</span>
                         </div>
+                        <div class="flex justify-between">
+                            <span>هزینه‌های جانبی</span>
+                            <span>{{
+                                money.format(
+                                    Number(invoice.additional_cost_total),
+                                )
+                            }}</span>
+                        </div>
                         <div
                             class="flex justify-between border-t border-dashed pt-4 text-lg font-black"
                         >
@@ -339,6 +353,27 @@ defineOptions({
                             <span>{{
                                 money.format(Number(invoice.total))
                             }}</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section
+                    v-if="invoice.additional_costs.length"
+                    class="overflow-hidden rounded-2xl border bg-card"
+                >
+                    <div class="border-b px-5 py-4">
+                        <h2 class="text-sm font-bold">هزینه‌های جانبی و حمل</h2>
+                    </div>
+                    <div class="divide-y">
+                        <div
+                            v-for="cost in invoice.additional_costs"
+                            :key="cost.id"
+                            class="flex items-center justify-between px-5 py-3 text-xs"
+                        >
+                            <span>{{ cost.description }}</span>
+                            <span class="font-bold">
+                                {{ money.format(Number(cost.amount)) }}
+                            </span>
                         </div>
                     </div>
                 </section>

@@ -155,6 +155,7 @@ class PurchaseInvoiceController extends Controller
                 ],
                 $data['items'],
                 $data['submission_token'],
+                $data['additional_costs'] ?? [],
             );
         } catch (DomainException $exception) {
             throw ValidationException::withMessages([
@@ -180,6 +181,7 @@ class PurchaseInvoiceController extends Controller
         $this->assertPurchaseInvoice($invoice);
         $invoice->load([
             'items',
+            'additionalCosts',
             'supplier.party',
             'childInvoices' => fn ($query) => $query
                 ->where('type', InvoiceType::PurchaseReturn)
@@ -206,6 +208,7 @@ class PurchaseInvoiceController extends Controller
                 'subtotal' => $invoice->subtotal,
                 'discount_total' => $invoice->discount_total,
                 'tax_total' => $invoice->tax_total,
+                'additional_cost_total' => $invoice->additional_cost_total,
                 'total' => $invoice->total,
                 'notes' => $invoice->notes,
                 'supplier' => [
@@ -225,6 +228,11 @@ class PurchaseInvoiceController extends Controller
                     'tax_rate' => $item->tax_rate,
                     'tax_amount' => $item->tax_amount,
                     'line_total' => $item->line_total,
+                ])->values(),
+                'additional_costs' => $invoice->additionalCosts->map(fn ($cost): array => [
+                    'id' => $cost->id,
+                    'description' => $cost->description,
+                    'amount' => $cost->amount,
                 ])->values(),
             ],
             'warehouses' => $invoice->status === InvoiceStatus::Draft

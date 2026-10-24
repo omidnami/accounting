@@ -9,6 +9,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FinancialReportsController;
 use App\Http\Controllers\FiscalYearController;
 use App\Http\Controllers\InventoryCardexController;
+use App\Http\Controllers\InventoryProductLookupController;
 use App\Http\Controllers\InventoryTransferController;
 use App\Http\Controllers\InvoiceReturnController;
 use App\Http\Controllers\ManualJournalController;
@@ -78,6 +79,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('journals/{journalEntry}', [ManualJournalController::class, 'destroy'])
         ->name('journals.destroy');
     Route::get('inventory/cardex', InventoryCardexController::class)->name('inventory.cardex');
+    Route::get('inventory/lookups/products', InventoryProductLookupController::class)
+        ->name('inventory.lookups.products');
+    Route::post('inventory/counts/import', [StockCountController::class, 'import'])
+        ->name('stock-counts.import');
     Route::resource('inventory/counts', StockCountController::class)
         ->parameters(['counts' => 'stockCount'])
         ->names('stock-counts')
@@ -174,6 +179,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('sales.returns.store');
     Route::get('sales/returns/{return}', [InvoiceReturnController::class, 'showSales'])
         ->name('sales.returns.show');
+    Route::get('sales/returns/{return}/edit', [InvoiceReturnController::class, 'editSales'])
+        ->name('sales.returns.edit');
+    Route::put('sales/returns/{return}', [InvoiceReturnController::class, 'updateSales'])
+        ->name('sales.returns.update');
     Route::post('sales/returns/{return}/confirm', [InvoiceReturnController::class, 'confirmSales'])
         ->name('sales.returns.confirm');
     Route::delete('sales/returns/{return}', [InvoiceReturnController::class, 'destroySales'])
@@ -184,6 +193,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('purchases.returns.store');
     Route::get('purchases/returns/{return}', [InvoiceReturnController::class, 'showPurchase'])
         ->name('purchases.returns.show');
+    Route::get('purchases/returns/{return}/edit', [InvoiceReturnController::class, 'editPurchase'])
+        ->name('purchases.returns.edit');
+    Route::put('purchases/returns/{return}', [InvoiceReturnController::class, 'updatePurchase'])
+        ->name('purchases.returns.update');
     Route::post('purchases/returns/{return}/confirm', [InvoiceReturnController::class, 'confirmPurchase'])
         ->name('purchases.returns.confirm');
     Route::delete('purchases/returns/{return}', [InvoiceReturnController::class, 'destroyPurchase'])

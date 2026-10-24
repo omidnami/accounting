@@ -5,12 +5,13 @@ namespace App\Http\Controllers;
 use App\Enums\StockCountStatus;
 use App\Http\Requests\StockCountRequest;
 use App\Models\Branch;
-use App\Models\Product;
 use App\Models\StockCount;
 use App\Models\Store;
 use App\Services\Branches\BranchContextService;
+use App\Services\Inventory\StockCountImportService;
 use App\Services\Inventory\StockCountService;
 use DomainException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -20,6 +21,26 @@ use Inertia\Response;
 
 class StockCountController extends Controller
 {
+    public function import(
+        Request $request,
+        StockCountImportService $imports,
+    ): JsonResponse {
+        $this->authorizeAccess($request);
+        $validated = $request->validate([
+            'file' => ['required', 'file', 'mimes:csv,txt', 'max:2048'],
+        ]);
+
+        try {
+            $items = $imports->parse($validated['file']);
+        } catch (DomainException $exception) {
+            throw ValidationException::withMessages([
+                'file' => $exception->getMessage(),
+            ]);
+        }
+
+        return response()->json(['data' => $items]);
+    }
+
     public function index(Request $request, StockCountService $counts): Response
     {
         $this->authorizeAccess($request);
@@ -43,7 +64,7 @@ class StockCountController extends Controller
         ];
 
         return Inertia::render('inventory/counts/Index', [
-            'counts' => $counts->paginate($store, $filters),
+            'counts' => $counts->paginate($store, $filters, $branch->id),
             'filters' => $filters,
             'warehouses' => $this->warehouses($store),
             'can_post' => $request->user()->canPostStockCounts(),
@@ -217,10 +238,6 @@ class StockCountController extends Controller
     {
         return [
             'warehouses' => $this->warehouses($store),
-            'products' => Product::query()
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get(['id', 'code', 'name', 'unit']),
         ];
     }
 

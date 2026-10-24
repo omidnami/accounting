@@ -36,8 +36,16 @@ type AgingRow = {
     days_overdue: number;
     bucket: string;
 };
+type Paginated<T> = {
+    data: T[];
+    current_page: number;
+    last_page: number;
+    from: number | null;
+    to: number | null;
+    total: number;
+};
 type AgingReport = {
-    rows: AgingRow[];
+    rows: Paginated<AgingRow>;
     buckets: Record<string, string>;
     total: string;
 };
@@ -52,7 +60,7 @@ type SalesReport = {
         sales_invoices: number;
         return_invoices: number;
     };
-    daily: Array<{
+    daily: Paginated<{
         date: string;
         revenue: string;
         cogs: string;
@@ -60,7 +68,7 @@ type SalesReport = {
         quantity: string;
         cogs_complete: boolean;
     }>;
-    products: Array<{
+    products: Paginated<{
         product_id: number;
         code: string;
         name: string;
@@ -92,7 +100,7 @@ const props = defineProps<{
         debit_total: string;
         credit_total: string;
         closing_balance: string;
-        rows: StatementRow[];
+        rows: Paginated<StatementRow>;
     } | null;
     receivablesAging: AgingReport;
     payablesAging: AgingReport;
@@ -179,6 +187,26 @@ const exportHref = (report: string) =>
         },
     }).url;
 const printReport = () => window.print();
+const changePage = (key: string, page: number) => {
+    if (page < 1) {
+        return;
+    }
+
+    router.get(
+        operationsReport(),
+        {
+            from: props.filters.from,
+            to: props.filters.to,
+            party_id: props.filters.party_id ?? undefined,
+            [key]: page,
+        },
+        {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        },
+    );
+};
 
 defineOptions({
     layout: {
@@ -382,7 +410,7 @@ defineOptions({
                             </thead>
                             <tbody class="divide-y">
                                 <tr
-                                    v-for="row in statement.rows"
+                                    v-for="row in statement.rows.data"
                                     :key="`${row.entry_id}-${row.balance}`"
                                 >
                                     <td class="px-4 py-3 text-xs">
@@ -416,6 +444,45 @@ defineOptions({
                         </table>
                     </div>
                 </section>
+                <div
+                    v-if="statement.rows.last_page > 1"
+                    class="flex items-center justify-between rounded-2xl border bg-card px-4 py-3 text-xs print:hidden"
+                >
+                    <span class="text-muted-foreground">
+                        {{ statement.rows.from ?? 0 }} تا
+                        {{ statement.rows.to ?? 0 }} از
+                        {{ statement.rows.total }}
+                    </span>
+                    <div class="flex gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            :disabled="statement.rows.current_page <= 1"
+                            @click="
+                                changePage(
+                                    'statement_page',
+                                    statement.rows.current_page - 1,
+                                )
+                            "
+                            >قبلی</Button
+                        >
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            :disabled="
+                                statement.rows.current_page >=
+                                statement.rows.last_page
+                            "
+                            @click="
+                                changePage(
+                                    'statement_page',
+                                    statement.rows.current_page + 1,
+                                )
+                            "
+                            >بعدی</Button
+                        >
+                    </div>
+                </div>
             </template>
             <p
                 v-else
@@ -481,7 +548,7 @@ defineOptions({
                         </thead>
                         <tbody class="divide-y">
                             <tr
-                                v-for="row in activeAging.rows"
+                                v-for="row in activeAging.rows.data"
                                 :key="row.invoice_id"
                             >
                                 <td class="px-5 py-3 text-xs">
@@ -517,12 +584,51 @@ defineOptions({
                     </table>
                 </div>
                 <p
-                    v-if="!activeAging.rows.length"
+                    v-if="!activeAging.rows.data.length"
                     class="py-14 text-center text-sm text-muted-foreground"
                 >
                     مانده سررسیدشده‌ای وجود ندارد.
                 </p>
             </section>
+            <div
+                v-if="activeAging.rows.last_page > 1"
+                class="flex items-center justify-between rounded-2xl border bg-card px-4 py-3 text-xs print:hidden"
+            >
+                <span class="text-muted-foreground">
+                    {{ activeAging.rows.from ?? 0 }} تا
+                    {{ activeAging.rows.to ?? 0 }} از
+                    {{ activeAging.rows.total }}
+                </span>
+                <div class="flex gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        :disabled="activeAging.rows.current_page <= 1"
+                        @click="
+                            changePage(
+                                'aging_page',
+                                activeAging.rows.current_page - 1,
+                            )
+                        "
+                        >قبلی</Button
+                    >
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        :disabled="
+                            activeAging.rows.current_page >=
+                            activeAging.rows.last_page
+                        "
+                        @click="
+                            changePage(
+                                'aging_page',
+                                activeAging.rows.current_page + 1,
+                            )
+                        "
+                        >بعدی</Button
+                    >
+                </div>
+            </div>
         </template>
 
         <template v-else>
@@ -599,7 +705,10 @@ defineOptions({
                                 </tr>
                             </thead>
                             <tbody class="divide-y">
-                                <tr v-for="row in sales.daily" :key="row.date">
+                                <tr
+                                    v-for="row in sales.daily.data"
+                                    :key="row.date"
+                                >
                                     <td class="px-4 py-3 text-xs">
                                         {{ formatDate(row.date) }}
                                     </td>
@@ -626,6 +735,45 @@ defineOptions({
                             </tbody>
                         </table>
                     </div>
+                    <div
+                        v-if="sales.daily.last_page > 1"
+                        class="flex items-center justify-between border-t px-4 py-3 text-[10px] print:hidden"
+                    >
+                        <span class="text-muted-foreground">
+                            {{ sales.daily.from ?? 0 }} تا
+                            {{ sales.daily.to ?? 0 }} از
+                            {{ sales.daily.total }}
+                        </span>
+                        <div class="flex gap-1">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                :disabled="sales.daily.current_page <= 1"
+                                @click="
+                                    changePage(
+                                        'daily_page',
+                                        sales.daily.current_page - 1,
+                                    )
+                                "
+                                >قبلی</Button
+                            >
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                :disabled="
+                                    sales.daily.current_page >=
+                                    sales.daily.last_page
+                                "
+                                @click="
+                                    changePage(
+                                        'daily_page',
+                                        sales.daily.current_page + 1,
+                                    )
+                                "
+                                >بعدی</Button
+                            >
+                        </div>
+                    </div>
                 </section>
                 <section class="overflow-hidden rounded-2xl border bg-card">
                     <div class="border-b px-5 py-4">
@@ -646,7 +794,7 @@ defineOptions({
                             </thead>
                             <tbody class="divide-y">
                                 <tr
-                                    v-for="row in sales.products"
+                                    v-for="row in sales.products.data"
                                     :key="row.product_id"
                                 >
                                     <td class="px-4 py-3 text-xs">
@@ -687,6 +835,45 @@ defineOptions({
                                 </tr>
                             </tbody>
                         </table>
+                    </div>
+                    <div
+                        v-if="sales.products.last_page > 1"
+                        class="flex items-center justify-between border-t px-4 py-3 text-[10px] print:hidden"
+                    >
+                        <span class="text-muted-foreground">
+                            {{ sales.products.from ?? 0 }} تا
+                            {{ sales.products.to ?? 0 }} از
+                            {{ sales.products.total }}
+                        </span>
+                        <div class="flex gap-1">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                :disabled="sales.products.current_page <= 1"
+                                @click="
+                                    changePage(
+                                        'products_page',
+                                        sales.products.current_page - 1,
+                                    )
+                                "
+                                >قبلی</Button
+                            >
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                :disabled="
+                                    sales.products.current_page >=
+                                    sales.products.last_page
+                                "
+                                @click="
+                                    changePage(
+                                        'products_page',
+                                        sales.products.current_page + 1,
+                                    )
+                                "
+                                >بعدی</Button
+                            >
+                        </div>
                     </div>
                 </section>
             </div>

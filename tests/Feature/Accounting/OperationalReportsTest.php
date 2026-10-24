@@ -207,8 +207,12 @@ it('renders operational reports and account ledger for financial roles', functio
         ->assertInertia(fn (Assert $page) => $page
             ->component('reports/Operations')
             ->where('statement.party.id', $context['customerParty']->id)
+            ->where('statement.rows.current_page', 1)
+            ->where('receivablesAging.rows.current_page', 1)
             ->where('receivablesAging.total', '200.00')
             ->where('payablesAging.total', '600.00')
+            ->where('sales.daily.current_page', 1)
+            ->where('sales.products.current_page', 1)
             ->where('sales.summary.gross_profit', '100.00'));
 
     $this->actingAs($context['manager'])

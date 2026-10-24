@@ -5,6 +5,7 @@ import {
     CalendarDays,
     Check,
     CircleAlert,
+    PencilLine,
     PackageMinus,
     Trash2,
     Warehouse,
@@ -121,6 +122,11 @@ const destroyUrl = computed(() =>
     isSales.value
         ? salesReturns.destroy(props.return_invoice.id).url
         : purchaseReturns.destroy(props.return_invoice.id).url,
+);
+const editUrl = computed(() =>
+    isSales.value
+        ? salesReturns.edit(props.return_invoice.id).url
+        : purchaseReturns.edit(props.return_invoice.id).url,
 );
 const fieldError = (key: string) =>
     (form.errors as Record<string, string>)[key];
@@ -393,6 +399,17 @@ defineOptions({
                         <Spinner v-if="form.processing" />
                         <Check v-else class="size-4" />
                         تأیید و ثبت برگشت
+                    </Button>
+                    <Button
+                        v-if="isDraft"
+                        as-child
+                        variant="outline"
+                        class="rounded-xl"
+                    >
+                        <Link :href="editUrl">
+                            <PencilLine class="size-4" />
+                            ویرایش پیش‌نویس
+                        </Link>
                     </Button>
                     <Button
                         type="button"

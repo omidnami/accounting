@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Enums\InventoryDirection;
 use App\Enums\InventoryMovementType;
 use App\Http\Requests\InventoryCardexRequest;
-use App\Models\Product;
 use App\Models\Store;
 use App\Services\Branches\BranchContextService;
 use App\Services\Inventory\InventoryCardexReportService;
@@ -56,10 +55,6 @@ class InventoryCardexController extends Controller
                 'movement_type' => $movementType?->value,
                 'direction' => $direction?->value,
             ],
-            'products' => Product::query()
-                ->orderByDesc('is_active')
-                ->orderBy('name')
-                ->get(['id', 'code', 'name', 'unit', 'is_active']),
             'warehouses' => $store->warehouses()
                 ->where('branch_id', $branch->id)
                 ->orderByDesc('is_active')

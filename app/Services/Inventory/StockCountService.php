@@ -344,10 +344,14 @@ class StockCountService
      * @param  array<string, mixed>  $filters
      * @return LengthAwarePaginator<int, mixed>
      */
-    public function paginate(Store $store, array $filters): LengthAwarePaginator
-    {
+    public function paginate(
+        Store $store,
+        array $filters,
+        int $branchId,
+    ): LengthAwarePaginator {
         return StockCount::query()
             ->where('store_id', $store->id)
+            ->where('branch_id', $branchId)
             ->with(['warehouse:id,name,code', 'creator:id,name', 'items'])
             ->when($filters['status'] ?? null, fn ($query, $status) => $query->where('status', $status))
             ->when($filters['warehouse_id'] ?? null, fn ($query, $id) => $query->where('warehouse_id', $id))

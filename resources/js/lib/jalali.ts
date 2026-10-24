@@ -154,3 +154,37 @@ export const todayIso = () => {
 
 export const toPersianDigits = (value: string | number) =>
     String(value).replace(/\d/g, (digit) => '۰۱۲۳۴۵۶۷۸۹'[Number(digit)]);
+
+export const parseJalaliDate = (value: string) => {
+    const normalized = value
+        .replace(/[۰-۹]/g, (digit) => `${'۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)}`)
+        .replace(/[٠-٩]/g, (digit) => `${'٠١٢٣٤٥٦٧٨٩'.indexOf(digit)}`)
+        .trim()
+        .replace(/[.-]/g, '/')
+        .replace(/\s*\/\s*/g, '/');
+    const match = normalized.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+
+    if (!match) {
+        return null;
+    }
+
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+
+    if (
+        month < 1 ||
+        month > 12 ||
+        day < 1 ||
+        day > jalaliMonthLength(year, month)
+    ) {
+        return null;
+    }
+
+    return {
+        iso: toIsoDate(year, month, day),
+        year,
+        month,
+        day,
+    };
+};

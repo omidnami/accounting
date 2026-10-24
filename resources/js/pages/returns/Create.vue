@@ -53,9 +53,12 @@ const props = defineProps<{
         };
     };
     items: ReturnItem[];
+    return_invoice: { id: number; invoice_number: string } | null;
+    current_items: Array<{ invoice_item_id: number; quantity: string }>;
     defaults: {
         return_date: string;
         submission_token: string;
+        notes: string;
     };
     fiscal_year: {
         title: string;
@@ -67,8 +70,8 @@ const props = defineProps<{
 const form = useForm({
     submission_token: props.defaults.submission_token,
     return_date: props.defaults.return_date,
-    notes: '',
-    items: [] as Array<{ invoice_item_id: number; quantity: string }>,
+    notes: props.defaults.notes,
+    items: props.current_items.map((item) => ({ ...item })),
 });
 const clientError = ref('');
 const money = new Intl.NumberFormat('fa-IR', {
@@ -99,6 +102,13 @@ const storeUrl = computed(() =>
     isSales.value
         ? salesReturns.store(props.original.id).url
         : purchaseReturns.store(props.original.id).url,
+);
+const updateUrl = computed(() =>
+    props.return_invoice
+        ? isSales.value
+            ? salesReturns.update(props.return_invoice.id).url
+            : purchaseReturns.update(props.return_invoice.id).url
+        : null,
 );
 const fieldError = (key: string) =>
     (form.errors as Record<string, string>)[key];
@@ -156,13 +166,19 @@ const submit = () => {
         return;
     }
 
-    form.transform((data) => ({
+    const request = form.transform((data) => ({
         ...data,
         items: data.items.map((item) => ({
             invoice_item_id: item.invoice_item_id,
             quantity: normalizeNumber(item.quantity),
         })),
-    })).post(storeUrl.value, { preserveScroll: true });
+    }));
+
+    if (updateUrl.value) {
+        request.put(updateUrl.value, { preserveScroll: true });
+    } else {
+        request.post(storeUrl.value, { preserveScroll: true });
+    }
 };
 
 defineOptions({
@@ -176,7 +192,7 @@ defineOptions({
 </script>
 
 <template>
-    <Head :title="`ثبت ${title}`" />
+    <Head :title="return_invoice ? `ویرایش ${title}` : `ثبت ${title}`" />
 
     <div class="mx-auto w-full max-w-6xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
         <section
@@ -191,7 +207,11 @@ defineOptions({
                         <span class="text-xs font-bold">{{ title }}</span>
                     </div>
                     <h1 class="text-2xl font-black sm:text-3xl">
-                        انتخاب اقلام قابل برگشت
+                        {{
+                            return_invoice
+                                ? 'ویرایش اقلام برگشتی'
+                                : 'انتخاب اقلام قابل برگشت'
+                        }}
                     </h1>
                     <p class="mt-2 text-sm text-muted-foreground">
                         فاکتور اصلی {{ original.invoice_number }} ·
@@ -387,7 +407,11 @@ defineOptions({
                     >
                         <Spinner v-if="form.processing" />
                         <PackageMinus v-else class="size-4" />
-                        ایجاد پیش‌نویس برگشت
+                        {{
+                            return_invoice
+                                ? 'ذخیره پیش‌نویس برگشت'
+                                : 'ایجاد پیش‌نویس برگشت'
+                        }}
                     </Button>
                 </section>
                 <section

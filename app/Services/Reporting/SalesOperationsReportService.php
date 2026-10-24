@@ -6,8 +6,10 @@ use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Models\InvoiceItem;
 use App\Support\Decimal;
+use App\Support\PaginationPayload;
 use App\Support\ReportDateRange;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 class SalesOperationsReportService
 {
@@ -86,6 +88,33 @@ class SalesOperationsReportService
             ],
             'daily' => $daily,
             'products' => $products,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function pageReport(
+        int $storeId,
+        string $from,
+        string $to,
+        ?int $branchId,
+        int $dailyPage,
+        int $productsPage,
+    ): array {
+        $build = fn (): array => $this->report($storeId, $from, $to, $branchId);
+        $data = app()->environment('testing')
+            ? $build()
+            : Cache::remember(
+                "sales-operations:{$storeId}:{$branchId}:{$from}:{$to}",
+                now()->addMinute(),
+                $build,
+            );
+
+        return [
+            ...$data,
+            'daily' => PaginationPayload::from($data['daily'], $dailyPage, 30),
+            'products' => PaginationPayload::from($data['products'], $productsPage),
         ];
     }
 

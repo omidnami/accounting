@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\InventoryTransferRequest;
-use App\Models\Product;
 use App\Models\Store;
 use App\Services\Branches\BranchContextService;
 use App\Services\Inventory\InventoryTransferService;
@@ -40,6 +39,7 @@ class InventoryTransferController extends Controller
                         ? (int) $validated['warehouse_id']
                         : null,
                 ],
+                $branch->id,
                 $request->user()->canViewInventoryCosts(),
             ),
             'filters' => [
@@ -59,10 +59,6 @@ class InventoryTransferController extends Controller
 
         return Inertia::render('inventory/transfers/Create', [
             'warehouses' => $this->warehouses($store),
-            'products' => Product::query()
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get(['id', 'code', 'name', 'unit']),
             'can_view_costs' => $request->user()->canViewInventoryCosts(),
         ]);
     }

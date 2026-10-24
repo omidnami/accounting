@@ -7,10 +7,12 @@ use App\Enums\InvoiceType;
 use App\Enums\TreasuryDocumentStatus;
 use App\Models\Invoice;
 use App\Support\Decimal;
+use App\Support\PaginationPayload;
 use App\Support\ReportDateRange;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Cache;
 
 class AgingReportService
 {
@@ -120,6 +122,54 @@ class AgingReportService
                 'name' => $invoice->supplier->party->name,
             ] : null,
         );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function receivablesPage(
+        int $storeId,
+        string $asOf,
+        ?int $branchId,
+        int $page,
+    ): array {
+        $build = fn (): array => $this->receivables($storeId, $asOf, $branchId);
+        $data = app()->environment('testing')
+            ? $build()
+            : Cache::remember(
+                "aging-receivables:{$storeId}:{$branchId}:{$asOf}",
+                now()->addMinute(),
+                $build,
+            );
+
+        return [
+            ...$data,
+            'rows' => PaginationPayload::from($data['rows'], $page),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function payablesPage(
+        int $storeId,
+        string $asOf,
+        ?int $branchId,
+        int $page,
+    ): array {
+        $build = fn (): array => $this->payables($storeId, $asOf, $branchId);
+        $data = app()->environment('testing')
+            ? $build()
+            : Cache::remember(
+                "aging-payables:{$storeId}:{$branchId}:{$asOf}",
+                now()->addMinute(),
+                $build,
+            );
+
+        return [
+            ...$data,
+            'rows' => PaginationPayload::from($data['rows'], $page),
+        ];
     }
 
     /**

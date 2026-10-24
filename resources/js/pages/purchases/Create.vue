@@ -56,6 +56,10 @@ type Line = {
     discount_amount: string;
     tax_rate: string;
 };
+type AdditionalCost = {
+    description: string;
+    amount: string;
+};
 
 const props = defineProps<{
     defaults: {
@@ -75,6 +79,7 @@ const form = useForm({
     due_date: props.defaults.due_date,
     notes: '',
     items: [] as Line[],
+    additional_costs: [] as AdditionalCost[],
 });
 watch(
     () => form.invoice_date,
@@ -117,12 +122,17 @@ const totals = computed(() => {
         0,
     );
     const taxTotal = form.items.reduce((sum, line) => sum + tax(line), 0);
+    const additional = form.additional_costs.reduce(
+        (sum, cost) => sum + parseNumber(cost.amount),
+        0,
+    );
 
     return {
         subtotal,
         discount,
         tax: taxTotal,
-        total: subtotal - discount + taxTotal,
+        additional,
+        total: subtotal - discount + taxTotal + additional,
     };
 });
 const fieldError = (key: string) =>
@@ -244,6 +254,11 @@ type Numeric = 'quantity' | 'unit_price' | 'discount_amount' | 'tax_rate';
 const normalizeLine = (line: Line, field: Numeric) => {
     line[field] = normalizeNumber(line[field]);
 };
+const addAdditionalCost = () => {
+    if (form.additional_costs.length < 20) {
+        form.additional_costs.push({ description: '', amount: '' });
+    }
+};
 const submit = () => {
     error.value = '';
 
@@ -265,6 +280,12 @@ const submit = () => {
             discount_amount: normalizeNumber(line.discount_amount || '0'),
             tax_rate: normalizeNumber(line.tax_rate || '0'),
         })),
+        additional_costs: data.additional_costs
+            .filter((cost) => cost.description.trim() || cost.amount)
+            .map((cost) => ({
+                description: cost.description.trim(),
+                amount: normalizeNumber(cost.amount),
+            })),
     })).post(storePurchase().url, { preserveScroll: true });
 };
 
@@ -613,6 +634,91 @@ defineOptions({
                 </section>
 
                 <section class="rounded-2xl border bg-card p-5">
+                    <div class="mb-4 flex items-center justify-between">
+                        <div>
+                            <h2 class="text-sm font-bold">
+                                هزینه‌های جانبی و حمل
+                            </h2>
+                            <p class="mt-1 text-[10px] text-muted-foreground">
+                                مبلغ بر اساس ارزش اقلام به بهای موجودی تخصیص
+                                می‌یابد.
+                            </p>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            @click="addAdditionalCost"
+                        >
+                            <Plus class="size-4" />
+                            هزینه
+                        </Button>
+                    </div>
+                    <div v-if="form.additional_costs.length" class="space-y-3">
+                        <div
+                            v-for="(cost, index) in form.additional_costs"
+                            :key="index"
+                            class="grid gap-3 rounded-xl border bg-muted/15 p-3 sm:grid-cols-[minmax(0,1fr)_200px_auto]"
+                        >
+                            <Input
+                                v-model="cost.description"
+                                placeholder="مثلاً هزینه حمل"
+                                class="h-10"
+                            />
+                            <Input
+                                v-model="cost.amount"
+                                inputmode="decimal"
+                                dir="ltr"
+                                placeholder="مبلغ"
+                                class="h-10 text-left"
+                                @blur="
+                                    cost.amount = normalizeNumber(cost.amount)
+                                "
+                            />
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                class="size-10 text-red-600"
+                                @click="form.additional_costs.splice(index, 1)"
+                            >
+                                <Trash2 class="size-4" />
+                            </Button>
+                            <InputError
+                                :message="
+                                    (
+                                        form.errors as Record<
+                                            string,
+                                            string | undefined
+                                        >
+                                    )[`additional_costs.${index}.description`]
+                                "
+                            />
+                            <InputError
+                                :message="
+                                    (
+                                        form.errors as Record<
+                                            string,
+                                            string | undefined
+                                        >
+                                    )[`additional_costs.${index}.amount`]
+                                "
+                            />
+                        </div>
+                    </div>
+                    <p
+                        v-else
+                        class="rounded-xl border border-dashed px-4 py-5 text-center text-xs text-muted-foreground"
+                    >
+                        هزینهٔ جانبی ثبت نشده است.
+                    </p>
+                    <InputError
+                        class="mt-2"
+                        :message="form.errors.additional_costs"
+                    />
+                </section>
+
+                <section class="rounded-2xl border bg-card p-5">
                     <Label for="notes">یادداشت خرید</Label>
                     <textarea
                         id="notes"
@@ -640,6 +746,10 @@ defineOptions({
                         <div class="flex justify-between">
                             <span>مالیات</span>
                             <span>{{ money.format(totals.tax) }}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>هزینه‌های جانبی</span>
+                            <span>{{ money.format(totals.additional) }}</span>
                         </div>
                         <div
                             class="flex justify-between border-t border-dashed pt-4 text-lg font-black"

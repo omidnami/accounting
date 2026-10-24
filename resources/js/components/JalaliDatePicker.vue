@@ -11,6 +11,7 @@ import {
 import {
     jalaliMonthLength,
     jalaliWeekDay,
+    parseJalaliDate,
     toIsoDate,
     toJalali,
     toPersianDigits,
@@ -57,6 +58,8 @@ const weekDays = ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'];
 const open = ref(false);
 const root = ref<HTMLElement | null>(null);
 const trigger = ref<HTMLButtonElement | null>(null);
+const typedValue = ref('');
+const inputError = ref('');
 const focusedDay = ref(1);
 const initial = toJalali(props.modelValue || todayIso());
 const viewYear = ref(initial.year);
@@ -65,13 +68,10 @@ const viewMonth = ref(initial.month);
 const selected = computed(() =>
     props.modelValue ? toJalali(props.modelValue) : null,
 );
-const displayValue = computed(() =>
-    selected.value
-        ? `${toPersianDigits(selected.value.year)}/${toPersianDigits(
-              selected.value.month.toString().padStart(2, '0'),
-          )}/${toPersianDigits(selected.value.day.toString().padStart(2, '0'))}`
-        : '',
-);
+const formatted = (year: number, month: number, day: number) =>
+    `${toPersianDigits(year)}/${toPersianDigits(
+        month.toString().padStart(2, '0'),
+    )}/${toPersianDigits(day.toString().padStart(2, '0'))}`;
 const days = computed(() => {
     const length = jalaliMonthLength(viewYear.value, viewMonth.value);
     const offset = jalaliWeekDay(viewYear.value, viewMonth.value, 1);
@@ -149,7 +149,50 @@ const selectDay = (day: number) => {
 };
 const clear = () => {
     emit('update:modelValue', '');
+    typedValue.value = '';
+    inputError.value = '';
     close();
+};
+const parseTyped = () => {
+    const value = typedValue.value.trim();
+
+    if (value === '') {
+        inputError.value =
+            props.required && !props.modelValue ? 'تاریخ را وارد کنید.' : '';
+
+        if (!props.required) {
+            emit('update:modelValue', '');
+        }
+
+        return;
+    }
+
+    const parsed = parseJalaliDate(value);
+
+    if (!parsed) {
+        inputError.value = 'تاریخ را به شکل ۱۴۰۵/۰۸/۰۲ وارد کنید.';
+        return;
+    }
+
+    const { iso, year, month, day } = parsed;
+
+    if (
+        (props.min && iso < props.min.slice(0, 10)) ||
+        (props.max && iso > props.max.slice(0, 10))
+    ) {
+        inputError.value = 'تاریخ خارج از بازهٔ مجاز است.';
+        return;
+    }
+
+    inputError.value = '';
+    typedValue.value = formatted(year, month, day);
+    emit('update:modelValue', iso);
+};
+const onTypedKeydown = (event: KeyboardEvent) => {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        parseTyped();
+    }
 };
 const toggle = async () => {
     open.value = !open.value;
@@ -228,8 +271,17 @@ watch(
             const converted = toJalali(value);
             viewYear.value = converted.year;
             viewMonth.value = converted.month;
+            typedValue.value = formatted(
+                converted.year,
+                converted.month,
+                converted.day,
+            );
+            inputError.value = '';
+        } else {
+            typedValue.value = '';
         }
     },
+    { immediate: true },
 );
 
 onMounted(() => document.addEventListener('mousedown', clickOutside));
@@ -238,20 +290,40 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', clickOutside));
 
 <template>
     <div ref="root" class="relative" dir="rtl">
-        <button
-            ref="trigger"
-            :id="id"
-            type="button"
-            class="flex h-11 w-full items-center justify-between rounded-xl border border-input bg-background px-3 text-right text-sm transition outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"
-            :aria-expanded="open"
-            :aria-required="required"
-            @click="toggle"
+        <div
+            class="flex h-11 items-center rounded-xl border border-input bg-background transition focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/20"
+            :class="inputError ? 'border-red-500' : ''"
         >
-            <span :class="displayValue ? '' : 'text-muted-foreground'">
-                {{ displayValue || placeholder }}
-            </span>
-            <CalendarDays class="size-4 text-muted-foreground" />
-        </button>
+            <input
+                :id="id"
+                v-model="typedValue"
+                type="text"
+                inputmode="numeric"
+                dir="ltr"
+                autocomplete="off"
+                :placeholder="
+                    placeholder === 'انتخاب تاریخ' ? '۱۴۰۵/۰۸/۰۲' : placeholder
+                "
+                :required="required"
+                :aria-invalid="inputError !== ''"
+                class="h-full min-w-0 flex-1 bg-transparent px-3 text-left text-sm outline-none placeholder:text-right placeholder:text-muted-foreground"
+                @blur="parseTyped"
+                @keydown="onTypedKeydown"
+            />
+            <button
+                ref="trigger"
+                type="button"
+                class="flex size-10 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted"
+                :aria-expanded="open"
+                aria-label="بازکردن تقویم"
+                @click="toggle"
+            >
+                <CalendarDays class="size-4" />
+            </button>
+        </div>
+        <p v-if="inputError" class="mt-1 text-[10px] text-red-600">
+            {{ inputError }}
+        </p>
 
         <div
             v-if="open"

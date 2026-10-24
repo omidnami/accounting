@@ -78,6 +78,51 @@ class InvoiceReturnController extends Controller
         return $this->renderShow('sales', $return);
     }
 
+    public function editSales(
+        Request $request,
+        Invoice $return,
+        SalesReturnService $returns,
+    ): Response {
+        abort_unless($request->user()?->canConfirmSales(), 403);
+        $this->assertReturnInvoice($return, InvoiceType::SalesReturn);
+        $original = $return->parentInvoice()->firstOrFail();
+
+        return $this->renderCreate(
+            'sales',
+            $original,
+            $returns->returnableItems($original),
+            $return,
+        );
+    }
+
+    public function updateSales(
+        StoreSalesReturnRequest $request,
+        Invoice $return,
+        SalesReturnService $returns,
+    ): RedirectResponse {
+        $this->assertReturnInvoice($return, InvoiceType::SalesReturn);
+        $data = $request->validated();
+
+        try {
+            $updated = $returns->updateDraft(
+                $return,
+                $data['items'],
+                $data['return_date'],
+            );
+        } catch (DomainException $exception) {
+            throw ValidationException::withMessages([
+                'return' => $exception->getMessage(),
+            ]);
+        }
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => "پیش‌نویس برگشت فروش {$updated->invoice_number} ذخیره شد.",
+        ]);
+
+        return to_route('sales.returns.show', $updated);
+    }
+
     public function confirmSales(
         ConfirmSalesReturnRequest $request,
         Invoice $return,
@@ -173,6 +218,52 @@ class InvoiceReturnController extends Controller
         return $this->renderShow('purchase', $return);
     }
 
+    public function editPurchase(
+        Request $request,
+        Invoice $return,
+        PurchaseReturnService $returns,
+    ): Response {
+        abort_unless($request->user()?->canManagePurchases(), 403);
+        $this->assertReturnInvoice($return, InvoiceType::PurchaseReturn);
+        $original = $return->parentInvoice()->firstOrFail();
+
+        return $this->renderCreate(
+            'purchase',
+            $original,
+            $returns->returnableItems($original),
+            $return,
+        );
+    }
+
+    public function updatePurchase(
+        StorePurchaseReturnRequest $request,
+        Invoice $return,
+        PurchaseReturnService $returns,
+    ): RedirectResponse {
+        $this->assertReturnInvoice($return, InvoiceType::PurchaseReturn);
+        $data = $request->validated();
+
+        try {
+            $updated = $returns->updateDraft(
+                $return,
+                $data['items'],
+                $data['return_date'],
+                $data['notes'] ?? null,
+            );
+        } catch (DomainException $exception) {
+            throw ValidationException::withMessages([
+                'return' => $exception->getMessage(),
+            ]);
+        }
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => "پیش‌نویس برگشت خرید {$updated->invoice_number} ذخیره شد.",
+        ]);
+
+        return to_route('purchases.returns.show', $updated);
+    }
+
     public function confirmPurchase(
         ConfirmPurchaseReturnRequest $request,
         Invoice $return,
@@ -221,6 +312,7 @@ class InvoiceReturnController extends Controller
         string $kind,
         Invoice $invoice,
         array $items,
+        ?Invoice $return = null,
     ): Response {
         $invoice->load($kind === 'sales'
             ? ['customer.party', 'fiscalYear']
@@ -228,16 +320,34 @@ class InvoiceReturnController extends Controller
         $fiscalYear = $invoice->fiscalYear;
         $returnDate = max(
             $invoice->invoice_date->toDateString(),
-            min($fiscalYear->ends_on->toDateString(), today()->toDateString()),
+            min(
+                $fiscalYear->ends_on->toDateString(),
+                $return?->invoice_date->toDateString() ?? today()->toDateString(),
+            ),
         );
+        $return?->load('items');
+        $currentItems = $return === null
+            ? []
+            : $return->items->map(fn ($item): array => [
+                'invoice_item_id' => (int) $item->parent_invoice_item_id,
+                'quantity' => $item->quantity,
+            ])->values()->all();
 
         return Inertia::render('returns/Create', [
             'kind' => $kind,
             'original' => $this->mapInvoice($invoice, $kind),
             'items' => $items,
+            'return_invoice' => $return === null
+                ? null
+                : [
+                    'id' => $return->id,
+                    'invoice_number' => $return->invoice_number,
+                ],
+            'current_items' => $currentItems,
             'defaults' => [
                 'return_date' => $returnDate,
                 'submission_token' => (string) Str::uuid(),
+                'notes' => $return === null ? '' : ($return->notes ?? ''),
             ],
             'fiscal_year' => [
                 'title' => $fiscalYear->title,

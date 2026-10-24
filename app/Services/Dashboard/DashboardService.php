@@ -23,6 +23,7 @@ use App\Services\Reporting\FinancialStatementReportService;
 use App\Services\Sales\CustomerReceivableService;
 use App\Support\Decimal;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class DashboardService
@@ -43,7 +44,7 @@ class DashboardService
         Branch $branch,
         FiscalYear $fiscalYear,
     ): array {
-        return DB::transaction(
+        $build = fn (): array => DB::transaction(
             fn (): array => $this->buildOverview(
                 $user,
                 $store,
@@ -51,6 +52,23 @@ class DashboardService
                 $fiscalYear,
             ),
             attempts: 3,
+        );
+
+        if (app()->environment('testing')) {
+            return $build();
+        }
+
+        return Cache::remember(
+            implode(':', [
+                'dashboard',
+                $store->id,
+                $branch->id,
+                $fiscalYear->id,
+                $user->role->value,
+                today()->toDateString(),
+            ]),
+            now()->addMinute(),
+            $build,
         );
     }
 

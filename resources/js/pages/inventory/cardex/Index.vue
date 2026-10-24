@@ -11,13 +11,13 @@ import {
     ClipboardList,
     Download,
     FilterX,
-    PackageSearch,
     Printer,
     Warehouse,
 } from '@lucide/vue';
 import { computed, reactive } from 'vue';
 import InputError from '@/components/InputError.vue';
 import JalaliDatePicker from '@/components/JalaliDatePicker.vue';
+import ProductPicker from '@/components/ProductPicker.vue';
 import { Button } from '@/components/ui/button';
 import { cardex as cardexIndex } from '@/routes/inventory';
 import { exportMethod as exportCardex } from '@/routes/inventory/cardex';
@@ -98,13 +98,6 @@ type Props = {
         movement_type: MovementType | null;
         direction: 'in' | 'out' | null;
     };
-    products: Array<{
-        id: number;
-        code: string;
-        name: string;
-        unit: string;
-        is_active: boolean;
-    }>;
     warehouses: Array<{
         id: number;
         code: string;
@@ -190,9 +183,7 @@ const printLabel = computed(() =>
         ? 'چاپ صفحه'
         : 'چاپ / PDF',
 );
-const selectedProduct = computed(() =>
-    props.products.find((product) => product.id === props.filters.product_id),
-);
+const selectedProduct = computed(() => props.report?.product ?? null);
 const selectedWarehouse = computed(() =>
     props.warehouses.find(
         (warehouse) => warehouse.id === props.filters.warehouse_id,
@@ -354,26 +345,18 @@ defineOptions({
                 <span class="text-xs font-semibold text-muted-foreground"
                     >کالا</span
                 >
-                <span class="relative block">
-                    <PackageSearch
-                        class="absolute inset-y-0 right-3 my-auto size-4 text-muted-foreground"
-                    />
-                    <select
-                        v-model="filters.product_id"
-                        required
-                        class="h-11 w-full appearance-none rounded-xl border border-input bg-background py-2 pr-9 pl-3 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"
-                    >
-                        <option value="">انتخاب کالا</option>
-                        <option
-                            v-for="product in products"
-                            :key="product.id"
-                            :value="product.id.toString()"
-                        >
-                            {{ product.name }} — {{ product.code }}
-                            {{ product.is_active ? '' : '(غیرفعال)' }}
-                        </option>
-                    </select>
-                </span>
+                <ProductPicker
+                    v-model="filters.product_id"
+                    endpoint="/inventory/lookups/products"
+                    :warehouse-id="filters.warehouse_id"
+                    include-inactive
+                    :selected-label="
+                        selectedProduct
+                            ? `${selectedProduct.name} — ${selectedProduct.code}`
+                            : ''
+                    "
+                    placeholder="جست‌وجوی نام، کد یا بارکد..."
+                />
                 <InputError :message="errors.product_id" />
             </label>
             <label class="space-y-1.5">

@@ -11,6 +11,7 @@ use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\Party;
 use App\Models\Product;
+use App\Models\PurchaseAdditionalCost;
 use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\User;
@@ -229,4 +230,83 @@ it('rejects negative discounts and tax rates outside zero to one hundred', funct
             'tax_rate' => 101,
         ]],
     ))->toThrow(DomainException::class);
+});
+
+it('capitalizes additional purchase costs into inventory by item value', function () {
+    $context = createPurchaseContext();
+    $manager = purchaseUser(UserRole::Manager);
+    $first = Product::query()->create([
+        'code' => 'PURCHASE-FREIGHT-A',
+        'name' => 'کالای حمل اول',
+        'purchase_price' => 100,
+        'sale_price' => 150,
+    ]);
+    $second = Product::query()->create([
+        'code' => 'PURCHASE-FREIGHT-B',
+        'name' => 'کالای حمل دوم',
+        'purchase_price' => 200,
+        'sale_price' => 300,
+    ]);
+
+    $invoice = app(PurchaseService::class)->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_date' => '2026-05-01',
+            'created_by' => $manager->id,
+        ],
+        [
+            [
+                'product_id' => $first->id,
+                'quantity' => 1,
+                'unit_price' => 100,
+                'tax_rate' => 0,
+            ],
+            [
+                'product_id' => $second->id,
+                'quantity' => 1,
+                'unit_price' => 200,
+                'tax_rate' => 0,
+            ],
+        ],
+        null,
+        [
+            ['description' => 'هزینه حمل', 'amount' => 60],
+        ],
+    );
+
+    expect($invoice->additional_cost_total)->toBe('60.00')
+        ->and($invoice->total)->toBe('360.00')
+        ->and($invoice->additionalCosts)->toHaveCount(1)
+        ->and(PurchaseAdditionalCost::query()->count())->toBe(1);
+
+    $confirmed = app(PurchaseService::class)->confirm(
+        $invoice,
+        $context['warehouse']->id,
+        $manager,
+    );
+    $firstMovement = InventoryMovement::query()
+        ->where('source_id', $confirmed->id)
+        ->where('product_id', $first->id)
+        ->firstOrFail();
+    $secondMovement = InventoryMovement::query()
+        ->where('source_id', $confirmed->id)
+        ->where('product_id', $second->id)
+        ->firstOrFail();
+    $journal = JournalEntry::query()
+        ->where('source_type', Invoice::class)
+        ->where('source_id', $confirmed->id)
+        ->with('lines.account')
+        ->firstOrFail();
+    $inventoryLine = $journal->lines->first(
+        fn ($line): bool => $line->account->code === '1104',
+    );
+
+    expect($firstMovement->total_cost)->toBe('120.00')
+        ->and($secondMovement->total_cost)->toBe('240.00')
+        ->and($inventoryLine->debit)->toBe('360.00')
+        ->and($journal->totalDebit())->toBe('360.00')
+        ->and($journal->totalCredit())->toBe('360.00');
 });

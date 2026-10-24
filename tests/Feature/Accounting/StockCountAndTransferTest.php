@@ -21,6 +21,7 @@ use App\Services\Inventory\InventoryTransferService;
 use App\Services\Inventory\StockCountService;
 use Database\Seeders\AccountingSetupSeeder;
 use Database\Seeders\AccountSeeder;
+use Illuminate\Http\UploadedFile;
 use Inertia\Testing\AssertableInertia as Assert;
 
 /**
@@ -29,7 +30,8 @@ use Inertia\Testing\AssertableInertia as Assert;
  *     fiscal_year: FiscalYear,
  *     warehouse: Warehouse,
  *     destination: Warehouse,
- *     product: Product
+ *     product: Product,
+ *     second_product: Product
  * }
  */
 function stockOperationsContext(): array
@@ -57,9 +59,26 @@ function stockOperationsContext(): array
         'sale_price' => 150,
         'is_active' => true,
     ]);
+    $secondProduct = Product::query()->create([
+        'code' => 'STOCK-P-002',
+        'barcode' => '626800000002',
+        'name' => 'کالای دوم انتقال',
+        'unit' => 'کارتن',
+        'purchase_price' => 250,
+        'sale_price' => 350,
+        'is_active' => true,
+    ]);
 
-    return compact('store', 'fiscalYear', 'warehouse', 'destination', 'product') + [
+    return compact(
+        'store',
+        'fiscalYear',
+        'warehouse',
+        'destination',
+        'product',
+        'secondProduct',
+    ) + [
         'fiscal_year' => $fiscalYear,
+        'second_product' => $secondProduct,
     ];
 }
 
@@ -213,8 +232,10 @@ it('transfers inventory atomically and keeps costs hidden from warehouse listing
         'submission_token' => fake()->uuid(),
         'source_warehouse_id' => $context['warehouse']->id,
         'destination_warehouse_id' => $context['destination']->id,
-        'product_id' => $context['product']->id,
-        'quantity' => '4',
+        'items' => [[
+            'product_id' => $context['product']->id,
+            'quantity' => '4',
+        ]],
         'transfer_date' => $context['fiscal_year']->starts_on->toDateString(),
         'reference' => 'TR-1',
         'notes' => 'انتقال آزمایشی',
@@ -235,6 +256,7 @@ it('transfers inventory atomically and keeps costs hidden from warehouse listing
     $warehouseRows = app(InventoryTransferService::class)->paginate(
         $context['store'],
         ['warehouse_id' => null],
+        $context['warehouse']->branch_id,
         false,
     )->items();
 
@@ -256,6 +278,91 @@ it('transfers inventory atomically and keeps costs hidden from warehouse listing
 
     expect($repeat->id)->toBe($transfer->id)
         ->and(InventoryTransfer::query()->count())->toBe(1);
+});
+
+it('transfers multiple products in one atomic document', function () {
+    $context = stockOperationsContext();
+    $warehouseUser = stockOperationsUser(UserRole::Warehouse);
+    $inventory = app(InventoryService::class);
+    $inventory->receive(
+        warehouseId: $context['warehouse']->id,
+        productId: $context['product']->id,
+        quantity: 10,
+        unitCost: 100,
+        movementDate: $context['fiscal_year']->starts_on->toDateString(),
+        idempotencyKey: 'multi-transfer-opening-first',
+        movementType: InventoryMovementType::Opening,
+    );
+    $inventory->receive(
+        warehouseId: $context['warehouse']->id,
+        productId: $context['second_product']->id,
+        quantity: 8,
+        unitCost: 250,
+        movementDate: $context['fiscal_year']->starts_on->toDateString(),
+        idempotencyKey: 'multi-transfer-opening-second',
+        movementType: InventoryMovementType::Opening,
+    );
+
+    $transfer = app(InventoryTransferService::class)->transfer(
+        $context['store'],
+        [
+            'submission_token' => fake()->uuid(),
+            'source_warehouse_id' => $context['warehouse']->id,
+            'destination_warehouse_id' => $context['destination']->id,
+            'items' => [
+                [
+                    'product_id' => $context['product']->id,
+                    'quantity' => '3',
+                ],
+                [
+                    'product_id' => $context['second_product']->id,
+                    'quantity' => '2',
+                ],
+            ],
+            'transfer_date' => $context['fiscal_year']->starts_on->toDateString(),
+        ],
+        $warehouseUser,
+    );
+
+    expect($transfer->items)->toHaveCount(2)
+        ->and($transfer->quantity)->toBe('5.000')
+        ->and($transfer->total_cost)->toBe('800.00')
+        ->and(InventoryMovement::query()
+            ->where('source_type', InventoryTransfer::class)
+            ->where('source_id', $transfer->id)
+            ->count())->toBe(4)
+        ->and(InventoryBalance::query()
+            ->where('warehouse_id', $context['destination']->id)
+            ->where('product_id', $context['second_product']->id)
+            ->value('quantity'))->toBe('2.000');
+});
+
+it('searches inventory products and imports a stock count CSV', function () {
+    $context = stockOperationsContext();
+    $manager = stockOperationsUser(UserRole::Manager);
+
+    $this->actingAs($manager)
+        ->getJson(route('inventory.lookups.products', [
+            'warehouse_id' => $context['warehouse']->id,
+            'search' => '۶۲۶۸۰۰۰۰۰۰۰۲',
+        ]))
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $context['second_product']->id);
+
+    $file = UploadedFile::fake()->createWithContent(
+        'stock-count.csv',
+        "code,quantity,unit_cost\n"
+        .$context['product']->code.",3,100\n"
+        .$context['second_product']->code.",2,250\n",
+    );
+
+    $this->actingAs($manager)
+        ->postJson(route('stock-counts.import'), ['file' => $file])
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('data.0.counted_quantity', '3.000')
+        ->assertJsonPath('data.1.unit_cost', '250.0000');
 });
 
 it('renders stock operation pages and enforces operational roles', function () {

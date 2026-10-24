@@ -34,6 +34,10 @@ class OperationalReportsController extends Controller
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
             'party_id' => ['nullable', 'integer', 'exists:parties,id'],
+            'statement_page' => ['nullable', 'integer', 'min:1'],
+            'aging_page' => ['nullable', 'integer', 'min:1'],
+            'daily_page' => ['nullable', 'integer', 'min:1'],
+            'products_page' => ['nullable', 'integer', 'min:1'],
         ]);
         $from = $validated['from'] ?? $fiscalYear->starts_on->toDateString();
         $to = $validated['to'] ?? $fiscalYear->ends_on->toDateString();
@@ -75,11 +79,35 @@ class OperationalReportsController extends Controller
                 'kind' => $party->customer ? 'customer' : 'supplier',
             ]),
             'statement' => $party
-                ? $statements->report($party, $store->id, $from, $to, $branchId)
+                ? $statements->pageReport(
+                    $party,
+                    $store->id,
+                    $from,
+                    $to,
+                    $branchId,
+                    (int) ($validated['statement_page'] ?? 1),
+                )
                 : null,
-            'receivablesAging' => $aging->receivables($store->id, $to, $branchId),
-            'payablesAging' => $aging->payables($store->id, $to, $branchId),
-            'sales' => $sales->report($store->id, $from, $to, $branchId),
+            'receivablesAging' => $aging->receivablesPage(
+                $store->id,
+                $to,
+                $branchId,
+                (int) ($validated['aging_page'] ?? 1),
+            ),
+            'payablesAging' => $aging->payablesPage(
+                $store->id,
+                $to,
+                $branchId,
+                (int) ($validated['aging_page'] ?? 1),
+            ),
+            'sales' => $sales->pageReport(
+                $store->id,
+                $from,
+                $to,
+                $branchId,
+                (int) ($validated['daily_page'] ?? 1),
+                (int) ($validated['products_page'] ?? 1),
+            ),
         ]);
     }
 }

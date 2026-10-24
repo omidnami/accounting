@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { jalaliMonthLength, toIsoDate, toJalali, todayIso } from './jalali.ts';
+import {
+    jalaliMonthLength,
+    parseJalaliDate,
+    toIsoDate,
+    toJalali,
+    todayIso,
+} from './jalali.ts';
 
 void test('converts known Gregorian dates to Jalali', () => {
     assert.deepEqual(toJalali('2020-03-20'), {
@@ -37,4 +43,13 @@ void test('calculates leap Esfand and Tehran today', () => {
     assert.equal(jalaliMonthLength(1403, 12), 30);
     assert.equal(jalaliMonthLength(1404, 12), 29);
     assert.match(todayIso(), /^\d{4}-\d{2}-\d{2}$/);
+});
+
+void test('parses typed Persian, Arabic and Latin Jalali dates', () => {
+    assert.equal(parseJalaliDate('۱۴۰۵/۰۸/۰۲')?.iso, '2026-10-24');
+    assert.equal(parseJalaliDate('١٤٠٥.٨.٢')?.iso, '2026-10-24');
+    assert.equal(parseJalaliDate('1405-08-02')?.iso, '2026-10-24');
+    assert.equal(parseJalaliDate('۱۴۰۵/۱۳/۰۲'), null);
+    assert.equal(parseJalaliDate('۱۴۰۴/۱۲/۳۰'), null);
+    assert.equal(parseJalaliDate('تاریخ نامعتبر'), null);
 });

@@ -58,6 +58,9 @@ class PurchaseInvoiceRequest extends FormRequest
             'items.*.unit_price' => ['required', 'numeric', 'gt:0', 'decimal:0,2'],
             'items.*.discount_amount' => ['nullable', 'numeric', 'min:0', 'decimal:0,2'],
             'items.*.tax_rate' => ['nullable', 'numeric', 'between:0,100', 'decimal:0,2'],
+            'additional_costs' => ['nullable', 'array', 'max:20'],
+            'additional_costs.*.description' => ['required', 'string', 'max:120'],
+            'additional_costs.*.amount' => ['required', 'numeric', 'gt:0', 'decimal:0,2'],
         ];
     }
 
@@ -80,12 +83,32 @@ class PurchaseInvoiceRequest extends FormRequest
                 return $item;
             }, $items);
         }
+        $additionalCosts = $this->input('additional_costs');
+
+        if (is_array($additionalCosts)) {
+            $additionalCosts = array_map(function (mixed $cost): mixed {
+                if (! is_array($cost)) {
+                    return $cost;
+                }
+
+                if (isset($cost['amount']) && is_string($cost['amount'])) {
+                    $cost['amount'] = trim(Digits::normalizeNumber($cost['amount']));
+                }
+
+                if (isset($cost['description']) && is_string($cost['description'])) {
+                    $cost['description'] = trim($cost['description']);
+                }
+
+                return $cost;
+            }, $additionalCosts);
+        }
 
         $this->merge([
             'supplier_id' => is_string($this->input('supplier_id'))
                 ? Digits::toLatin($this->input('supplier_id'))
                 : $this->input('supplier_id'),
             'items' => $items,
+            'additional_costs' => $additionalCosts,
         ]);
     }
 
@@ -102,6 +125,8 @@ class PurchaseInvoiceRequest extends FormRequest
             'items.*.quantity.gt' => 'مقدار هر قلم باید بزرگ‌تر از صفر باشد.',
             'items.*.unit_price.gt' => 'قیمت خرید هر قلم باید بزرگ‌تر از صفر باشد.',
             'items.*.tax_rate.between' => 'نرخ مالیات باید بین صفر تا صد باشد.',
+            'additional_costs.*.description.required' => 'شرح هزینهٔ جانبی را وارد کنید.',
+            'additional_costs.*.amount.gt' => 'مبلغ هزینهٔ جانبی باید بزرگ‌تر از صفر باشد.',
         ];
     }
 }

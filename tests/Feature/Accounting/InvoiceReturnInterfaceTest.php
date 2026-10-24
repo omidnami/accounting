@@ -334,6 +334,109 @@ it('creates an idempotent sales return draft and confirms it', function () {
             ->value('quantity'))->toBe('24.000');
 });
 
+it('edits a sales return draft without changing confirmed returns', function () {
+    $context = invoiceReturnUiContext();
+    $item = $context['salesInvoice']->items()->firstOrFail();
+
+    $this->actingAs($context['user'])
+        ->post(route('sales.returns.store', $context['salesInvoice']), [
+            'submission_token' => fake()->uuid(),
+            'return_date' => $context['date'],
+            'items' => [[
+                'invoice_item_id' => $item->id,
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertRedirect();
+
+    $return = Invoice::query()
+        ->where('type', InvoiceType::SalesReturn)
+        ->firstOrFail();
+
+    $this->actingAs($context['user'])
+        ->get(route('sales.returns.edit', $return))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('returns/Create')
+            ->where('return_invoice.id', $return->id)
+            ->where('current_items.0.invoice_item_id', $item->id)
+            ->where('current_items.0.quantity', '1.000'));
+
+    $this->actingAs($context['user'])
+        ->put(route('sales.returns.update', $return), [
+            'submission_token' => fake()->uuid(),
+            'return_date' => $context['date'],
+            'items' => [[
+                'invoice_item_id' => $item->id,
+                'quantity' => '3',
+            ]],
+        ])
+        ->assertRedirect(route('sales.returns.show', $return))
+        ->assertSessionHasNoErrors();
+
+    expect($return->refresh()->status)->toBe(InvoiceStatus::Draft)
+        ->and($return->items)->toHaveCount(1)
+        ->and($return->items->first()->quantity)->toBe('3.000')
+        ->and($return->subtotal)->toBe('900.00')
+        ->and(InventoryBalance::query()
+            ->where('warehouse_id', $context['warehouse']->id)
+            ->where('product_id', $context['product']->id)
+            ->value('quantity'))->toBe('22.000');
+});
+
+it('edits purchase return notes and rejects editing a confirmed return', function () {
+    $context = invoiceReturnUiContext();
+    $item = $context['purchaseInvoice']->items()->firstOrFail();
+
+    $this->actingAs($context['user'])
+        ->post(route('purchases.returns.store', $context['purchaseInvoice']), [
+            'submission_token' => fake()->uuid(),
+            'return_date' => $context['date'],
+            'notes' => 'یادداشت اولیه',
+            'items' => [[
+                'invoice_item_id' => $item->id,
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertRedirect();
+    $return = Invoice::query()
+        ->where('type', InvoiceType::PurchaseReturn)
+        ->firstOrFail();
+
+    $this->actingAs($context['user'])
+        ->put(route('purchases.returns.update', $return), [
+            'submission_token' => fake()->uuid(),
+            'return_date' => $context['date'],
+            'notes' => 'یادداشت ویرایش‌شده',
+            'items' => [[
+                'invoice_item_id' => $item->id,
+                'quantity' => '2',
+            ]],
+        ])
+        ->assertRedirect(route('purchases.returns.show', $return))
+        ->assertSessionHasNoErrors();
+
+    expect($return->refresh()->notes)->toBe('یادداشت ویرایش‌شده')
+        ->and($return->items->first()->quantity)->toBe('2.000');
+
+    $this->actingAs($context['user'])
+        ->post(route('purchases.returns.confirm', $return), [
+            'warehouse_id' => $context['warehouse']->id,
+        ])
+        ->assertRedirect(route('purchases.returns.show', $return));
+
+    $this->actingAs($context['user'])
+        ->put(route('purchases.returns.update', $return), [
+            'submission_token' => fake()->uuid(),
+            'return_date' => $context['date'],
+            'items' => [[
+                'invoice_item_id' => $item->id,
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertSessionHasErrors('return');
+});
+
 it('confirms a purchase return and deletes a draft safely', function () {
     $context = invoiceReturnUiContext();
     $payload = purchaseReturnUiPayload($context);
