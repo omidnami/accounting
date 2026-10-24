@@ -1,18 +1,32 @@
 <script setup lang="ts">
-import { Link, usePage } from '@inertiajs/vue3';
+import { Link, router, usePage } from '@inertiajs/vue3';
 import type { LucideIcon } from '@lucide/vue';
 import {
+    Activity,
     ArrowDown,
     ArrowUp,
+    ChevronDown,
     FileText,
+    LogOut,
     PackagePlus,
     Plus,
     ShoppingCart,
+    SlidersHorizontal,
     UserPlus,
+    UserRoundPen,
     Wallet,
 } from '@lucide/vue';
 import { computed } from 'vue';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import UserInfo from '@/components/UserInfo.vue';
+import { logout } from '@/routes';
 import { create as createParty } from '@/routes/parties';
 import { create as createPayment } from '@/routes/payments';
 import { create as createProduct } from '@/routes/products';
@@ -90,6 +104,25 @@ const allQuickActions: QuickAction[] = [
 const quickActions = computed(() =>
     allQuickActions.filter((action) => action.roles.includes(user.value.role)),
 );
+
+const accountActions = [
+    {
+        title: 'ویرایش پروفایل',
+        icon: UserRoundPen,
+    },
+    {
+        title: 'تنظیمات شخصی',
+        icon: SlidersHorizontal,
+    },
+    {
+        title: 'آخرین فعالیت من',
+        icon: Activity,
+    },
+];
+
+const handleLogout = () => {
+    router.flushAll();
+};
 </script>
 
 <template>
@@ -139,11 +172,54 @@ const quickActions = computed(() =>
 
         <div v-else class="flex-1" />
 
-        <span
-            class="hidden shrink-0 items-center gap-2 rounded-full border border-border/70 bg-card/70 px-3 py-1.5 text-[10px] text-muted-foreground sm:flex"
-        >
-            <span class="size-1.5 rounded-full bg-primary" />
-            آماده استفاده
-        </span>
+        <DropdownMenu>
+            <DropdownMenuTrigger as-child>
+                <button
+                    type="button"
+                    dir="rtl"
+                    class="flex h-10 shrink-0 items-center gap-2 bg-transparent px-1 text-right focus-visible:outline-none"
+                >
+                    <UserInfo :user="user" />
+                    <ChevronDown class="size-3.5 text-muted-foreground" />
+                </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+                align="end"
+                :side-offset="8"
+                class="w-56 rounded-xl p-1.5"
+                dir="rtl"
+            >
+                <DropdownMenuItem
+                    v-for="action in accountActions"
+                    :key="action.title"
+                    as-child
+                >
+                    <a
+                        href="#"
+                        class="flex w-full cursor-pointer items-center gap-2.5 px-2 py-2"
+                        @click.prevent
+                    >
+                        <component
+                            :is="action.icon"
+                            class="size-4 text-muted-foreground"
+                        />
+                        <span>{{ action.title }}</span>
+                    </a>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem as-child>
+                    <Link
+                        :href="logout()"
+                        as="button"
+                        class="flex w-full cursor-pointer items-center gap-2.5 px-2 py-2 text-destructive"
+                        data-test="header-logout-button"
+                        @click="handleLogout"
+                    >
+                        <LogOut class="size-4" />
+                        <span>خروج از سیستم</span>
+                    </Link>
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+        </DropdownMenu>
     </header>
 </template>
