@@ -1,6 +1,6 @@
 # Store Accounting System - Context Handoff
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۴ (پس از Phase 15D)
+آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۴ (پس از Phase 15E)
 
 ## شروع کانتکست جدید
 
@@ -16,10 +16,10 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `7f567e5`
-- پیام: `feat(accounting): add annual closing and period safeguards`
-- شاخه با `origin/main` هم‌سطح است؛ اصلاحات اختتامیه و Phase 15D اکنون
-  در worktree آماده commit هستند.
+- آخرین کامیت محلی: `0b55f12`
+- پیام: `feat(inventory): add counts, transfers and closing safeguards`
+- شاخه با `origin/main` هم‌سطح است؛ Phase 15E اکنون در worktree آماده
+  commit است.
 - commit تغییرات بر عهده
   کاربر است.
 
@@ -38,7 +38,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `276 tests`, `2060 assertions`
+- Pest: `279 tests`, `2107 assertions`
 - Node calendar: `3 tests`
 - PHPStan: صفر خطا
 - Pint: موفق
@@ -131,6 +131,10 @@ npm run build
 - ترازنامه
 - فقط اسناد Posted
 - فیلتر فروشگاه، شعبه و بازه تاریخ
+- دفتر معین با مانده اول/پایان و گردش حساب
+- صورتحساب مشتری/تأمین‌کننده از ردیف‌های Party
+- Aging مطالبات/بدهی‌ها تا تاریخ گزارش
+- فروش روزانه، فروش کالا، COGS، سود ناخالص و حاشیه سود
 
 ### سال مالی
 
@@ -202,6 +206,7 @@ npm run build
 - `/journals`
 - `/inventory/counts`
 - `/inventory/transfers`
+- `/reports/operations`
 - `/settings/profile`
 - `/settings/security`
 
@@ -233,6 +238,7 @@ npm run build
 - `phase-15c`: قفل عملیاتی دوره و سال
 - `phase-15c2`: اختتامیه سالانه و انتقال سود
 - `phase-15d`: شمارش، تعدیل و انتقال انبار
+- `phase-15e`: دفتر معین، صورتحساب، Aging و گزارش‌های فروش
 
 ## فایل‌های کلیدی
 
@@ -243,6 +249,9 @@ npm run build
 - `app/Services/Accounting/YearEndClosingService.php`
 - `app/Services/Inventory/StockCountService.php`
 - `app/Services/Inventory/InventoryTransferService.php`
+- `app/Services/Reporting/PartyStatementReportService.php`
+- `app/Services/Reporting/AgingReportService.php`
+- `app/Services/Reporting/SalesOperationsReportService.php`
 - `app/Services/Accounting/AccountingPeriodLockService.php`
 - `app/Services/Inventory/InventoryService.php`
 - `app/Services/Purchasing/PurchaseService.php`
@@ -285,6 +294,7 @@ npm run build
 - `ManualJournalController`
 - `StockCountController`
 - `InventoryTransferController`
+- `OperationalReportsController`
 
 ### UI
 
@@ -306,6 +316,7 @@ npm run build
 - `resources/js/pages/journals`
 - `resources/js/pages/inventory/counts`
 - `resources/js/pages/inventory/transfers`
+- `resources/js/pages/reports/Operations.vue`
 
 ## قواعد اجباری ادامه کار
 
@@ -335,6 +346,9 @@ npm run build
 - دسته‌بندی، تنوع کالا، سریال، Batch، تاریخ انقضا و PriceHistory وجود ندارند.
 - انتقال فعلی تک‌کالایی و فقط داخل یک شعبه است.
 - شمارش، جست‌وجوی پیشرفته کالا و ورود انبارگردانی از فایل ندارد.
+- صورتحساب/Aging/فروش فعلاً بدون pagination هستند و برای داده زیاد نیاز به
+  صفحه‌بندی یا cache دارند.
+- خروجی PDF/Excel گزارش‌ها هنوز وجود ندارد.
 - کاردکس موجودی پیاده‌سازی شده است؛ فیلتر کالای آن فعلاً select ساده است و
   برای کاتالوگ بسیار بزرگ به combobox جست‌وجوشونده نیاز دارد.
 - خروجی PDF/Excel گزارش کاردکس هنوز وجود ندارد.
@@ -351,9 +365,9 @@ npm run build
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی و commit تغییرات 15C/15C2/15D توسط کاربر
-2. Phase 15E: دفتر معین، صورتحساب‌ها، Aging و گزارش‌های فروش
-3. Phase 15F: PDF/Excel و چاپ حرفه‌ای
+1. بررسی دستی و commit تغییرات Phase 15E توسط کاربر
+2. Phase 15F: PDF/Excel و چاپ حرفه‌ای
+3. Phase 15G: آماده‌سازی production
 4. ادامه طبق `.codex/phase-15-roadmap.md`
 
 جزئیات Phase 8A در `.codex/phase-8a-treasury-checks-ui.md` ثبت شده است.
@@ -369,6 +383,7 @@ npm run build
 جزئیات Phase 15C در `.codex/phase-15c-period-year-closing.md` آمده است.
 جزئیات Phase 15C2 در `.codex/phase-15c2-year-end-closing.md` آمده است.
 جزئیات Phase 15D در `.codex/phase-15d-stock-count-transfer.md` آمده است.
+جزئیات Phase 15E در `.codex/phase-15e-operational-reports.md` آمده است.
 نقشه مراحل تکمیل در `.codex/phase-15-roadmap.md` آمده است.
 
 ## الگوی درخواست از Agent بعدی

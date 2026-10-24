@@ -10,6 +10,7 @@ use App\Http\Controllers\InventoryCardexController;
 use App\Http\Controllers\InventoryTransferController;
 use App\Http\Controllers\InvoiceReturnController;
 use App\Http\Controllers\ManualJournalController;
+use App\Http\Controllers\OperationalReportsController;
 use App\Http\Controllers\PartyController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\PurchaseInvoiceController;
@@ -27,6 +28,8 @@ Route::inertia('/', 'Welcome')->name('home');
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', DashboardController::class)->name('dashboard');
     Route::get('reports', FinancialReportsController::class)->name('reports.index');
+    Route::get('reports/operations', OperationalReportsController::class)
+        ->name('reports.operations');
     Route::get('fiscal-years', [FiscalYearController::class, 'index'])
         ->name('fiscal-years.index');
     Route::post('fiscal-years', [FiscalYearController::class, 'store'])

@@ -45,7 +45,10 @@ import { index as inventoryTransfers } from '@/routes/inventory-transfers';
 import { index as stockCounts } from '@/routes/stock-counts';
 import { index as payments } from '@/routes/payments';
 import { index as purchases } from '@/routes/purchases';
-import { index as reports } from '@/routes/reports';
+import {
+    index as reports,
+    operations as operationalReports,
+} from '@/routes/reports';
 import { index as journals } from '@/routes/journals';
 import { index as receipts } from '@/routes/receipts';
 import { index as sales } from '@/routes/sales';
@@ -80,6 +83,11 @@ const mainNavItems = computed<NavItem[]>(() => {
         items.push({
             title: 'گزارش‌های مالی',
             href: reports(),
+            icon: BarChart3,
+        });
+        items.push({
+            title: 'گزارش‌های عملیاتی',
+            href: operationalReports(),
             icon: BarChart3,
         });
         items.push({

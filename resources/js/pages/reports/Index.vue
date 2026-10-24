@@ -4,6 +4,7 @@ import {
     ArrowLeft,
     BarChart3,
     BookOpen,
+    BookText,
     Building2,
     Landmark,
     ReceiptText,
@@ -39,7 +40,9 @@ type Props = {
         from: string;
         to: string;
         branch_id: number | null;
+        account_id: number | null;
     };
+    accounts: Array<{ id: number; code: string; name: string }>;
     branches: Array<{ id: number; name: string }>;
     trialBalance: {
         rows: TrialRow[];
@@ -68,6 +71,24 @@ type Props = {
         net_profit: string;
         balanced: boolean;
     };
+    accountLedger: {
+        account: { id: number; code: string; name: string };
+        opening_balance: string;
+        debit_total: string;
+        credit_total: string;
+        closing_balance: string;
+        rows: Array<{
+            entry_id: number;
+            entry_number: string;
+            account_code: string;
+            account_name: string;
+            date: string;
+            description: string;
+            debit: string;
+            credit: string;
+            balance: string;
+        }>;
+    } | null;
     journal: {
         data: Array<{
             id: number;
@@ -98,11 +119,13 @@ const tabs = [
     { key: 'income', label: 'سود و زیان', icon: BarChart3 },
     { key: 'balance', label: 'ترازنامه', icon: Landmark },
     { key: 'journal', label: 'دفتر روزنامه', icon: BookOpen },
+    { key: 'ledger', label: 'دفتر معین', icon: BookText },
 ] as const;
 const activeTab = ref<(typeof tabs)[number]['key']>('trial');
 const from = ref(props.filters.from);
 const to = ref(props.filters.to);
 const branchId = ref<string>(props.filters.branch_id?.toString() ?? '');
+const accountId = ref<string>(props.filters.account_id?.toString() ?? '');
 const money = new Intl.NumberFormat('fa-IR', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
@@ -124,6 +147,7 @@ const applyFilters = () => {
             from: from.value,
             to: to.value,
             branch_id: branchId.value || undefined,
+            account_id: accountId.value || undefined,
         },
         {
             preserveState: true,
@@ -211,7 +235,7 @@ defineOptions({
         </section>
 
         <form
-            class="grid gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-sm sm:grid-cols-[1fr_1fr_1.2fr_auto]"
+            class="grid gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1.2fr_1.5fr_auto]"
             @submit.prevent="applyFilters"
         >
             <label class="space-y-1.5">
@@ -219,6 +243,23 @@ defineOptions({
                     >از تاریخ</span
                 >
                 <JalaliDatePicker v-model="from" required />
+            </label>
+            <label class="space-y-1.5">
+                <span class="text-xs font-semibold text-muted-foreground"
+                    >حساب دفتر معین</span
+                >
+                <select
+                    v-model="accountId"
+                    class="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                >
+                    <option
+                        v-for="account in accounts"
+                        :key="account.id"
+                        :value="account.id.toString()"
+                    >
+                        {{ account.code }} — {{ account.name }}
+                    </option>
+                </select>
             </label>
             <label class="space-y-1.5">
                 <span class="text-xs font-semibold text-muted-foreground"
@@ -540,7 +581,7 @@ defineOptions({
             </p>
         </template>
 
-        <template v-else>
+        <template v-else-if="activeTab === 'journal'">
             <section class="space-y-4">
                 <article
                     v-for="entry in journal.data"
@@ -631,6 +672,106 @@ defineOptions({
                         >
                     </div>
                 </div>
+            </section>
+        </template>
+
+        <template v-else>
+            <section v-if="accountLedger" class="grid gap-4 sm:grid-cols-4">
+                <article class="rounded-2xl border bg-card p-4">
+                    <p class="text-xs text-muted-foreground">مانده اول دوره</p>
+                    <p class="mt-2 text-lg font-black">
+                        {{ format(accountLedger.opening_balance) }}
+                    </p>
+                </article>
+                <article class="rounded-2xl border bg-card p-4">
+                    <p class="text-xs text-muted-foreground">گردش بدهکار</p>
+                    <p class="mt-2 text-lg font-black">
+                        {{ format(accountLedger.debit_total) }}
+                    </p>
+                </article>
+                <article class="rounded-2xl border bg-card p-4">
+                    <p class="text-xs text-muted-foreground">گردش بستانکار</p>
+                    <p class="mt-2 text-lg font-black">
+                        {{ format(accountLedger.credit_total) }}
+                    </p>
+                </article>
+                <article
+                    class="rounded-2xl border border-primary/20 bg-primary/5 p-4"
+                >
+                    <p class="text-xs text-muted-foreground">
+                        مانده پایان دوره
+                    </p>
+                    <p class="mt-2 text-lg font-black text-primary">
+                        {{ format(accountLedger.closing_balance) }}
+                    </p>
+                </article>
+            </section>
+            <section
+                v-if="accountLedger"
+                class="overflow-hidden rounded-2xl border bg-card"
+            >
+                <div class="border-b px-5 py-4">
+                    <h2 class="text-sm font-bold">
+                        {{ accountLedger.account.code }} —
+                        {{ accountLedger.account.name }}
+                    </h2>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[900px] text-right text-sm">
+                        <thead
+                            class="bg-muted/35 text-xs text-muted-foreground"
+                        >
+                            <tr>
+                                <th class="px-4 py-3">تاریخ</th>
+                                <th class="px-4 py-3">سند</th>
+                                <th class="px-4 py-3">شرح</th>
+                                <th class="px-4 py-3">حساب</th>
+                                <th class="px-4 py-3">بدهکار</th>
+                                <th class="px-4 py-3">بستانکار</th>
+                                <th class="px-5 py-3">مانده</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">
+                            <tr
+                                v-for="row in accountLedger.rows"
+                                :key="`${row.entry_id}-${row.date}-${row.balance}`"
+                            >
+                                <td class="px-4 py-3 text-xs">
+                                    {{ row.date }}
+                                </td>
+                                <td class="px-4 py-3 font-mono text-xs">
+                                    {{ row.entry_number }}
+                                </td>
+                                <td
+                                    class="max-w-72 px-4 py-3 text-xs text-muted-foreground"
+                                >
+                                    {{ row.description }}
+                                </td>
+                                <td class="px-4 py-3 text-xs">
+                                    {{ row.account_code }} —
+                                    {{ row.account_name }}
+                                </td>
+                                <td class="px-4 py-3 text-xs tabular-nums">
+                                    {{ format(row.debit) }}
+                                </td>
+                                <td class="px-4 py-3 text-xs tabular-nums">
+                                    {{ format(row.credit) }}
+                                </td>
+                                <td
+                                    class="px-5 py-3 text-xs font-bold tabular-nums"
+                                >
+                                    {{ format(row.balance) }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p
+                    v-if="accountLedger.rows.length === 0"
+                    class="py-14 text-center text-sm text-muted-foreground"
+                >
+                    گردشی برای این حساب در بازه انتخاب‌شده وجود ندارد.
+                </p>
             </section>
         </template>
     </div>

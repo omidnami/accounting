@@ -33,7 +33,10 @@ it('renders financial reports for a manager', function () {
             ->has('incomeStatement.revenues')
             ->has('balanceSheet.total_assets')
             ->has('journal.data')
+            ->has('accounts')
+            ->has('accountLedger.rows')
             ->where('filters.from', fn ($value) => is_string($value))
+            ->where('filters.account_id', fn ($value) => is_int($value))
             ->where('trialBalance.balanced', true));
 });
 
