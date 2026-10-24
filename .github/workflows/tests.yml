@@ -60,3 +60,6 @@ jobs:
 
       - name: Run CI Checks
         run: composer ci:check
+
+      - name: Run MySQL concurrency tests
+        run: php artisan test tests/Integration/ConcurrencySafetyTest.php

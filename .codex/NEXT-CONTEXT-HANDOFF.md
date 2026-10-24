@@ -39,20 +39,22 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `323 tests`, `2469 assertions` (۳۱۸ پاس، ۵ skip روی SQLite)
+- Pest پیش‌فرض روی SQLite: `318 tests` بدون skip/Warning
 - Node calendar: `4 tests`
 - PHPStan: صفر خطا
 - Pint: موفق
 - Vue type-check: موفق
 - Frontend build: موفق
-- تست‌های `tests/Integration` فقط روی MySQL/MariaDB اجرا می‌شوند؛ ۵ سناریو با
-  دو اتصال مستقل و `REPEATABLE READ` موفق شده‌اند.
+- تست‌های `tests/Integration` از مجموعهٔ پیش‌فرض SQLite خارج شده‌اند و فقط روی
+  MySQL/MariaDB اجرا می‌شوند؛ ۵ سناریو با دو اتصال مستقل و `REPEATABLE READ`
+  موفق شده‌اند. CI آن‌ها را در یک مرحلهٔ جداگانه اجرا می‌کند.
 
 دستور بررسی کامل:
 
 ```bash
 composer ci:check
 npm run build
+composer test:integration
 ```
 
 ## تصمیم‌های قطعی MVP

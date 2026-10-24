@@ -76,7 +76,10 @@
             "@php artisan config:clear --ansi",
             "@lint:check",
             "@types:check",
-            "@php artisan test"
+            "@php artisan test --exclude-testsuite=Integration"
+        ],
+        "test:integration": [
+            "@php artisan test tests/Integration/ConcurrencySafetyTest.php"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
