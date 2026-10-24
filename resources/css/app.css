@@ -84,6 +84,16 @@
         margin: 10mm;
     }
 
+    @page invoice-a5 {
+        size: A5 portrait;
+        margin: 8mm;
+    }
+
+    @page invoice-a4 {
+        size: A4 portrait;
+        margin: 12mm;
+    }
+
     @page thermal-58 {
         size: 58mm auto;
         margin: 2mm;
@@ -103,6 +113,8 @@
     [data-slot='sidebar'],
     [data-slot='sidebar-header'],
     [data-slot='sonner'],
+    [data-slot='dialog-overlay'],
+    [data-slot='dialog-content'],
     .print\:hidden {
         display: none !important;
     }
@@ -117,7 +129,8 @@
     }
 
     .print-report,
-    .thermal-receipt {
+    .thermal-receipt,
+    .invoice-page {
         color-scheme: light;
         background: white !important;
         color: #111827 !important;
@@ -210,6 +223,142 @@
 
     .thermal-receipt[data-paper-width='58'] table {
         font-size: 7pt;
+    }
+
+    .invoice-page {
+        page: invoice-a4;
+        width: 100% !important;
+        max-width: 182mm;
+        margin: 0 auto;
+        color: #111827 !important;
+        font-size: 9pt;
+        line-height: 1.7;
+        break-after: page;
+        print-color-adjust: exact;
+    }
+
+    .invoice-page[data-invoice-format='a5'] {
+        page: invoice-a5;
+        max-width: 128mm;
+        font-size: 7.5pt;
+    }
+
+    .invoice-page:last-child {
+        break-after: auto;
+    }
+
+    .invoice-page-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 8mm;
+        border-bottom: 2px solid #111827;
+        padding-bottom: 4mm;
+    }
+
+    .invoice-page-header h1 {
+        font-size: 18pt;
+        font-weight: 900;
+    }
+
+    .invoice-page-header h2 {
+        font-size: 14pt;
+        font-weight: 900;
+    }
+
+    .invoice-page-header p,
+    .invoice-page-parties p {
+        margin-top: 1mm;
+        color: #374151;
+    }
+
+    .invoice-page-note {
+        margin-top: 3mm;
+        border: 1px solid #9ca3af;
+        padding: 2mm 3mm;
+        text-align: center;
+    }
+
+    .invoice-page-parties {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 5mm;
+        margin-top: 4mm;
+        border: 1px solid #9ca3af;
+        padding: 3mm;
+    }
+
+    .invoice-page-parties > div > span {
+        display: block;
+        margin-bottom: 1mm;
+        color: #6b7280;
+        font-size: 8pt;
+    }
+
+    .invoice-page-table {
+        width: 100% !important;
+        margin-top: 4mm;
+        border-collapse: collapse;
+        table-layout: fixed;
+    }
+
+    .invoice-page-table th,
+    .invoice-page-table td {
+        border: 1px solid #9ca3af;
+        padding: 1.5mm;
+        text-align: right;
+        word-break: break-word;
+    }
+
+    .invoice-page-table th {
+        background: #f3f4f6 !important;
+        font-weight: 800;
+    }
+
+    .invoice-page-table small {
+        display: block;
+        color: #6b7280;
+        font-size: 6pt;
+    }
+
+    .invoice-page-summary {
+        display: grid;
+        grid-template-columns: 1fr 62mm;
+        gap: 6mm;
+        margin-top: 4mm;
+    }
+
+    .invoice-page-summary dl {
+        border: 1px solid #9ca3af;
+        padding: 2mm 3mm;
+    }
+
+    .invoice-page-summary dl > div {
+        display: flex;
+        justify-content: space-between;
+        gap: 4mm;
+        padding: 1mm 0;
+    }
+
+    .invoice-page-summary .invoice-page-total {
+        margin-top: 1mm;
+        border-top: 1px dashed #6b7280;
+        padding-top: 2mm;
+        font-size: 11pt;
+        font-weight: 900;
+    }
+
+    .invoice-page-signatures {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20mm;
+        margin-top: 12mm;
+        color: #374151;
+        text-align: center;
+    }
+
+    .invoice-page-signatures div {
+        border-top: 1px dashed #9ca3af;
+        padding-top: 2mm;
     }
 }
 

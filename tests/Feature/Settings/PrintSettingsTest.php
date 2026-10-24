@@ -37,7 +37,7 @@ it('protects print settings by role', function () {
     $this->actingAs($accountant)
         ->patch(route('print-settings.update'), [
             'branch_id' => 1,
-            'paper_width_mm' => 58,
+            'format' => 'thermal_58',
             'copies' => 2,
         ])
         ->assertForbidden();
@@ -54,14 +54,16 @@ it('updates branch thermal print settings with an audit trail', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('settings/Print')
             ->where('selected_branch_id', $context['branch']->id)
-            ->where('settings.paper_width_mm', 80)
-            ->where('settings.copies', 1));
+            ->where('settings.format', 'thermal_80')
+            ->where('settings.copies', 1)
+            ->where('settings.header_note', null));
 
     $this->actingAs($context['manager'])
         ->patch(route('print-settings.update'), [
             'branch_id' => $context['branch']->id,
-            'paper_width_mm' => 58,
+            'format' => 'a5',
             'copies' => 3,
+            'header_note' => 'شرایط فروش و ضمانت',
         ])
         ->assertRedirect(route('print-settings.edit', [
             'branch_id' => $context['branch']->id,
@@ -70,7 +72,9 @@ it('updates branch thermal print settings with an audit trail', function () {
 
     $context['branch']->refresh();
 
-    expect($context['branch']->thermal_paper_width)->toBe(58)
+    expect($context['branch']->invoice_print_format)->toBe('a5')
+        ->and($context['branch']->invoice_header_note)->toBe('شرایط فروش و ضمانت')
+        ->and($context['branch']->thermal_paper_width)->toBe(80)
         ->and($context['branch']->thermal_copies)->toBe(3);
 
     $audit = AuditLog::query()
@@ -80,7 +84,8 @@ it('updates branch thermal print settings with an audit trail', function () {
         ->latest('id')
         ->firstOrFail();
 
-    expect($audit->new_values['thermal_paper_width'])->toBe(58)
+    expect($audit->new_values['invoice_print_format'])->toBe('a5')
+        ->and($audit->new_values['invoice_header_note'])->toBe('شرایط فروش و ضمانت')
         ->and($audit->new_values['thermal_copies'])->toBe(3);
 });
 
@@ -102,21 +107,22 @@ it('validates print settings and branch scope', function () {
     $this->actingAs($context['manager'])
         ->patch(route('print-settings.update'), [
             'branch_id' => $context['branch']->id,
-            'paper_width_mm' => 70,
+            'format' => 'a3',
             'copies' => 6,
         ])
-        ->assertSessionHasErrors(['paper_width_mm', 'copies']);
+        ->assertSessionHasErrors(['format', 'copies']);
 
     $this->actingAs($context['manager'])
         ->patch(route('print-settings.update'), [
             'branch_id' => $otherBranch->id,
-            'paper_width_mm' => 58,
+            'format' => 'thermal_58',
             'copies' => 2,
         ])
         ->assertSessionHasErrors('branch_id');
 
     $context['branch']->refresh();
 
-    expect($context['branch']->thermal_paper_width)->toBe(80)
+    expect($context['branch']->invoice_print_format)->toBe('thermal_80')
+        ->and($context['branch']->thermal_paper_width)->toBe(80)
         ->and($context['branch']->thermal_copies)->toBe(1);
 });

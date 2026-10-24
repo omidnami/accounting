@@ -13,10 +13,24 @@ import {
     UserRound,
     Warehouse,
 } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Spinner } from '@/components/ui/spinner';
+import {
+    invoicePrintFormatMap,
+    invoicePrintFormats,
+    type InvoicePrintFormat,
+} from '@/lib/printing';
+import SalesInvoicePage from '@/pages/sales/SalesInvoicePage.vue';
 import SalesReceipt from '@/pages/sales/SalesReceipt.vue';
 import {
     confirm as confirmSaleRoute,
@@ -53,8 +67,10 @@ type Props = {
         address: string | null;
     };
     print_settings: {
+        format: InvoicePrintFormat;
         paper_width_mm: 58 | 80;
         copies: number;
+        header_note: string | null;
     };
     returns: Array<{
         id: number;
@@ -150,9 +166,17 @@ const statusMeta: Record<SaleStatus, { label: string; className: string }> = {
     },
 };
 const isDraft = computed(() => props.invoice.status === 'draft');
+const printDialogOpen = ref(false);
+const selectedPrintFormat = ref<InvoicePrintFormat>(
+    props.print_settings.format,
+);
+const selectedCopies = ref(props.print_settings.copies);
+const selectedPrintOption = computed(
+    () => invoicePrintFormatMap[selectedPrintFormat.value],
+);
 const printCopies = computed(() =>
     Array.from(
-        { length: Math.max(1, Math.min(5, props.print_settings.copies)) },
+        { length: Math.max(1, Math.min(5, selectedCopies.value)) },
         (_, index) => index + 1,
     ),
 );
@@ -178,7 +202,14 @@ const deleteDraft = () => {
     });
 };
 
-const printInvoice = () => {
+const openPrintDialog = () => {
+    selectedPrintFormat.value = props.print_settings.format;
+    selectedCopies.value = props.print_settings.copies;
+    printDialogOpen.value = true;
+};
+const printInvoice = async () => {
+    printDialogOpen.value = false;
+    await nextTick();
     window.print();
 };
 
@@ -201,15 +232,105 @@ defineOptions({
 <template>
     <Head :title="`فاکتور ${invoice.invoice_number}`" />
 
+    <Dialog v-model:open="printDialogOpen">
+        <DialogContent class="sm:max-w-xl">
+            <DialogHeader>
+                <DialogTitle>آماده‌سازی چاپ فاکتور</DialogTitle>
+                <DialogDescription>
+                    قالب و تعداد نسخه را برای این چاپ انتخاب کنید. انتخاب چاپگر
+                    در پنجرهٔ Print سیستم‌عامل انجام می‌شود.
+                </DialogDescription>
+            </DialogHeader>
+
+            <div class="grid gap-3 sm:grid-cols-2">
+                <button
+                    v-for="format in invoicePrintFormats"
+                    :key="format.value"
+                    type="button"
+                    class="rounded-xl border p-3 text-right transition"
+                    :class="
+                        selectedPrintFormat === format.value
+                            ? 'border-primary bg-primary/5 ring-2 ring-primary/15'
+                            : 'hover:border-primary/40'
+                    "
+                    @click="selectedPrintFormat = format.value"
+                >
+                    <span class="block text-xs font-bold">{{
+                        format.label
+                    }}</span>
+                    <span
+                        class="mt-1 block text-[10px] leading-5 text-muted-foreground"
+                    >
+                        {{ format.description }}
+                    </span>
+                </button>
+            </div>
+
+            <label class="grid gap-2">
+                <span class="text-xs font-semibold">تعداد نسخه</span>
+                <select
+                    v-model="selectedCopies"
+                    class="h-10 rounded-xl border bg-background px-3 text-sm"
+                >
+                    <option
+                        v-for="copy in [1, 2, 3, 4, 5]"
+                        :key="copy"
+                        :value="copy"
+                    >
+                        {{ copy }} نسخه
+                    </option>
+                </select>
+            </label>
+
+            <div
+                class="rounded-xl border border-primary/15 bg-primary/5 p-3 text-xs"
+            >
+                <p class="font-bold">{{ selectedPrintOption.label }}</p>
+                <p class="mt-1 text-muted-foreground">
+                    {{ selectedCopies }} نسخه آماده چاپ می‌شود.
+                </p>
+            </div>
+
+            <DialogFooter>
+                <Button
+                    type="button"
+                    variant="outline"
+                    class="rounded-xl"
+                    @click="printDialogOpen = false"
+                >
+                    انصراف
+                </Button>
+                <Button type="button" class="rounded-xl" @click="printInvoice">
+                    <Printer class="size-4" />
+                    ادامه و چاپ
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+
     <div class="hidden print:block">
-        <SalesReceipt
-            v-for="copy in printCopies"
-            :key="copy"
-            :seller="seller"
-            :invoice="invoice"
-            :paper-width="print_settings.paper_width_mm"
-            :status-label="statusMeta[invoice.status].label"
-        />
+        <template v-if="selectedPrintOption.kind === 'thermal'">
+            <SalesReceipt
+                v-for="copy in printCopies"
+                :key="copy"
+                :seller="seller"
+                :invoice="invoice"
+                :paper-width="selectedPrintOption.paperWidth ?? 80"
+                :status-label="statusMeta[invoice.status].label"
+                :header-note="print_settings.header_note"
+            />
+        </template>
+        <template v-else>
+            <SalesInvoicePage
+                v-for="copy in printCopies"
+                :key="copy"
+                :seller="seller"
+                :invoice="invoice"
+                :format="selectedPrintFormat === 'a5' ? 'a5' : 'a4'"
+                :status-label="statusMeta[invoice.status].label"
+                :header-note="print_settings.header_note"
+            />
+        </template>
     </div>
 
     <div
@@ -279,7 +400,7 @@ defineOptions({
                     <Button
                         variant="outline"
                         class="rounded-xl"
-                        @click="printInvoice"
+                        @click="openPrintDialog"
                     >
                         <Printer class="size-4" />
                         چاپ

@@ -16,13 +16,13 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی و remote: `164e48b`
-- پیام: `fix(reports): preserve export filters and report totals`
+- آخرین کامیت محلی و remote: `6567e19`
+- پیام: `feat(printing): add configurable thermal receipts`
 - CI همین commit در GitHub موفق است.
-- تنظیمات چاپ هر شعبه، چاپ ۵۸/۸۰ میلی‌متر، چند نسخه و قرارداد Print Agent
-  اکنون در worktree آماده commit هستند.
-- migration `2026_10_24_000002_add_print_settings_to_branches` هنوز Pending
-  است؛ پس از commit باید `php artisan migrate` اجرا شود.
+- تنظیمات قالب حرارتی ۵۸/۸۰، A5/A4، متن سربرگ، انتخاب موقت هنگام چاپ و
+  قرارداد Print Agent اکنون در worktree آماده commit هستند.
+- migration `2026_10_24_000003_add_invoice_print_format_to_branches` هنوز
+  Pending است؛ پس از commit باید `php artisan migrate` اجرا شود.
 - commit تغییرات بر عهده
   کاربر است.
 
@@ -41,7 +41,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `291 tests`, `2254 assertions`
+- Pest: `291 tests`, `2262 assertions`
 - Node calendar: `3 tests`
 - PHPStan: صفر خطا
 - Pint: موفق
@@ -143,8 +143,10 @@ npm run build
 - خروجی کاردکس تمام فیلترهای فعال همان صفحه، شامل نوع گردش و جهت، را حفظ می‌کند.
 - CSV جمع‌ها و مانده‌های کلیدی را دارد و سود دارای COGS ناقص را خالی می‌گذارد.
 - سربرگ چاپ زمینه گزارش و صفحه‌بندی را نشان می‌دهد و فاکتور هویت فروشنده را دارد.
-- تنظیمات چاپ به تفکیک شعبه، عرض کاغذ ۵۸/۸۰ و یک تا پنج نسخه دارد.
-- فاکتور چاپی از نمای مستقل و تکرار کنترل‌شده نسخه‌ها استفاده می‌کند.
+- تنظیمات چاپ به تفکیک شعبه، قالب پیش‌فرض حرارتی ۵۸/۸۰، A5/A4، متن سربرگ و
+  یک تا پنج نسخه دارد.
+- هنگام چاپ، قالب و نسخه برای همان چاپ قابل تغییر است و تکرار نسخه‌ها در نمای
+  مستقل فاکتور اعمال می‌شود.
 - بازه یک‌طرفه گزارش‌ها اعتبارسنجی می‌شود و خطای 500 نمی‌دهد.
 - حساب و شعبه غیرفعال برای گزارش تاریخی قابل انتخاب‌اند.
 - ردیف فروش بدون COGS snapshot، سود را «نامشخص» نشان می‌دهد.
@@ -276,6 +278,7 @@ npm run build
 - `app/Services/Reporting/CsvExportService.php`
 - `app/Services/Reporting/AuditLogReportService.php`
 - `app/Services/Printing/PrintSettingsService.php`
+- `app/Enums/InvoicePrintFormat.php`
 - `app/Services/Accounting/AccountingPeriodLockService.php`
 - `app/Services/Inventory/InventoryService.php`
 - `app/Services/Purchasing/PurchaseService.php`
@@ -346,6 +349,7 @@ npm run build
 - `resources/js/pages/audit/Index.vue`
 - `resources/js/pages/sales/Show.vue`
 - `resources/js/pages/sales/SalesReceipt.vue`
+- `resources/js/pages/sales/SalesInvoicePage.vue`
 - `resources/js/pages/settings/Print.vue`
 
 ## قواعد اجباری ادامه کار
@@ -382,7 +386,7 @@ npm run build
 - خروجی PDF از Print to PDF مرورگر است، نه فایل PDF سمت سرور.
 - کاردکس موجودی پیاده‌سازی شده است؛ فیلتر کالای آن فعلاً select ساده است و
   برای کاتالوگ بسیار بزرگ به combobox جست‌وجوشونده نیاز دارد.
-- بررسی دستی چاپ A4 و چاپگر حرارتی ۸۰ میلی‌متری انجام نشده است.
+- بررسی دستی قالب‌های A4/A5 و چاپگرهای حرارتی ۵۸/۸۰ انجام نشده است.
 - چاپ بی‌صدا و Print Agent پیاده نشده‌اند؛ فقط قرارداد امنیتی و معماری آن‌ها
   در `.codex/print-agent-architecture.md` آماده شده است.
 - Audit Log و مدیریت کاربران/نقش‌ها وجود دارد؛ غیرفعال‌سازی کاربر، retention و
@@ -398,7 +402,7 @@ npm run build
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی چاپ ۵۸/۸۰ و commit فاز 15F2 توسط کاربر
+1. بررسی دستی چاپ ۵۸/۸۰، A5 و A4 و commit فاز 15F2 توسط کاربر
 2. Phase 15G: آماده‌سازی production
 3. پیش از production، pagination/cache گزارش‌های تجمیعی را در صورت حجم بالا
    اضافه کنید.

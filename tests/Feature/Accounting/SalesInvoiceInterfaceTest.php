@@ -260,7 +260,9 @@ it('lets cashiers create drafts but requires a manager to confirm them', functio
 
     $invoice = Invoice::query()->firstOrFail();
     $context['branch']->update([
-        'thermal_paper_width' => 58,
+        'invoice_print_format' => 'a5',
+        'invoice_header_note' => 'متن سربرگ آزمایشی',
+        'thermal_paper_width' => 80,
         'thermal_copies' => 3,
     ]);
 
@@ -271,8 +273,9 @@ it('lets cashiers create drafts but requires a manager to confirm them', functio
             ->component('sales/Show')
             ->where('seller.name', $context['store']->legal_name ?: $context['store']->name)
             ->where('seller.branch_name', $context['branch']->name)
-            ->where('print_settings.paper_width_mm', 58)
+            ->where('print_settings.format', 'a5')
             ->where('print_settings.copies', 3)
+            ->where('print_settings.header_note', 'متن سربرگ آزمایشی')
             ->where('can_confirm', false));
 
     $this->actingAs($context['user'])

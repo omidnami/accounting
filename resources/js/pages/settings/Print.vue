@@ -6,6 +6,11 @@ import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import {
+    invoicePrintFormatMap,
+    invoicePrintFormats,
+    type InvoicePrintFormat,
+} from '@/lib/printing';
+import {
     edit as printSettings,
     update as updatePrintSettings,
 } from '@/routes/print-settings';
@@ -22,22 +27,25 @@ const props = defineProps<{
     branches: BranchOption[];
     selected_branch_id: number;
     settings: {
+        format: InvoicePrintFormat;
         paper_width_mm: 58 | 80;
         copies: number;
+        header_note: string | null;
     };
 }>();
 
 const form = useForm({
     branch_id: props.selected_branch_id,
-    paper_width_mm: props.settings.paper_width_mm,
+    format: props.settings.format,
     copies: props.settings.copies,
+    header_note: props.settings.header_note ?? '',
 });
 const selectedBranch = computed(() =>
     props.branches.find((branch) => branch.id === props.selected_branch_id),
 );
 const summary = computed(
     () =>
-        `کاغذ ${form.paper_width_mm} میلی‌متر، ${form.copies} نسخه برای هر چاپ`,
+        `${invoicePrintFormatMap[form.format].label}، ${form.copies} نسخه برای هر چاپ`,
 );
 const changeBranch = () => {
     router.get(
@@ -74,7 +82,7 @@ defineOptions({
         <Heading
             variant="small"
             title="تنظیمات چاپ فروشگاه"
-            description="عرض کاغذ و تعداد نسخه‌های فاکتور حرارتی را برای هر شعبه تعیین کنید."
+            description="قالب پیش‌فرض، تعداد نسخه و متن سربرگ فاکتور را برای هر شعبه تعیین کنید."
         />
 
         <section class="rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
@@ -117,49 +125,45 @@ defineOptions({
             <section class="rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
                 <div class="flex items-center gap-2">
                     <Printer class="size-5 text-primary" />
-                    <h2 class="text-sm font-bold">عرض کاغذ حرارتی</h2>
+                    <h2 class="text-sm font-bold">قالب پیش‌فرض چاپ</h2>
                 </div>
                 <p class="mt-2 text-xs leading-6 text-muted-foreground">
-                    عرض فیزیکی رول چاپگر را انتخاب کنید. فاصلهٔ کناری کاغذ
-                    به‌صورت خودکار تنظیم می‌شود.
+                    این قالب هنگام بازکردن فاکتور انتخاب می‌شود و کاربر می‌تواند
+                    برای همان چاپ آن را تغییر دهد.
                 </p>
                 <div class="mt-5 grid gap-3 sm:grid-cols-2">
                     <label
-                        v-for="width in [58, 80] as const"
-                        :key="width"
+                        v-for="format in invoicePrintFormats"
+                        :key="format.value"
                         class="cursor-pointer rounded-2xl border p-4 transition"
                         :class="
-                            form.paper_width_mm === width
+                            form.format === format.value
                                 ? 'border-primary bg-primary/5 ring-2 ring-primary/15'
                                 : 'hover:border-primary/35'
                         "
                     >
                         <input
-                            v-model="form.paper_width_mm"
+                            v-model="form.format"
                             type="radio"
-                            name="paper_width_mm"
-                            :value="width"
+                            name="format"
+                            :value="format.value"
                             class="sr-only"
                         />
                         <span class="flex items-start justify-between gap-3">
                             <span>
-                                <span class="block text-sm font-bold"
-                                    >{{ width }} میلی‌متر</span
-                                >
+                                <span class="block text-sm font-bold">{{
+                                    format.label
+                                }}</span>
                                 <span
                                     class="mt-1 block text-[10px] leading-5 text-muted-foreground"
                                 >
-                                    {{
-                                        width === 58
-                                            ? 'فشرده، مناسب چاپگرهای کوچک'
-                                            : 'استاندارد و خواناتر برای صندوق'
-                                    }}
+                                    {{ format.description }}
                                 </span>
                             </span>
                             <span
                                 class="flex size-6 shrink-0 items-center justify-center rounded-full border"
                                 :class="
-                                    form.paper_width_mm === width
+                                    form.format === format.value
                                         ? 'border-primary bg-primary text-primary-foreground'
                                         : 'text-transparent'
                                 "
@@ -169,10 +173,7 @@ defineOptions({
                         </span>
                     </label>
                 </div>
-                <InputError
-                    class="mt-3"
-                    :message="form.errors.paper_width_mm"
-                />
+                <InputError class="mt-3" :message="form.errors.format" />
             </section>
 
             <section class="rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
@@ -208,6 +209,28 @@ defineOptions({
                         انتخاب چاپگر در پنجرهٔ Print سیستم‌عامل انجام می‌شود.
                     </p>
                 </div>
+            </section>
+
+            <section
+                class="rounded-2xl border bg-card p-5 shadow-sm sm:p-6 lg:col-span-2"
+            >
+                <label class="block">
+                    <span class="text-sm font-bold">متن سربرگ فاکتور</span>
+                    <span
+                        class="mt-1 block text-xs leading-6 text-muted-foreground"
+                    >
+                        این متن در همهٔ قالب‌ها زیر اطلاعات فروشنده چاپ می‌شود؛
+                        مانند شمارهٔ تماس، آدرس یا شرایط فروش.
+                    </span>
+                    <textarea
+                        v-model="form.header_note"
+                        rows="3"
+                        maxlength="255"
+                        class="mt-4 w-full rounded-xl border bg-background px-3 py-2 text-sm"
+                        placeholder="متن اختیاری سربرگ فاکتور"
+                    />
+                </label>
+                <InputError class="mt-2" :message="form.errors.header_note" />
             </section>
 
             <section

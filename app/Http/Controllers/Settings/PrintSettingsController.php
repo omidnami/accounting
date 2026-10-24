@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Settings;
 
+use App\Enums\InvoicePrintFormat;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\Store;
@@ -58,16 +59,20 @@ class PrintSettingsController extends Controller
                 'integer',
                 Rule::exists('branches', 'id')->where('store_id', $store->id),
             ],
-            'paper_width_mm' => ['required', 'integer', Rule::in([58, 80])],
+            'format' => ['required', Rule::enum(InvoicePrintFormat::class)],
             'copies' => ['required', 'integer', 'between:1,5'],
+            'header_note' => ['nullable', 'string', 'max:255'],
         ]);
         $branch = Branch::query()
             ->where('store_id', $store->id)
             ->findOrFail((int) $validated['branch_id']);
 
         $printSettings->update($branch, [
-            'paper_width_mm' => (int) $validated['paper_width_mm'],
+            'format' => InvoicePrintFormat::from($validated['format']),
             'copies' => (int) $validated['copies'],
+            'header_note' => isset($validated['header_note'])
+                ? trim((string) $validated['header_note']) ?: null
+                : null,
         ]);
 
         Inertia::flash('toast', [

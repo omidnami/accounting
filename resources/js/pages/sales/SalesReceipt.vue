@@ -40,6 +40,7 @@ const props = defineProps<{
     invoice: ReceiptInvoice;
     paperWidth: 58 | 80;
     statusLabel: string;
+    headerNote: string | null;
 }>();
 
 const money = new Intl.NumberFormat('fa-IR', {
@@ -83,6 +84,13 @@ const identity = computed(() =>
                 {{ seller.address }}
             </p>
         </header>
+
+        <p
+            v-if="headerNote"
+            class="my-2 border-y border-dashed py-2 text-center text-[8px] leading-4"
+        >
+            {{ headerNote }}
+        </p>
 
         <div class="my-3 border-y border-dashed py-2 text-[9px]">
             <div class="flex justify-between gap-2">

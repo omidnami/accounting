@@ -24,6 +24,8 @@ class Branch extends Model
         'is_active',
         'thermal_paper_width',
         'thermal_copies',
+        'invoice_print_format',
+        'invoice_header_note',
     ];
 
     protected function casts(): array
