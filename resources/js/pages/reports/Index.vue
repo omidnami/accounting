@@ -42,8 +42,13 @@ type Props = {
         branch_id: number | null;
         account_id: number | null;
     };
-    accounts: Array<{ id: number; code: string; name: string }>;
-    branches: Array<{ id: number; name: string }>;
+    accounts: Array<{
+        id: number;
+        code: string;
+        name: string;
+        is_active: boolean;
+    }>;
+    branches: Array<{ id: number; name: string; is_active: boolean }>;
     trialBalance: {
         rows: TrialRow[];
         total_opening_debit: string;
@@ -258,6 +263,7 @@ defineOptions({
                         :value="account.id.toString()"
                     >
                         {{ account.code }} — {{ account.name }}
+                        {{ account.is_active ? '' : '(غیرفعال)' }}
                     </option>
                 </select>
             </label>
@@ -286,6 +292,7 @@ defineOptions({
                             :value="branch.id.toString()"
                         >
                             {{ branch.name }}
+                            {{ branch.is_active ? '' : '(غیرفعال)' }}
                         </option>
                     </select>
                 </span>

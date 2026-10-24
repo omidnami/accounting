@@ -9,7 +9,9 @@ use App\Models\Store;
 use App\Services\Reporting\AgingReportService;
 use App\Services\Reporting\PartyStatementReportService;
 use App\Services\Reporting\SalesOperationsReportService;
+use App\Support\ReportDateRange;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -35,6 +37,15 @@ class OperationalReportsController extends Controller
         ]);
         $from = $validated['from'] ?? $fiscalYear->starts_on->toDateString();
         $to = $validated['to'] ?? $fiscalYear->ends_on->toDateString();
+
+        try {
+            $range = ReportDateRange::between($from, $to);
+        } catch (\InvalidArgumentException $exception) {
+            throw ValidationException::withMessages(['to' => $exception->getMessage()]);
+        }
+
+        $from = $range->from;
+        $to = $range->to;
         $branchId = isset($validated['branch_id']) ? (int) $validated['branch_id'] : null;
 
         if ($branchId !== null && ! Branch::query()
@@ -66,9 +77,9 @@ class OperationalReportsController extends Controller
                 'party_id' => $party?->id,
             ],
             'branches' => $store->branches()
-                ->where('is_active', true)
                 ->orderByDesc('is_default')
-                ->get(['id', 'name']),
+                ->orderBy('name')
+                ->get(['id', 'name', 'is_active']),
             'parties' => $parties->map(fn (Party $party): array => [
                 'id' => $party->id,
                 'code' => $party->code,

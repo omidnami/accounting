@@ -57,6 +57,9 @@ class SalesOperationsReportService
             '0.00',
         );
         $grossProfit = Decimal::subtract($revenue, $cogs, 2);
+        $incompleteCogsCount = $items
+            ->filter(fn (InvoiceItem $item): bool => $item->total_cost_snapshot === null)
+            ->count();
 
         return [
             'summary' => [
@@ -66,6 +69,8 @@ class SalesOperationsReportService
                 'gross_margin' => Decimal::isZero($revenue)
                     ? '0.00'
                     : Decimal::divide(Decimal::multiply($grossProfit, '100', 4), $revenue, 2),
+                'cogs_complete' => $incompleteCogsCount === 0,
+                'incomplete_cogs_count' => $incompleteCogsCount,
                 'sales_invoices' => $items->where('invoice.type', InvoiceType::Sales)
                     ->pluck('invoice.invoice_number')
                     ->unique()
@@ -92,6 +97,7 @@ class SalesOperationsReportService
                 $revenue = '0.00';
                 $cogs = '0.00';
                 $quantity = '0.000';
+                $incompleteCogs = 0;
 
                 foreach ($rows as $item) {
                     $sign = $item->invoice->type === InvoiceType::SalesReturn ? '-1' : '1';
@@ -115,6 +121,7 @@ class SalesOperationsReportService
                         Decimal::multiply($item->quantity, $sign, 3),
                         3,
                     );
+                    $incompleteCogs += $item->total_cost_snapshot === null ? 1 : 0;
                 }
 
                 return [
@@ -123,6 +130,7 @@ class SalesOperationsReportService
                     'cogs' => $cogs,
                     'gross_profit' => Decimal::subtract($revenue, $cogs, 2),
                     'quantity' => $quantity,
+                    'cogs_complete' => $incompleteCogs === 0,
                 ];
             })
             ->sortBy('date')
@@ -142,6 +150,7 @@ class SalesOperationsReportService
                 $revenue = '0.00';
                 $cogs = '0.00';
                 $quantity = '0.000';
+                $incompleteCogs = 0;
 
                 foreach ($rows as $item) {
                     $sign = $item->invoice->type === InvoiceType::SalesReturn ? '-1' : '1';
@@ -165,6 +174,7 @@ class SalesOperationsReportService
                         Decimal::multiply($item->quantity, $sign, 3),
                         3,
                     );
+                    $incompleteCogs += $item->total_cost_snapshot === null ? 1 : 0;
                 }
 
                 $grossProfit = Decimal::subtract($revenue, $cogs, 2);
@@ -181,6 +191,7 @@ class SalesOperationsReportService
                     'gross_margin' => Decimal::isZero($revenue)
                         ? '0.00'
                         : Decimal::divide(Decimal::multiply($grossProfit, '100', 4), $revenue, 2),
+                    'cogs_complete' => $incompleteCogs === 0,
                 ];
             })
             ->sortByDesc('revenue')

@@ -2,6 +2,7 @@
 
 use App\Enums\InventoryMovementType;
 use App\Enums\UserRole;
+use App\Models\Account;
 use App\Models\Customer;
 use App\Models\FiscalYear;
 use App\Models\Party;
@@ -18,6 +19,7 @@ use App\Services\Sales\SalesReturnService;
 use App\Services\Sales\SalesService;
 use Database\Seeders\AccountingSetupSeeder;
 use Database\Seeders\AccountSeeder;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 
 /**
@@ -215,4 +217,54 @@ it('renders operational reports and account ledger for financial roles', functio
             ->has('accounts')
             ->has('accountLedger.rows')
             ->where('filters.account_id', fn ($value) => is_int($value)));
+});
+
+it('marks profit as incomplete when a sales cost snapshot is missing', function () {
+    $context = operationalReportContext();
+    DB::table('invoice_items')
+        ->where('invoice_id', $context['invoice']->id)
+        ->update(['total_cost_snapshot' => null]);
+    $report = app(SalesOperationsReportService::class)->report(
+        $context['store']->id,
+        $context['fiscalYear']->starts_on->toDateString(),
+        $context['fiscalYear']->ends_on->toDateString(),
+        $context['branch']->id,
+    );
+
+    expect($report['summary']['cogs_complete'])->toBeFalse()
+        ->and($report['summary']['incomplete_cogs_count'])->toBe(1)
+        ->and($report['daily'][0]['cogs_complete'])->toBeFalse()
+        ->and($report['products'][0]['cogs_complete'])->toBeFalse();
+});
+
+it('keeps inactive accounts and branches selectable for historical reports', function () {
+    $context = operationalReportContext();
+    $cash = Account::query()
+        ->where('store_id', $context['store']->id)
+        ->where('code', '1101')
+        ->firstOrFail();
+    $cash->update(['is_active' => false]);
+    $context['branch']->update(['is_active' => false]);
+
+    $this->actingAs($context['manager'])
+        ->get(route('reports.index', [
+            'account_id' => $cash->id,
+            'branch_id' => $context['branch']->id,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('filters.account_id', $cash->id)
+            ->where('filters.branch_id', $context['branch']->id));
+});
+
+it('validates effective report ranges when only one date side is provided', function () {
+    $context = operationalReportContext();
+
+    $this->actingAs($context['manager'])
+        ->get(route('reports.operations', ['from' => '2030-01-01']))
+        ->assertSessionHasErrors('to');
+
+    $this->actingAs($context['manager'])
+        ->get(route('reports.index', ['to' => '2000-01-01']))
+        ->assertSessionHasErrors('to');
 });

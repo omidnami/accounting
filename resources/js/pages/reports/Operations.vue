@@ -45,6 +45,8 @@ type SalesReport = {
         cogs: string;
         gross_profit: string;
         gross_margin: string;
+        cogs_complete: boolean;
+        incomplete_cogs_count: number;
         sales_invoices: number;
         return_invoices: number;
     };
@@ -54,6 +56,7 @@ type SalesReport = {
         cogs: string;
         gross_profit: string;
         quantity: string;
+        cogs_complete: boolean;
     }>;
     products: Array<{
         product_id: number;
@@ -65,6 +68,7 @@ type SalesReport = {
         cogs: string;
         gross_profit: string;
         gross_margin: string;
+        cogs_complete: boolean;
     }>;
 };
 
@@ -75,7 +79,7 @@ const props = defineProps<{
         branch_id: number | null;
         party_id: number | null;
     };
-    branches: Array<{ id: number; name: string }>;
+    branches: Array<{ id: number; name: string; is_active: boolean }>;
     parties: Array<{
         id: number;
         code: string;
@@ -196,6 +200,7 @@ defineOptions({
                         :value="branch.id"
                     >
                         {{ branch.name }}
+                        {{ branch.is_active ? '' : '(غیرفعال)' }}
                     </option>
                 </select>
             </label>
@@ -443,6 +448,14 @@ defineOptions({
         </template>
 
         <template v-else>
+            <div
+                v-if="!sales.summary.cogs_complete"
+                class="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs leading-6 text-amber-700 dark:text-amber-300"
+            >
+                COGS برای {{ sales.summary.incomplete_cogs_count }} ردیف ثبت
+                نشده است؛ سود ناخالص و حاشیه سود تا تکمیل snapshot قابل اتکا
+                نیست.
+            </div>
             <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
                 <article class="rounded-2xl border bg-card p-4">
                     <p class="text-[10px] text-muted-foreground">فروش خالص</p>
@@ -461,13 +474,23 @@ defineOptions({
                 <article class="rounded-2xl border bg-card p-4">
                     <p class="text-[10px] text-muted-foreground">سود ناخالص</p>
                     <p class="mt-2 text-lg font-black text-emerald-600">
-                        {{ money.format(Number(sales.summary.gross_profit)) }}
+                        {{
+                            sales.summary.cogs_complete
+                                ? money.format(
+                                      Number(sales.summary.gross_profit),
+                                  )
+                                : 'نامشخص'
+                        }}
                     </p>
                 </article>
                 <article class="rounded-2xl border bg-card p-4">
                     <p class="text-[10px] text-muted-foreground">حاشیه سود</p>
                     <p class="mt-2 text-lg font-black">
-                        {{ money.format(Number(sales.summary.gross_margin)) }}٪
+                        {{
+                            sales.summary.cogs_complete
+                                ? `${money.format(Number(sales.summary.gross_margin))}٪`
+                                : '—'
+                        }}
                     </p>
                 </article>
                 <article class="rounded-2xl border bg-card p-4">
@@ -514,9 +537,11 @@ defineOptions({
                                     </td>
                                     <td class="px-4 py-3 text-xs font-bold">
                                         {{
-                                            money.format(
-                                                Number(row.gross_profit),
-                                            )
+                                            row.cogs_complete
+                                                ? money.format(
+                                                      Number(row.gross_profit),
+                                                  )
+                                                : '—'
                                         }}
                                     </td>
                                 </tr>
@@ -567,17 +592,19 @@ defineOptions({
                                     </td>
                                     <td class="px-4 py-3 text-xs font-bold">
                                         {{
-                                            money.format(
-                                                Number(row.gross_profit),
-                                            )
+                                            row.cogs_complete
+                                                ? money.format(
+                                                      Number(row.gross_profit),
+                                                  )
+                                                : '—'
                                         }}
                                     </td>
                                     <td class="px-5 py-3 text-xs">
                                         {{
-                                            money.format(
-                                                Number(row.gross_margin),
-                                            )
-                                        }}٪
+                                            row.cogs_complete
+                                                ? `${money.format(Number(row.gross_margin))}٪`
+                                                : '—'
+                                        }}
                                     </td>
                                 </tr>
                             </tbody>

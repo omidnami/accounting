@@ -1,6 +1,6 @@
 # Store Accounting System - Context Handoff
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۴ (پس از Phase 15E)
+آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۴ (پس از hardening فاز 15E)
 
 ## شروع کانتکست جدید
 
@@ -16,10 +16,10 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `0b55f12`
-- پیام: `feat(inventory): add counts, transfers and closing safeguards`
-- شاخه با `origin/main` هم‌سطح است؛ Phase 15E اکنون در worktree آماده
-  commit است.
+- آخرین کامیت محلی: `57cc029`
+- پیام: `feat(reports): add ledger, statements, aging and sales analytics`
+- شاخه با `origin/main` هم‌سطح است؛ اصلاحات hardening فاز 15E اکنون در
+  worktree آماده commit هستند.
 - commit تغییرات بر عهده
   کاربر است.
 
@@ -38,7 +38,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `279 tests`, `2107 assertions`
+- Pest: `282 tests`, `2126 assertions`
 - Node calendar: `3 tests`
 - PHPStan: صفر خطا
 - Pint: موفق
@@ -135,6 +135,9 @@ npm run build
 - صورتحساب مشتری/تأمین‌کننده از ردیف‌های Party
 - Aging مطالبات/بدهی‌ها تا تاریخ گزارش
 - فروش روزانه، فروش کالا، COGS، سود ناخالص و حاشیه سود
+- بازه یک‌طرفه گزارش‌ها اعتبارسنجی می‌شود و خطای 500 نمی‌دهد.
+- حساب و شعبه غیرفعال برای گزارش تاریخی قابل انتخاب‌اند.
+- ردیف فروش بدون COGS snapshot، سود را «نامشخص» نشان می‌دهد.
 
 ### سال مالی
 
@@ -365,10 +368,11 @@ npm run build
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی و commit تغییرات Phase 15E توسط کاربر
+1. بررسی دستی و commit اصلاحات hardening فاز 15E توسط کاربر
 2. Phase 15F: PDF/Excel و چاپ حرفه‌ای
 3. Phase 15G: آماده‌سازی production
-4. ادامه طبق `.codex/phase-15-roadmap.md`
+4. پیش از production، pagination/cache گزارش‌های تجمیعی را در صورت حجم بالا
+   اضافه کنید.
 
 جزئیات Phase 8A در `.codex/phase-8a-treasury-checks-ui.md` ثبت شده است.
 اصلاحات بازبینی آن در `.codex/phase-8a-check-hardening.md` آمده است.

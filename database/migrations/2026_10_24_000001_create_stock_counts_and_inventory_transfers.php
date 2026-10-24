@@ -68,7 +68,10 @@ return new class extends Migration
             $table->timestamps();
 
             $table->index(['store_id', 'branch_id', 'transfer_date']);
-            $table->index(['source_warehouse_id', 'destination_warehouse_id']);
+            $table->index(
+                ['source_warehouse_id', 'destination_warehouse_id'],
+                'inventory_transfers_route_idx',
+            );
         });
     }
 

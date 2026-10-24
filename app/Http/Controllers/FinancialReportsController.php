@@ -11,7 +11,9 @@ use App\Services\Reporting\AccountLedgerReportService;
 use App\Services\Reporting\FinancialStatementReportService;
 use App\Services\Reporting\JournalReportService;
 use App\Services\Reporting\TrialBalanceReportService;
+use App\Support\ReportDateRange;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -40,13 +42,22 @@ class FinancialReportsController extends Controller
         ]);
         $from = $validated['from'] ?? $fiscalYear->starts_on->toDateString();
         $to = $validated['to'] ?? $fiscalYear->ends_on->toDateString();
+
+        try {
+            $range = ReportDateRange::between($from, $to);
+        } catch (\InvalidArgumentException $exception) {
+            throw ValidationException::withMessages(['to' => $exception->getMessage()]);
+        }
+
+        $from = $range->from;
+        $to = $range->to;
         $branchId = isset($validated['branch_id']) ? (int) $validated['branch_id'] : null;
         $accounts = Account::query()
             ->where('store_id', $store->id)
             ->where('level', AccountLevel::Subsidiary)
-            ->where('is_active', true)
+            ->orderByDesc('is_active')
             ->orderBy('code')
-            ->get(['id', 'store_id', 'code', 'name']);
+            ->get(['id', 'store_id', 'code', 'name', 'is_active']);
         $account = $accounts->firstWhere(
             'id',
             isset($validated['account_id']) ? (int) $validated['account_id'] : $accounts->first()?->id,
@@ -72,9 +83,9 @@ class FinancialReportsController extends Controller
             ],
             'accounts' => $accounts,
             'branches' => $store->branches()
-                ->where('is_active', true)
                 ->orderByDesc('is_default')
-                ->get(['id', 'name']),
+                ->orderBy('name')
+                ->get(['id', 'name', 'is_active']),
             'trialBalance' => $trialBalance->report($store->id, $from, $to, $branchId),
             'incomeStatement' => $statements->incomeStatement($store->id, $from, $to, $branchId),
             'balanceSheet' => $statements->balanceSheet($store->id, $to, $branchId),
