@@ -1,6 +1,6 @@
 # Store Accounting System - Context Handoff
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۴ (پس از Phase 15C2)
+آخرین به‌روزرسانی: ۲۰۲۶-۱۰-۲۴ (پس از Phase 15D)
 
 ## شروع کانتکست جدید
 
@@ -16,10 +16,10 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی: `df2935e`
-- پیام: `feat(accounting): add period and fiscal year closing controls`
-- شاخه با `origin/main` هم‌سطح است؛ تغییرات hardening فاز 15C و Phase 15C2
-  اکنون در worktree آماده commit هستند.
+- آخرین کامیت محلی: `7f567e5`
+- پیام: `feat(accounting): add annual closing and period safeguards`
+- شاخه با `origin/main` هم‌سطح است؛ اصلاحات اختتامیه و Phase 15D اکنون
+  در worktree آماده commit هستند.
 - commit تغییرات بر عهده
   کاربر است.
 
@@ -38,7 +38,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `268 tests`, `2012 assertions`
+- Pest: `276 tests`, `2060 assertions`
 - Node calendar: `3 tests`
 - PHPStan: صفر خطا
 - Pint: موفق
@@ -170,6 +170,18 @@ npm run build
 - گزارش سود و زیان، سند اختتامیه و معکوس آن را از محاسبه حذف می‌کند.
 - مانده ترازنامه با دفتر پیوسته منتقل می‌شود و سند افتتاحیه تکراری ساخته
   نمی‌شود.
+- مانده افتتاحیه دستی فقط برای اولین سال مالی مجاز است.
+- بستن سال با Opening فعال سال بعد متوقف می‌شود.
+- سند معکوس تاریخی حساب/طرف‌حساب غیرفعال سند اصلی را می‌پذیرد.
+
+### موجودی عملیاتی
+
+- شمارش چندکالایی با Draft، Edit، Post و اتصال به حرکت انبار وجود دارد.
+- شمارش نهایی موجودی سیستم را مجدداً می‌خواند و سند مازاد/کسری می‌سازد.
+- انتقال تک‌کالایی بین دو انبار یک شعبه با دو movement متناظر انجام می‌شود.
+- انباردار شمارش خودش و انتقال را انجام می‌دهد؛ ثبت تعدیل فقط مدیر/حسابدار
+  است.
+- اطلاعات بهای خرید و ارزش تعدیل/انتقال برای انباردار حذف می‌شود.
 
 ## مسیرهای UI موجود
 
@@ -188,6 +200,8 @@ npm run build
 - `/inventory/cardex`
 - `/fiscal-years`
 - `/journals`
+- `/inventory/counts`
+- `/inventory/transfers`
 - `/settings/profile`
 - `/settings/security`
 
@@ -218,6 +232,7 @@ npm run build
 - `phase-15b`: سند دستی و مانده افتتاحیه
 - `phase-15c`: قفل عملیاتی دوره و سال
 - `phase-15c2`: اختتامیه سالانه و انتقال سود
+- `phase-15d`: شمارش، تعدیل و انتقال انبار
 
 ## فایل‌های کلیدی
 
@@ -226,6 +241,8 @@ npm run build
 - `app/Services/Accounting/PostingService.php`
 - `app/Services/Accounting/PeriodClosingService.php`
 - `app/Services/Accounting/YearEndClosingService.php`
+- `app/Services/Inventory/StockCountService.php`
+- `app/Services/Inventory/InventoryTransferService.php`
 - `app/Services/Accounting/AccountingPeriodLockService.php`
 - `app/Services/Inventory/InventoryService.php`
 - `app/Services/Purchasing/PurchaseService.php`
@@ -266,6 +283,8 @@ npm run build
 - `InventoryCardexController`
 - `FiscalYearController`
 - `ManualJournalController`
+- `StockCountController`
+- `InventoryTransferController`
 
 ### UI
 
@@ -285,6 +304,8 @@ npm run build
 - `resources/js/pages/inventory/cardex`
 - `resources/js/pages/fiscal-years`
 - `resources/js/pages/journals`
+- `resources/js/pages/inventory/counts`
+- `resources/js/pages/inventory/transfers`
 
 ## قواعد اجباری ادامه کار
 
@@ -312,7 +333,8 @@ npm run build
   همچنان خارج از MVP است.
 - هزینه‌های جانبی خرید و حمل پیاده‌سازی نشده‌اند.
 - دسته‌بندی، تنوع کالا، سریال، Batch، تاریخ انقضا و PriceHistory وجود ندارند.
-- موجودی‌گیری فیزیکی و StockAdjustment اختصاصی وجود ندارند.
+- انتقال فعلی تک‌کالایی و فقط داخل یک شعبه است.
+- شمارش، جست‌وجوی پیشرفته کالا و ورود انبارگردانی از فایل ندارد.
 - کاردکس موجودی پیاده‌سازی شده است؛ فیلتر کالای آن فعلاً select ساده است و
   برای کاتالوگ بسیار بزرگ به combobox جست‌وجوشونده نیاز دارد.
 - خروجی PDF/Excel گزارش کاردکس هنوز وجود ندارد.
@@ -320,7 +342,8 @@ npm run build
   alerting برای Audit هنوز پیاده‌سازی نشده‌اند.
 - سند افتتاحیه تکراری وجود ندارد؛ انتقال مانده ترازنامه با دفتر پیوسته انجام
   می‌شود.
-- موجودی افتتاحیه کالا باید در Phase 15D همراه با حرکت انبار پیاده‌سازی شود.
+- موجودی افتتاحیه کالا با شمارش و تعدیل کنترل‌شده ثبت می‌شود؛ سند افتتاحیه
+  ریالی تکراری ساخته نمی‌شود.
 - Dashboard برای Manager/Accountant داده واقعی و نمودار هفت‌روزه/شش‌ماهه دارد؛
   cache و پاک‌سازی فایل Dashboard قدیمی باقی مانده است.
 - سامانه مودیان خارج از MVP است.
@@ -328,9 +351,9 @@ npm run build
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی و commit تغییرات 15C hardening و 15C2 توسط کاربر
-2. Phase 15D: موجودی‌گیری، تعدیل و انتقال انبار
-3. Phase 15E: دفتر معین، صورتحساب‌ها، Aging و گزارش‌های فروش
+1. بررسی دستی و commit تغییرات 15C/15C2/15D توسط کاربر
+2. Phase 15E: دفتر معین، صورتحساب‌ها، Aging و گزارش‌های فروش
+3. Phase 15F: PDF/Excel و چاپ حرفه‌ای
 4. ادامه طبق `.codex/phase-15-roadmap.md`
 
 جزئیات Phase 8A در `.codex/phase-8a-treasury-checks-ui.md` ثبت شده است.
@@ -345,6 +368,7 @@ npm run build
 جزئیات Phase 15B در `.codex/phase-15b-manual-journals-opening-balance.md` آمده است.
 جزئیات Phase 15C در `.codex/phase-15c-period-year-closing.md` آمده است.
 جزئیات Phase 15C2 در `.codex/phase-15c2-year-end-closing.md` آمده است.
+جزئیات Phase 15D در `.codex/phase-15d-stock-count-transfer.md` آمده است.
 نقشه مراحل تکمیل در `.codex/phase-15-roadmap.md` آمده است.
 
 ## الگوی درخواست از Agent بعدی

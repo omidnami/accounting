@@ -15,6 +15,32 @@ class AccountingPeriodLockService
     /**
      * @return array{branch: Branch, fiscal_year: FiscalYear, period: AccountingPeriod}
      */
+    public function lockCurrentOpenPeriod(
+        int $storeId,
+        int $branchId,
+        string $date,
+    ): array {
+        $fiscalYearId = FiscalYear::query()
+            ->where('store_id', $storeId)
+            ->where('is_current', true)
+            ->where('status', FiscalYearStatus::Open)
+            ->value('id');
+
+        if (! $fiscalYearId) {
+            throw new DomainException('سال مالی جاری باز پیدا نشد.');
+        }
+
+        return $this->lockOpenPeriod(
+            $storeId,
+            $branchId,
+            (int) $fiscalYearId,
+            $date,
+        );
+    }
+
+    /**
+     * @return array{branch: Branch, fiscal_year: FiscalYear, period: AccountingPeriod}
+     */
     public function lockOpenPeriod(
         int $storeId,
         int $branchId,

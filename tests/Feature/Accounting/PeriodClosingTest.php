@@ -12,6 +12,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Services\Accounting\FiscalYearSetupService;
 use App\Services\Accounting\JalaliDateService;
+use App\Services\Accounting\ManualJournalService;
 use App\Services\Accounting\PeriodClosingService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
@@ -274,6 +275,7 @@ it('closes temporary accounts to retained earnings and reverses the closing on r
         ->and($balance['balanced'])->toBeTrue()
         ->and($closed->status)->toBe(FiscalYearStatus::Closed);
 
+    $sales->update(['is_active' => false]);
     $reopened = $closingService->reopenFiscalYear(
         $store,
         $closed,
@@ -322,6 +324,52 @@ it('does not close the current fiscal year before its end date', function () {
         'تلاش برای بستن سال قبل از پایان بازه',
     ))->toThrow(DomainException::class)
         ->and($year->fresh()->status)->toBe(FiscalYearStatus::Open);
+});
+
+it('does not close a year when the successor has a manual opening entry', function () {
+    ['store' => $store, 'year' => $currentYear, 'current_year' => $yearNumber, 'service' => $setup] =
+        periodClosingContext();
+    $manager = periodClosingUser(UserRole::Manager);
+    $settings = app(SettingService::class);
+    $cash = $settings->defaultAccount('cash', $store->id);
+    $capital = Account::query()
+        ->where('store_id', $store->id)
+        ->where('code', '3101')
+        ->firstOrFail();
+    app(ManualJournalService::class)->createDraft(
+        $store,
+        [
+            'entry_kind' => JournalEntryKind::Opening->value,
+            'entry_date' => $currentYear->starts_on->toDateString(),
+            'description' => 'مانده افتتاحیه دستی سال بعد',
+            'lines' => [
+                ['account_id' => $cash->id, 'debit' => 500, 'credit' => 0],
+                ['account_id' => $capital->id, 'debit' => 0, 'credit' => 500],
+            ],
+        ],
+        $manager,
+    );
+    $previousYear = $setup->setupJalaliYear($store, $yearNumber - 1);
+    $setup->setCurrent($store, $previousYear);
+    $closing = app(PeriodClosingService::class);
+
+    foreach ($previousYear->periods()->orderBy('period_number')->get() as $period) {
+        $closing->closePeriod(
+            $store,
+            $period,
+            AccountingPeriodStatus::Closed,
+            $manager,
+            'بستن دوره سال قبل برای آزمون تداخل افتتاحیه',
+        );
+    }
+
+    expect(fn () => $closing->closeFiscalYear(
+        $store,
+        $previousYear,
+        $manager,
+        'تلاش برای بستن سال قبل با افتتاحیه دستی سال بعد',
+    ))->toThrow(DomainException::class)
+        ->and($previousYear->fresh()->status)->toBe(FiscalYearStatus::Open);
 });
 
 it('does not close a fiscal year while any period is still open', function () {

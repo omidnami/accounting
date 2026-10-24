@@ -183,6 +183,12 @@ class JournalEntry extends Model
             && Decimal::compare($debit, $credit, Decimal::MONEY_SCALE) === 0;
     }
 
+    public function isHistoricalReversal(): bool
+    {
+        return $this->entry_kind === JournalEntryKind::Reversal
+            && $this->reversal_of_id !== null;
+    }
+
     /**
      * @param  Collection<int, JournalEntryLine>|null  $lines
      */
@@ -277,8 +283,9 @@ class JournalEntry extends Model
         }
 
         foreach ($accounts as $account) {
-            if (! $account->is_active || $account->isGeneral()) {
-                throw new DomainException('تمام حساب‌های سند باید معین و فعال باشند.');
+            if ($account->isGeneral()
+                || (! $account->is_active && ! $this->isHistoricalReversal())) {
+                throw new DomainException('تمام حساب‌های سند باید معین باشند؛ حساب غیرفعال فقط در سند معکوس تاریخی مجاز است.');
             }
 
             if ((int) $account->store_id !== (int) $this->store_id) {
@@ -301,7 +308,10 @@ class JournalEntry extends Model
         $activeParties = Party::query()
             ->whereIn('id', $partyIds)
             ->where('store_id', $this->store_id)
-            ->where('is_active', true)
+            ->when(
+                ! $this->isHistoricalReversal(),
+                fn ($query) => $query->where('is_active', true),
+            )
             ->lockForUpdate()
             ->pluck('id');
 
@@ -315,6 +325,16 @@ class JournalEntry extends Model
         static::creating(function (JournalEntry $entry): void {
             if ($entry->status === JournalEntryStatus::Posted) {
                 throw new DomainException('سند باید ابتدا به‌صورت پیش‌نویس ساخته و پس از کنترل توازن ثبت شود.');
+            }
+
+            if ($entry->entry_kind === JournalEntryKind::Reversal
+                && $entry->reversal_of_id === null) {
+                throw new DomainException('سند معکوس باید به سند اصلی متصل باشد.');
+            }
+
+            if ($entry->reversal_of_id !== null
+                && $entry->entry_kind !== JournalEntryKind::Reversal) {
+                throw new DomainException('اتصال reversal فقط برای سند معکوس مجاز است.');
             }
         });
 

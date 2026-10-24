@@ -5,6 +5,7 @@ use App\Models\AccountingPeriod;
 use App\Models\Check;
 use App\Models\FiscalYear;
 use App\Models\InventoryMovement;
+use App\Models\InventoryTransfer;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\JournalEntry;
@@ -14,6 +15,8 @@ use App\Models\PaymentAllocation;
 use App\Models\Product;
 use App\Models\Receipt;
 use App\Models\ReceiptAllocation;
+use App\Models\StockCount;
+use App\Models\StockCountItem;
 use App\Models\TreasuryAccount;
 use App\Models\User;
 
@@ -24,6 +27,7 @@ return [
         Check::class,
         FiscalYear::class,
         InventoryMovement::class,
+        InventoryTransfer::class,
         Invoice::class,
         InvoiceItem::class,
         JournalEntry::class,
@@ -33,6 +37,8 @@ return [
         Product::class,
         Receipt::class,
         ReceiptAllocation::class,
+        StockCount::class,
+        StockCountItem::class,
         TreasuryAccount::class,
         User::class,
     ],

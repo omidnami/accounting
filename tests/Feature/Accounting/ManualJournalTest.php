@@ -8,6 +8,8 @@ use App\Models\FiscalYear;
 use App\Models\JournalEntry;
 use App\Models\Store;
 use App\Models\User;
+use App\Services\Accounting\FiscalYearSetupService;
+use App\Services\Accounting\JalaliDateService;
 use App\Services\Accounting\ManualJournalService;
 use App\Services\Accounting\SettingService;
 use Database\Seeders\AccountingSetupSeeder;
@@ -217,6 +219,31 @@ it('enforces opening-balance date, accounts and single-entry rules', function ()
                 ['account_id' => $context['capital']->id, 'debit' => 0, 'credit' => 200],
             ],
             $openingDate,
+        ),
+        $manager,
+    ))->toThrow(DomainException::class);
+});
+
+it('allows opening balances only for the first fiscal year', function () {
+    $context = manualJournalContext();
+    $manager = manualJournalUser(UserRole::Manager);
+    $setup = app(FiscalYearSetupService::class);
+    $nextYear = $setup->setupJalaliYear(
+        $context['store'],
+        app(JalaliDateService::class)->currentYear() + 1,
+    );
+    $setup->setCurrent($context['store'], $nextYear);
+
+    expect(fn () => app(ManualJournalService::class)->createDraft(
+        $context['store'],
+        manualJournalPayload(
+            $nextYear,
+            JournalEntryKind::Opening->value,
+            [
+                ['account_id' => $context['cash']->id, 'debit' => 500, 'credit' => 0],
+                ['account_id' => $context['capital']->id, 'debit' => 0, 'credit' => 500],
+            ],
+            $nextYear->starts_on->toDateString(),
         ),
         $manager,
     ))->toThrow(DomainException::class);

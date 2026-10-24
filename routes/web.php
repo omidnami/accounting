@@ -7,6 +7,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FinancialReportsController;
 use App\Http\Controllers\FiscalYearController;
 use App\Http\Controllers\InventoryCardexController;
+use App\Http\Controllers\InventoryTransferController;
 use App\Http\Controllers\InvoiceReturnController;
 use App\Http\Controllers\ManualJournalController;
 use App\Http\Controllers\PartyController;
@@ -15,6 +16,7 @@ use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\PurchaseLookupController;
 use App\Http\Controllers\SalesInvoiceController;
 use App\Http\Controllers\SalesLookupController;
+use App\Http\Controllers\StockCountController;
 use App\Http\Controllers\SupplierPaymentController;
 use App\Http\Controllers\TreasuryAccountController;
 use App\Http\Controllers\UserManagementController;
@@ -64,6 +66,24 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::delete('journals/{journalEntry}', [ManualJournalController::class, 'destroy'])
         ->name('journals.destroy');
     Route::get('inventory/cardex', InventoryCardexController::class)->name('inventory.cardex');
+    Route::resource('inventory/counts', StockCountController::class)
+        ->parameters(['counts' => 'stockCount'])
+        ->names('stock-counts')
+        ->except('destroy');
+    Route::post('inventory/counts/{stockCount}/post', [
+        StockCountController::class,
+        'post',
+    ])->name('stock-counts.post');
+    Route::delete('inventory/counts/{stockCount}', [
+        StockCountController::class,
+        'destroy',
+    ])->name('stock-counts.destroy');
+    Route::get('inventory/transfers', [InventoryTransferController::class, 'index'])
+        ->name('inventory-transfers.index');
+    Route::get('inventory/transfers/create', [InventoryTransferController::class, 'create'])
+        ->name('inventory-transfers.create');
+    Route::post('inventory/transfers', [InventoryTransferController::class, 'store'])
+        ->name('inventory-transfers.store');
     Route::get('audit-logs', AuditLogController::class)->name('audit-logs.index');
     Route::resource('users', UserManagementController::class)
         ->except(['show', 'destroy']);

@@ -145,29 +145,12 @@ class YearEndClosingService
 
                 foreach ($closings as $closing) {
                     $closing->load(['lines', 'branch']);
-                    $lines = $closing->lines->map(fn (JournalEntryLine $line): array => [
-                        'account_id' => $line->account_id,
-                        'party_id' => $line->party_id,
-                        'debit' => $line->credit,
-                        'credit' => $line->debit,
-                        'description' => 'معکوس‌سازی سند اختتامیه',
-                    ])->values()->all();
-                    $reversal = $this->posting->post(
-                        [
-                            'store_id' => $store->id,
-                            'branch_id' => $closing->branch_id,
-                            'fiscal_year_id' => $lockedYear->id,
-                            'accounting_period_id' => $period->id,
-                            'entry_kind' => JournalEntryKind::Reversal,
-                            'entry_date' => $closing->entry_date->toDateString(),
-                            'description' => "برگشت سند اختتامیه سال {$lockedYear->title}",
-                            'source_type' => $lockedYear->getMorphClass(),
-                            'source_id' => $lockedYear->id,
-                            'reversal_of_id' => $closing->id,
-                            'created_by' => $actor->id,
-                        ],
-                        $lines,
+                    $reversal = $this->posting->postReversal(
+                        $closing,
                         $actor,
+                        [
+                            'description' => "برگشت سند اختتامیه سال {$lockedYear->title}",
+                        ],
                     );
                     $entries->push($reversal);
                     $this->auditLogs->record(

@@ -71,9 +71,10 @@ class JournalEntryLine extends Model
             }
 
             $account = Account::query()->find($line->account_id);
+            $historicalReversal = $entry?->isHistoricalReversal() ?? false;
 
-            if (! $account || ! $account->is_active) {
-                throw new DomainException('ردیف سند باید به یک حساب فعال متصل باشد.');
+            if (! $account || (! $account->is_active && ! $historicalReversal)) {
+                throw new DomainException('ردیف سند باید به یک حساب فعال یا حساب سند معکوس تاریخی متصل باشد.');
             }
 
             if ($account->isGeneral()) {
@@ -87,8 +88,8 @@ class JournalEntryLine extends Model
             if ($line->party_id !== null) {
                 $party = Party::query()->find($line->party_id);
 
-                if (! $party || ! $party->is_active) {
-                    throw new DomainException('طرف‌حساب ردیف سند باید فعال و معتبر باشد.');
+                if (! $party || (! $party->is_active && ! $historicalReversal)) {
+                    throw new DomainException('طرف‌حساب ردیف سند باید معتبر باشد؛ طرف‌حساب غیرفعال فقط در سند معکوس تاریخی مجاز است.');
                 }
 
                 if ($entry && (int) $party->store_id !== (int) $entry->store_id) {

@@ -5,6 +5,8 @@ namespace App\Services\Accounting;
 use App\Enums\AccountingPeriodStatus;
 use App\Enums\DocumentType;
 use App\Enums\FiscalYearStatus;
+use App\Enums\JournalEntryKind;
+use App\Enums\JournalEntryStatus;
 use App\Models\AccountingPeriod;
 use App\Models\FiscalYear;
 use App\Models\JournalEntry;
@@ -96,6 +98,68 @@ class PostingService
             }
 
             return $entry->finalizePosting($approver);
+        }, attempts: 3);
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    public function postReversal(
+        JournalEntry $original,
+        User $approver,
+        array $attributes = [],
+    ): JournalEntry {
+        if (! $approver->canApproveJournalEntries()) {
+            throw new AuthorizationException('ثبت سند معکوس فقط برای مدیر و حسابدار مجاز است.');
+        }
+
+        return DB::transaction(function () use ($original, $approver, $attributes): JournalEntry {
+            $lockedOriginal = JournalEntry::query()
+                ->whereKey($original->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($lockedOriginal->status !== JournalEntryStatus::Posted) {
+                throw new DomainException('فقط سند ثبت‌شده قابل معکوس‌سازی است.');
+            }
+
+            $existing = $lockedOriginal->reversal()->lockForUpdate()->first();
+
+            if ($existing) {
+                return $existing->load('lines');
+            }
+
+            $lines = $lockedOriginal->lines()
+                ->orderBy('sort_order')
+                ->get()
+                ->map(fn ($line): array => [
+                    'account_id' => $line->account_id,
+                    'party_id' => $line->party_id,
+                    'debit' => $line->credit,
+                    'credit' => $line->debit,
+                    'description' => $line->description,
+                ])
+                ->all();
+
+            if ($lines === []) {
+                throw new DomainException('سند اصلی برای معکوس‌سازی ردیف ندارد.');
+            }
+
+            $attributes = [
+                ...$attributes,
+                'store_id' => $lockedOriginal->store_id,
+                'branch_id' => $lockedOriginal->branch_id,
+                'fiscal_year_id' => $lockedOriginal->fiscal_year_id,
+                'accounting_period_id' => $lockedOriginal->accounting_period_id,
+                'entry_kind' => JournalEntryKind::Reversal,
+                'entry_date' => $lockedOriginal->entry_date->toDateString(),
+                'reversal_of_id' => $lockedOriginal->id,
+                'source_type' => $lockedOriginal->source_type,
+                'source_id' => $lockedOriginal->source_id,
+                'created_by' => $attributes['created_by'] ?? $approver->id,
+            ];
+
+            return $this->post($attributes, $lines, $approver);
         }, attempts: 3);
     }
 }

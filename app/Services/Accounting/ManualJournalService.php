@@ -559,6 +559,15 @@ class ManualJournalService
             throw new DomainException('تاریخ مانده افتتاحیه باید اولین روز سال مالی باشد.');
         }
 
+        $hasPriorFiscalYear = FiscalYear::query()
+            ->where('store_id', $store->id)
+            ->where('starts_on', '<', $fiscalYear->starts_on)
+            ->exists();
+
+        if ($hasPriorFiscalYear) {
+            throw new DomainException('مانده افتتاحیه فقط برای اولین سال مالی مجاز است؛ مانده سال‌های بعد از دفتر قبلی منتقل می‌شود.');
+        }
+
         $otherOpening = JournalEntry::query()
             ->where('store_id', $store->id)
             ->where('branch_id', $branch->id)

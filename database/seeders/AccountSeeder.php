@@ -188,6 +188,14 @@ class AccountSeeder extends Seeder
                 'normal_balance' => NormalBalance::Debit,
             ],
             [
+                'code' => '4104',
+                'name' => 'درآمد تعدیل موجودی',
+                'parent_code' => '4000',
+                'type' => AccountType::Revenue,
+                'level' => AccountLevel::Subsidiary,
+                'normal_balance' => NormalBalance::Credit,
+            ],
+            [
                 'code' => '5000',
                 'name' => 'هزینه‌ها',
                 'type' => AccountType::Expense,
@@ -237,6 +245,14 @@ class AccountSeeder extends Seeder
             [
                 'code' => '5106',
                 'name' => 'اختلاف قیمت برگشت خرید',
+                'parent_code' => '5000',
+                'type' => AccountType::Expense,
+                'level' => AccountLevel::Subsidiary,
+                'normal_balance' => NormalBalance::Debit,
+            ],
+            [
+                'code' => '5107',
+                'name' => 'کسری و اختلاف موجودی',
                 'parent_code' => '5000',
                 'type' => AccountType::Expense,
                 'level' => AccountLevel::Subsidiary,

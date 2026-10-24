@@ -89,6 +89,7 @@ class InventoryService
         ?int $createdBy = null,
         ?string $reference = null,
         ?string $description = null,
+        ?Model $source = null,
     ): array {
         if ($sourceWarehouseId === $destinationWarehouseId) {
             throw new DomainException('انبار مبدأ و مقصد انتقال نباید یکسان باشند.');
@@ -104,6 +105,7 @@ class InventoryService
             $createdBy,
             $reference,
             $description,
+            $source,
         ): array {
             $out = $this->move(
                 warehouseId: $sourceWarehouseId,
@@ -114,7 +116,7 @@ class InventoryService
                 unitCost: null,
                 movementDate: $movementDate,
                 idempotencyKey: $idempotencyKey.':out',
-                source: null,
+                source: $source,
                 createdBy: $createdBy,
                 reference: $reference,
                 description: $description,
@@ -130,7 +132,7 @@ class InventoryService
                 unitCost: $out->unit_cost,
                 movementDate: $movementDate,
                 idempotencyKey: $idempotencyKey.':in',
-                source: null,
+                source: $source,
                 createdBy: $createdBy,
                 reference: $reference,
                 description: $description,

@@ -5,7 +5,9 @@ namespace App\Services\Accounting;
 use App\Enums\AccountingPeriodStatus;
 use App\Enums\FiscalYearStatus;
 use App\Enums\InvoiceStatus;
+use App\Enums\JournalEntryKind;
 use App\Enums\JournalEntryStatus;
+use App\Enums\StockCountStatus;
 use App\Enums\TreasuryDocumentStatus;
 use App\Models\AccountingPeriod;
 use App\Models\FiscalYear;
@@ -13,6 +15,7 @@ use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\Payment;
 use App\Models\Receipt;
+use App\Models\StockCount;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\Audit\AuditLogService;
@@ -222,21 +225,34 @@ class PeriodClosingService
                 );
             }
 
+            $nextStart = $lockedYear->ends_on->addDay()->toDateString();
+            $successor = FiscalYear::query()
+                ->where('store_id', $lockedStore->id)
+                ->whereDate('starts_on', $nextStart)
+                ->lockForUpdate()
+                ->first();
             $nextYear = null;
 
             if ($lockedYear->is_current) {
-                $nextStart = $lockedYear->ends_on->addDay()->toDateString();
-                $nextYear = FiscalYear::query()
-                    ->where('store_id', $lockedStore->id)
-                    ->whereDate('starts_on', $nextStart)
-                    ->lockForUpdate()
-                    ->first();
-
-                if (! $nextYear || $nextYear->status !== FiscalYearStatus::Open) {
+                if (! $successor || $successor->status !== FiscalYearStatus::Open) {
                     throw new DomainException(
                         'برای بستن سال جاری، سال مالی بعدی باز باید از قبل ایجاد شده باشد.',
                     );
                 }
+
+                $nextYear = $successor;
+            }
+
+            if ($successor && JournalEntry::query()
+                ->where('store_id', $lockedStore->id)
+                ->where('fiscal_year_id', $successor->id)
+                ->where('entry_kind', JournalEntryKind::Opening)
+                ->whereIn('status', [
+                    JournalEntryStatus::Draft,
+                    JournalEntryStatus::Posted,
+                ])
+                ->exists()) {
+                throw new DomainException('سال بعد سند مانده افتتاحیه دستی دارد و مانده‌ها از دفتر سال جاری منتقل می‌شوند.');
             }
 
             $oldValues = [
@@ -413,10 +429,19 @@ class PeriodClosingService
             ->when($period !== null, fn ($query) => $query
                 ->whereDate('payment_date', '>=', $period->starts_on)
                 ->whereDate('payment_date', '<=', $period->ends_on));
+        $stockCountQuery = StockCount::query()
+            ->where('store_id', $store->id)
+            ->where('fiscal_year_id', $fiscalYear->id)
+            ->where('status', StockCountStatus::Draft)
+            ->when(
+                $period !== null,
+                fn ($query) => $query->where('accounting_period_id', $period->id),
+            );
 
         return $journalQuery->count()
             + $invoiceQuery->count()
             + $receiptQuery->count()
-            + $paymentQuery->count();
+            + $paymentQuery->count()
+            + $stockCountQuery->count();
     }
 }

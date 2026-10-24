@@ -23,8 +23,10 @@ return [
         'sales' => '4101',
         'sales_returns' => '4102',
         'sales_discounts' => '4103',
+        'inventory_adjustment_gain' => '4104',
         'cogs' => '5101',
         'purchase_return_difference' => '5106',
+        'inventory_adjustment_loss' => '5107',
         'retained_earnings' => '3102',
     ],
 

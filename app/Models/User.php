@@ -151,6 +151,21 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return $this->role->canViewInventoryCosts();
     }
 
+    public function canManageStockCounts(): bool
+    {
+        return $this->role->canManageStockCounts();
+    }
+
+    public function canPostStockCounts(): bool
+    {
+        return $this->role->canPostStockCounts();
+    }
+
+    public function canTransferInventory(): bool
+    {
+        return $this->role->canTransferInventory();
+    }
+
     public function canManageSales(): bool
     {
         return $this->role->canManageSales();

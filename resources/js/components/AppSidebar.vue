@@ -2,8 +2,10 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import {
     BarChart3,
+    ArrowLeftRight,
     BookOpen,
     CalendarDays,
+    ClipboardCheck,
     CircleDollarSign,
     HandCoins,
     History,
@@ -39,6 +41,8 @@ import { index as fiscalYears } from '@/routes/fiscal-years';
 import { index as parties } from '@/routes/parties';
 import { index as products } from '@/routes/products';
 import { cardex as inventoryCardex } from '@/routes/inventory';
+import { index as inventoryTransfers } from '@/routes/inventory-transfers';
+import { index as stockCounts } from '@/routes/stock-counts';
 import { index as payments } from '@/routes/payments';
 import { index as purchases } from '@/routes/purchases';
 import { index as reports } from '@/routes/reports';
@@ -98,6 +102,16 @@ const mainNavItems = computed<NavItem[]>(() => {
             title: 'کاردکس موجودی',
             href: inventoryCardex(),
             icon: ScrollText,
+        });
+        items.push({
+            title: 'شمارش و تعدیل',
+            href: stockCounts(),
+            icon: ClipboardCheck,
+        });
+        items.push({
+            title: 'انتقال انبار',
+            href: inventoryTransfers(),
+            icon: ArrowLeftRight,
         });
     }
 
