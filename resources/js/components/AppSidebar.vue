@@ -2,24 +2,14 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import {
     BarChart3,
-    ArrowLeftRight,
     BookOpen,
-    CalendarDays,
-    ClipboardCheck,
-    CircleDollarSign,
-    FolderTree,
-    HandCoins,
-    History,
     LayoutGrid,
     Landmark,
     PackageSearch,
-    Printer,
-    ScrollText,
     ShoppingBag,
     ShoppingCart,
     UsersRound,
     UserCog,
-    WalletCards,
 } from '@lucide/vue';
 import { computed } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
@@ -57,11 +47,11 @@ import {
 import { index as journals } from '@/routes/journals';
 import { index as receipts } from '@/routes/receipts';
 import { index as sales } from '@/routes/sales';
-import type { NavItem } from '@/types';
+import type { NavEntry, NavItem } from '@/types';
 
 const user = computed(() => usePage().props.auth.user);
-const mainNavItems = computed<NavItem[]>(() => {
-    const items: NavItem[] = [
+const mainNavItems = computed<NavEntry[]>(() => {
+    const items: NavEntry[] = [
         {
             title: 'داشبورد',
             href: dashboard(),
@@ -75,66 +65,56 @@ const mainNavItems = computed<NavItem[]>(() => {
             href: parties(),
             icon: UsersRound,
         });
-        items.push({
-            title: 'کالا و موجودی',
-            href: products(),
-            icon: PackageSearch,
-        });
-        items.push({
-            title: 'دسته‌بندی کالا',
-            href: productCategories(),
-            icon: FolderTree,
-        });
-        items.push({
-            title: 'خرید و تأمین',
-            href: purchases(),
-            icon: ShoppingBag,
-        });
-        items.push({
-            title: 'گزارش‌های مالی',
-            href: reports(),
-            icon: BarChart3,
-        });
-        items.push({
-            title: 'گزارش‌های عملیاتی',
-            href: operationalReports(),
-            icon: BarChart3,
-        });
-        items.push({
-            title: 'تحلیل کالا و Batch',
-            href: analyticsReport(),
-            icon: BarChart3,
-        });
-        items.push({
-            title: 'سال‌های مالی',
-            href: fiscalYears(),
-            icon: CalendarDays,
-        });
-        items.push({
-            title: 'اسناد دستی',
-            href: journals(),
-            icon: BookOpen,
-        });
+    }
+
+    const inventoryItems: NavItem[] = [];
+
+    if (user.value && ['manager', 'accountant'].includes(user.value.role)) {
+        inventoryItems.push(
+            {
+                title: 'کالا و موجودی',
+                href: products(),
+            },
+            {
+                title: 'دسته‌بندی کالا',
+                href: productCategories(),
+            },
+        );
     }
 
     if (
         user.value &&
         ['manager', 'accountant', 'warehouse'].includes(user.value.role)
     ) {
+        inventoryItems.push(
+            {
+                title: 'کاردکس موجودی',
+                href: inventoryCardex(),
+            },
+            {
+                title: 'شمارش و تعدیل',
+                href: stockCounts(),
+            },
+            {
+                title: 'انتقال انبار',
+                href: inventoryTransfers(),
+            },
+        );
+    }
+
+    if (inventoryItems.length > 0) {
         items.push({
-            title: 'کاردکس موجودی',
-            href: inventoryCardex(),
-            icon: ScrollText,
+            title: 'کالا و انبار',
+            icon: PackageSearch,
+            children: inventoryItems,
         });
+    }
+
+    if (user.value && ['manager', 'accountant'].includes(user.value.role)) {
         items.push({
-            title: 'شمارش و تعدیل',
-            href: stockCounts(),
-            icon: ClipboardCheck,
-        });
-        items.push({
-            title: 'انتقال انبار',
-            href: inventoryTransfers(),
-            icon: ArrowLeftRight,
+            title: 'خرید و تأمین',
+            href: purchases(),
+            icon: ShoppingBag,
         });
     }
 
@@ -150,43 +130,82 @@ const mainNavItems = computed<NavItem[]>(() => {
     }
 
     if (user.value && ['manager', 'accountant'].includes(user.value.role)) {
-        items.push({
-            title: 'دریافت‌ها',
-            href: receipts(),
-            icon: HandCoins,
-        });
-        items.push({
-            title: 'پرداخت‌ها',
-            href: payments(),
-            icon: CircleDollarSign,
-        });
-        items.push({
-            title: 'چک‌ها',
-            href: checks(),
-            icon: WalletCards,
-        });
-        items.push({
-            title: 'حساب‌های خزانه',
-            href: treasuryAccounts(),
-            icon: Landmark,
-        });
+        items.push(
+            {
+                title: 'خزانه‌داری',
+                icon: Landmark,
+                children: [
+                    {
+                        title: 'دریافت‌ها',
+                        href: receipts(),
+                    },
+                    {
+                        title: 'پرداخت‌ها',
+                        href: payments(),
+                    },
+                    {
+                        title: 'چک‌ها',
+                        href: checks(),
+                    },
+                    {
+                        title: 'حساب‌های خزانه',
+                        href: treasuryAccounts(),
+                    },
+                ],
+            },
+            {
+                title: 'حسابداری',
+                icon: BookOpen,
+                children: [
+                    {
+                        title: 'اسناد دستی',
+                        href: journals(),
+                    },
+                    {
+                        title: 'سال‌های مالی',
+                        href: fiscalYears(),
+                    },
+                ],
+            },
+            {
+                title: 'گزارش‌ها',
+                icon: BarChart3,
+                children: [
+                    {
+                        title: 'گزارش‌های مالی',
+                        href: reports(),
+                    },
+                    {
+                        title: 'گزارش‌های عملیاتی',
+                        href: operationalReports(),
+                    },
+                    {
+                        title: 'تحلیل کالا و Batch',
+                        href: analyticsReport(),
+                    },
+                ],
+            },
+        );
     }
 
     if (user.value?.role === 'manager') {
         items.push({
-            title: 'تنظیمات چاپ',
-            href: printSettings(),
-            icon: Printer,
-        });
-        items.push({
-            title: 'کاربران',
-            href: users(),
+            title: 'مدیریت سیستم',
             icon: UserCog,
-        });
-        items.push({
-            title: 'گزارش رویدادها',
-            href: auditLogs(),
-            icon: History,
+            children: [
+                {
+                    title: 'تنظیمات چاپ',
+                    href: printSettings(),
+                },
+                {
+                    title: 'کاربران',
+                    href: users(),
+                },
+                {
+                    title: 'گزارش رویدادها',
+                    href: auditLogs(),
+                },
+            ],
         });
     }
 
@@ -195,7 +214,12 @@ const mainNavItems = computed<NavItem[]>(() => {
 </script>
 
 <template>
-    <Sidebar collapsible="icon" variant="inset" class="print:hidden">
+    <Sidebar
+        side="right"
+        collapsible="icon"
+        variant="inset"
+        class="print:hidden"
+    >
         <SidebarHeader>
             <SidebarMenu>
                 <SidebarMenuItem>

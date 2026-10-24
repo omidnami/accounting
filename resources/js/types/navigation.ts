@@ -12,3 +12,11 @@ export type NavItem = {
     icon?: LucideIcon;
     isActive?: boolean;
 };
+
+export type NavGroup = {
+    title: string;
+    icon?: LucideIcon;
+    children: NavItem[];
+};
+
+export type NavEntry = NavItem | NavGroup;
