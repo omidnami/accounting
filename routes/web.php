@@ -15,7 +15,9 @@ use App\Http\Controllers\InvoiceReturnController;
 use App\Http\Controllers\ManualJournalController;
 use App\Http\Controllers\OperationalReportsController;
 use App\Http\Controllers\PartyController;
+use App\Http\Controllers\ProductCategoryController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\ProductTrackingController;
 use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\PurchaseLookupController;
 use App\Http\Controllers\ReportExportController;
@@ -131,6 +133,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->except(['show', 'destroy']);
     Route::resource('products', ProductController::class)
         ->except(['show', 'destroy']);
+    Route::resource('product-categories', ProductCategoryController::class)
+        ->only(['index', 'store', 'update']);
+    Route::get('products/{product}/tracking', [ProductTrackingController::class, 'index'])
+        ->name('products.tracking');
+    Route::post('products/{product}/tracking/batches', [ProductTrackingController::class, 'storeBatch'])
+        ->name('products.tracking.batches.store');
+    Route::post('products/{product}/tracking/serials', [ProductTrackingController::class, 'storeSerials'])
+        ->name('products.tracking.serials.store');
+    Route::patch('products/{product}/tracking/serials/{serial}/void', [
+        ProductTrackingController::class,
+        'voidSerial',
+    ])->name('products.tracking.serials.void');
     Route::get('sales/lookups/customers', [SalesLookupController::class, 'customers'])
         ->name('sales.lookups.customers');
     Route::get('sales/lookups/products', [SalesLookupController::class, 'products'])

@@ -81,6 +81,7 @@ class StockCountImportService
 
                 $product = Product::query()
                     ->where('is_active', true)
+                    ->whereDoesntHave('variants')
                     ->where(fn ($query) => $query
                         ->where('code', Digits::toLatin($code))
                         ->orWhere('barcode', Digits::toLatin($code)))

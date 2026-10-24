@@ -176,6 +176,10 @@ class InventoryService
             throw new DomainException('کالای انتخاب‌شده غیرفعال است.');
         }
 
+        if ($product->variants()->exists()) {
+            throw new DomainException('کالای والد تنوع موجودی مستقل ندارد؛ یکی از تنوع‌ها را انتخاب کنید.');
+        }
+
         $normalizedQuantity = Decimal::normalize($quantity, Decimal::QUANTITY_SCALE);
         $normalizedMovementDate = CarbonImmutable::parse($movementDate)->toDateString();
 

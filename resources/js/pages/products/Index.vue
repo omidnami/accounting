@@ -12,6 +12,7 @@ import {
     PackagePlus,
     PencilLine,
     Search,
+    ScanLine,
     Warehouse,
 } from '@lucide/vue';
 import { reactive } from 'vue';
@@ -20,6 +21,7 @@ import {
     create as createProduct,
     edit as editProduct,
     index as productsIndex,
+    tracking as productTracking,
 } from '@/routes/products';
 import { cardex as inventoryCardex } from '@/routes/inventory';
 
@@ -30,11 +32,19 @@ type ProductRow = {
     code: string;
     barcode: string | null;
     name: string;
+    category: { id: number; code: string; name: string } | null;
+    variant_color: string | null;
+    variant_size: string | null;
+    variants_count: number;
     unit: string;
     purchase_price: string;
     sale_price: string;
     tax_rate: string;
     reorder_level: string;
+    safety_stock: string;
+    reorder_quantity: string;
+    max_stock: string | null;
+    suggested_order_quantity: string;
     is_active: boolean;
     total_quantity: string;
     average_cost: string;
@@ -63,6 +73,7 @@ type Props = {
         stock_status: StockStatus | null;
         status: 'active' | 'inactive' | null;
         warehouse_id: number | null;
+        category_id: number | null;
     };
     warehouses: Array<{
         id: number;
@@ -77,6 +88,13 @@ type Props = {
         out_of_stock: number;
         inventory_value: string;
     };
+    categories: Array<{
+        id: number;
+        code: string;
+        name: string;
+        is_active: boolean;
+        products_count: number;
+    }>;
 };
 
 const props = defineProps<Props>();
@@ -85,6 +103,7 @@ const filters = reactive({
     stock_status: props.filters.stock_status ?? '',
     status: props.filters.status ?? '',
     warehouse_id: props.filters.warehouse_id?.toString() ?? '',
+    category_id: props.filters.category_id?.toString() ?? '',
 });
 const count = new Intl.NumberFormat('fa-IR');
 const quantity = new Intl.NumberFormat('fa-IR', {
@@ -137,6 +156,7 @@ const applyFilters = () => {
             stock_status: filters.stock_status || undefined,
             status: filters.status || undefined,
             warehouse_id: filters.warehouse_id || undefined,
+            category_id: filters.category_id || undefined,
         },
         {
             preserveState: true,
@@ -151,6 +171,7 @@ const resetFilters = () => {
     filters.stock_status = '';
     filters.status = '';
     filters.warehouse_id = '';
+    filters.category_id = '';
     router.get(
         productsIndex(),
         {},
@@ -287,7 +308,7 @@ defineOptions({
         </section>
 
         <form
-            class="grid gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-sm lg:grid-cols-[minmax(0,1.5fr)_1fr_1fr_1fr_auto]"
+            class="grid gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-sm lg:grid-cols-[minmax(0,1.5fr)_1fr_1fr_1fr_1fr_auto]"
             @submit.prevent="applyFilters"
         >
             <label class="relative block">
@@ -316,6 +337,22 @@ defineOptions({
                     >
                         {{ warehouse.name }}
                         <span v-if="!warehouse.is_active">(غیرفعال)</span>
+                    </option>
+                </select>
+            </label>
+            <label>
+                <span class="sr-only">دسته‌بندی</span>
+                <select
+                    v-model="filters.category_id"
+                    class="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                >
+                    <option value="">همه دسته‌ها</option>
+                    <option
+                        v-for="category in categories"
+                        :key="category.id"
+                        :value="category.id.toString()"
+                    >
+                        {{ category.name }}
                     </option>
                 </select>
             </label>
@@ -404,6 +441,36 @@ defineOptions({
                                     <p class="text-sm font-bold">
                                         {{ product.name }}
                                     </p>
+                                    <div class="mt-1 flex flex-wrap gap-1">
+                                        <span
+                                            v-if="
+                                                product.variant_color ||
+                                                product.variant_size
+                                            "
+                                            class="rounded-full bg-primary/10 px-2 py-0.5 text-[9px] text-primary"
+                                        >
+                                            {{
+                                                [
+                                                    product.variant_color,
+                                                    product.variant_size,
+                                                ]
+                                                    .filter(Boolean)
+                                                    .join(' / ')
+                                            }}
+                                        </span>
+                                        <span
+                                            v-if="product.variants_count"
+                                            class="rounded-full bg-sky-500/10 px-2 py-0.5 text-[9px] text-sky-700"
+                                        >
+                                            {{ product.variants_count }} تنوع
+                                        </span>
+                                        <span
+                                            v-if="product.category"
+                                            class="rounded-full bg-muted px-2 py-0.5 text-[9px] text-muted-foreground"
+                                        >
+                                            {{ product.category.name }}
+                                        </span>
+                                    </div>
                                     <div
                                         class="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground"
                                     >
@@ -462,6 +529,22 @@ defineOptions({
                                             Number(product.reorder_level),
                                         )
                                     }}
+                                    <span
+                                        v-if="
+                                            product.suggested_order_quantity !==
+                                            '0.000'
+                                        "
+                                        class="block text-emerald-700"
+                                    >
+                                        پیشنهاد سفارش:
+                                        {{
+                                            quantity.format(
+                                                Number(
+                                                    product.suggested_order_quantity,
+                                                ),
+                                            )
+                                        }}
+                                    </span>
                                 </p>
                             </td>
                             <td class="px-4 py-4">
@@ -514,6 +597,19 @@ defineOptions({
                                 <div
                                     class="flex items-center justify-end gap-1"
                                 >
+                                    <Button
+                                        as-child
+                                        variant="ghost"
+                                        size="sm"
+                                        class="rounded-lg"
+                                    >
+                                        <Link
+                                            :href="productTracking(product.id)"
+                                        >
+                                            <ScanLine class="size-4" />
+                                            ردیابی
+                                        </Link>
+                                    </Button>
                                     <Button
                                         as-child
                                         variant="ghost"

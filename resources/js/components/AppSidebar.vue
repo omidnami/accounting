@@ -7,6 +7,7 @@ import {
     CalendarDays,
     ClipboardCheck,
     CircleDollarSign,
+    FolderTree,
     HandCoins,
     History,
     LayoutGrid,
@@ -42,6 +43,7 @@ import { edit as printSettings } from '@/routes/print-settings';
 import { index as fiscalYears } from '@/routes/fiscal-years';
 import { index as parties } from '@/routes/parties';
 import { index as products } from '@/routes/products';
+import { index as productCategories } from '@/routes/product-categories';
 import { cardex as inventoryCardex } from '@/routes/inventory';
 import { index as inventoryTransfers } from '@/routes/inventory-transfers';
 import { index as stockCounts } from '@/routes/stock-counts';
@@ -76,6 +78,11 @@ const mainNavItems = computed<NavItem[]>(() => {
             title: 'کالا و موجودی',
             href: products(),
             icon: PackageSearch,
+        });
+        items.push({
+            title: 'دسته‌بندی کالا',
+            href: productCategories(),
+            icon: FolderTree,
         });
         items.push({
             title: 'خرید و تأمین',

@@ -421,7 +421,8 @@ class DashboardService
      *     count: int,
      *     items: array<int, array{
      *         id: int, code: string, name: string, unit: string,
-     *         quantity: string, reorder_level: string
+     *         quantity: string, reorder_level: string,
+     *         suggested_order_quantity: string
      *     }>
      * }
      */
@@ -447,11 +448,40 @@ class DashboardService
             });
         $items = Product::query()
             ->where('is_active', true)
-            ->where('reorder_level', '>', 0)
+            ->whereDoesntHave('variants')
             ->orderBy('name')
-            ->get(['id', 'code', 'name', 'unit', 'reorder_level'])
+            ->get([
+                'id',
+                'code',
+                'name',
+                'unit',
+                'reorder_level',
+                'safety_stock',
+                'reorder_quantity',
+                'max_stock',
+                'stock_policy',
+            ])
             ->map(function (Product $product) use ($balances): array {
                 $quantity = $balances->get($product->id, '0.000');
+                $threshold = $product->stock_policy->value === 'min_max'
+                    && Decimal::compare($product->safety_stock, $product->reorder_level, 3) > 0
+                        ? $product->safety_stock
+                        : $product->reorder_level;
+                $threshold = Decimal::normalize($threshold, 3);
+                $suggested = $product->reorder_quantity;
+
+                if ($product->max_stock !== null) {
+                    $upToMaximum = Decimal::subtract(
+                        $product->max_stock,
+                        $quantity,
+                        Decimal::QUANTITY_SCALE,
+                    );
+                    $suggested = Decimal::compare($upToMaximum, '0', 3) > 0
+                        && Decimal::compare($upToMaximum, $suggested, 3) > 0
+                            ? $upToMaximum
+                            : $suggested;
+                }
+                $suggested = Decimal::normalize($suggested, 3);
 
                 return [
                     'id' => $product->id,
@@ -459,7 +489,8 @@ class DashboardService
                     'name' => $product->name,
                     'unit' => $product->unit,
                     'quantity' => $quantity,
-                    'reorder_level' => $product->reorder_level,
+                    'reorder_level' => $threshold,
+                    'suggested_order_quantity' => $suggested,
                 ];
             })
             ->filter(fn (array $row): bool => Decimal::compare(

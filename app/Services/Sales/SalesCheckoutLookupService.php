@@ -72,6 +72,7 @@ class SalesCheckoutLookupService
             ->select('products.*')
             ->selectSub($stock, 'stock_quantity')
             ->where('is_active', true)
+            ->whereDoesntHave('variants')
             ->when($search !== '', function (Builder $query) use ($search): void {
                 $term = $this->likeTerm($search);
                 $query->where(function (Builder $query) use ($term): void {
@@ -90,6 +91,8 @@ class SalesCheckoutLookupService
                 'code' => $product->code,
                 'barcode' => $product->barcode,
                 'name' => $product->name,
+                'variant_color' => $product->variant_color,
+                'variant_size' => $product->variant_size,
                 'unit' => $product->unit,
                 'sale_price' => $product->sale_price,
                 'tax_rate' => $product->tax_rate,

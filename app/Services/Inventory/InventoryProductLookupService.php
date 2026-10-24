@@ -36,6 +36,7 @@ class InventoryProductLookupService
         return Product::query()
             ->select('products.*')
             ->selectSub($stock, 'stock_quantity')
+            ->whereDoesntHave('variants')
             ->when(! $includeInactive, fn (Builder $query) => $query->where('is_active', true))
             ->when($search !== '', function (Builder $query) use ($search): void {
                 $term = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
@@ -53,6 +54,8 @@ class InventoryProductLookupService
                 'code' => $product->code,
                 'barcode' => $product->barcode,
                 'name' => $product->name,
+                'variant_color' => $product->variant_color,
+                'variant_size' => $product->variant_size,
                 'unit' => $product->unit,
                 'is_active' => $product->is_active,
                 'stock_quantity' => Decimal::normalize(

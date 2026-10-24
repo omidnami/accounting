@@ -7,6 +7,8 @@ type ProductChoice = {
     code: string;
     barcode: string | null;
     name: string;
+    variant_color: string | null;
+    variant_size: string | null;
     unit: string;
     stock_quantity: string;
     is_active: boolean;
@@ -214,6 +216,16 @@ onBeforeUnmount(() => {
                     <span class="min-w-0">
                         <span class="block truncate text-xs font-semibold">
                             {{ product.name }}
+                        </span>
+                        <span
+                            v-if="product.variant_color || product.variant_size"
+                            class="mt-1 block text-[9px] font-semibold text-primary"
+                        >
+                            {{
+                                [product.variant_color, product.variant_size]
+                                    .filter(Boolean)
+                                    .join(' / ')
+                            }}
                         </span>
                         <span
                             class="mt-1 block text-[9px] text-muted-foreground"

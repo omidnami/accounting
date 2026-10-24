@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Enums\ProductStockPolicy;
 use App\Models\Product;
 use App\Support\Digits;
 use Illuminate\Foundation\Http\FormRequest;
@@ -23,6 +24,15 @@ class ProductRequest extends FormRequest
         $product = $this->route('product');
 
         return [
+            'category_id' => ['nullable', 'integer', 'exists:product_categories,id'],
+            'parent_product_id' => [
+                'nullable',
+                'integer',
+                'exists:products,id',
+                Rule::notIn([$product?->id]),
+            ],
+            'variant_color' => ['nullable', 'string', 'max:80'],
+            'variant_size' => ['nullable', 'string', 'max:80'],
             'code' => [
                 'required',
                 'string',
@@ -43,6 +53,10 @@ class ProductRequest extends FormRequest
             'sale_price' => ['required', 'numeric', 'min:0', 'max:9999999999999999', 'decimal:0,2'],
             'tax_rate' => ['required', 'numeric', 'between:0,100', 'decimal:0,2'],
             'reorder_level' => ['required', 'numeric', 'min:0', 'max:999999999999', 'decimal:0,3'],
+            'safety_stock' => ['required', 'numeric', 'min:0', 'max:999999999999', 'decimal:0,3'],
+            'reorder_quantity' => ['required', 'numeric', 'min:0', 'max:999999999999', 'decimal:0,3'],
+            'max_stock' => ['nullable', 'numeric', 'min:0', 'max:999999999999', 'decimal:0,3', 'gte:reorder_level'],
+            'stock_policy' => ['required', Rule::enum(ProductStockPolicy::class)],
             'description' => ['nullable', 'string', 'max:2000'],
             'is_active' => ['required', 'boolean'],
             'version' => $product === null ? ['nullable', 'integer', 'min:0'] : ['required', 'integer', 'min:0'],
@@ -51,9 +65,19 @@ class ProductRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $this->mergeIfMissing([
+            'category_id' => null,
+            'parent_product_id' => null,
+            'variant_color' => null,
+            'variant_size' => null,
+            'safety_stock' => '0',
+            'reorder_quantity' => '0',
+            'max_stock' => null,
+            'stock_policy' => 'simple',
+        ]);
         $normalized = [];
 
-        foreach (['code', 'barcode', 'name', 'unit', 'description'] as $field) {
+        foreach (['code', 'barcode', 'name', 'unit', 'description', 'variant_color', 'variant_size'] as $field) {
             if (! $this->has($field)) {
                 continue;
             }
@@ -66,7 +90,7 @@ class ProductRequest extends FormRequest
             }
         }
 
-        foreach (['purchase_price', 'sale_price', 'tax_rate', 'reorder_level'] as $field) {
+        foreach (['purchase_price', 'sale_price', 'tax_rate', 'reorder_level', 'safety_stock', 'reorder_quantity', 'max_stock'] as $field) {
             if (! $this->has($field)) {
                 continue;
             }
@@ -90,6 +114,8 @@ class ProductRequest extends FormRequest
             'barcode.regex' => 'بارکد فقط می‌تواند شامل حروف، اعداد، خط تیره و زیرخط باشد.',
             'tax_rate.between' => 'نرخ مالیات باید بین صفر تا صد باشد.',
             'reorder_level.decimal' => 'نقطه سفارش حداکثر می‌تواند سه رقم اعشار داشته باشد.',
+            'max_stock.gte' => 'حداکثر موجودی نمی‌تواند کمتر از نقطه سفارش باشد.',
+            'parent_product_id.not_in' => 'کالا نمی‌تواند والد خودش باشد.',
         ];
     }
 }

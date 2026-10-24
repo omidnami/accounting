@@ -66,6 +66,7 @@ const props = defineProps<{
                 unit: string;
                 quantity: string;
                 reorder_level: string;
+                suggested_order_quantity: string;
             }>;
         };
         recent_activity: Array<{
@@ -649,6 +650,17 @@ defineOptions({
                         <p class="mt-1 text-muted-foreground">
                             حداقل
                             {{ quantity.format(Number(item.reorder_level)) }}
+                        </p>
+                        <p
+                            v-if="Number(item.suggested_order_quantity) > 0"
+                            class="mt-1 font-semibold text-emerald-700"
+                        >
+                            پیشنهاد سفارش
+                            {{
+                                quantity.format(
+                                    Number(item.suggested_order_quantity),
+                                )
+                            }}
                         </p>
                     </div>
                 </div>

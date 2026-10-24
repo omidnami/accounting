@@ -273,7 +273,11 @@ class InventoryTransferService
             $productId = (int) ($item['product_id'] ?? 0);
             $quantity = Decimal::normalize($item['quantity'] ?? 0, 3);
 
-            if (! Product::query()->whereKey($productId)->where('is_active', true)->exists()) {
+            if (! Product::query()
+                ->whereKey($productId)
+                ->where('is_active', true)
+                ->whereDoesntHave('variants')
+                ->exists()) {
                 throw new DomainException('کالای انتقال باید فعال و معتبر باشد.');
             }
 
