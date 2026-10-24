@@ -1,18 +1,22 @@
 import '@fontsource-variable/vazirmatn';
 import { createInertiaApp } from '@inertiajs/vue3';
 import { initializeTheme } from '@/composables/useAppearance';
+import { initializePosExitGuard } from '@/composables/usePosExitGuard';
 import AppLayout from '@/layouts/AppLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { initializeFlashToast } from '@/lib/flashToast';
 
 const appName = import.meta.env.VITE_APP_NAME || 'حساب‌یار';
+initializePosExitGuard();
 
 void createInertiaApp({
     title: (title) => (title ? `${title} - ${appName}` : appName),
     layout: (name) => {
         switch (true) {
             case name === 'Welcome':
+                return null;
+            case name.startsWith('pos/'):
                 return null;
             case name.startsWith('auth/'):
                 return AuthLayout;

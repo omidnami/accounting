@@ -11,6 +11,7 @@ use App\Models\AccountingPeriod;
 use App\Models\FiscalYear;
 use App\Models\JournalEntry;
 use App\Models\User;
+use App\Services\Pos\PosPostingContext;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
@@ -58,22 +59,22 @@ class PostingService
      * @param  array<string, mixed>  $attributes
      * @param  array<int, array<string, mixed>>  $lines
      */
-    public function post(array $attributes, array $lines, User $approver): JournalEntry
+    public function post(array $attributes, array $lines, User $approver, ?PosPostingContext $posContext = null): JournalEntry
     {
-        return DB::transaction(function () use ($attributes, $lines, $approver): JournalEntry {
+        return DB::transaction(function () use ($attributes, $lines, $approver, $posContext): JournalEntry {
             $entry = $this->createDraft($attributes, $lines);
 
-            return $this->approveAndPost($entry, $approver);
+            return $this->approveAndPost($entry, $approver, $posContext);
         });
     }
 
-    public function approveAndPost(JournalEntry $entry, User $approver): JournalEntry
+    public function approveAndPost(JournalEntry $entry, User $approver, ?PosPostingContext $posContext = null): JournalEntry
     {
-        if (! $approver->canApproveJournalEntries()) {
+        if (! $approver->canApproveJournalEntries() && ! $posContext?->allows($entry, $approver)) {
             throw new AuthorizationException('تأیید و ثبت سند فقط برای مدیر و حسابدار مجاز است.');
         }
 
-        return DB::transaction(function () use ($entry, $approver): JournalEntry {
+        return DB::transaction(function () use ($entry, $approver, $posContext): JournalEntry {
             $entry->loadMissing(['accountingPeriod', 'fiscalYear']);
 
             if (! $entry->accountingPeriod || ! $entry->fiscalYear) {
@@ -97,7 +98,7 @@ class PostingService
                 throw new DomainException('ثبت سند در سال مالی غیرفعال مجاز نیست.');
             }
 
-            return $entry->finalizePosting($approver);
+            return $entry->finalizePosting($approver, $posContext);
         }, attempts: 3);
     }
 

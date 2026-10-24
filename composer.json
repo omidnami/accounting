@@ -67,6 +67,7 @@
             "npm run check",
             "npm run types:check",
             "npm run test:calendar",
+            "npm run test:pos",
             "@test"
         ],
         "types:check": [

@@ -5,8 +5,7 @@ import {
     ArrowUp,
     FileText,
     PackagePlus,
-    Plus,
-    ShoppingCart,
+    Monitor,
     UserPlus,
     Wallet,
 } from '@lucide/vue';
@@ -15,7 +14,8 @@ import { create as createParty } from '@/routes/parties';
 import { create as createPayment } from '@/routes/payments';
 import { create as createProduct } from '@/routes/products';
 import { create as createReceipt } from '@/routes/receipts';
-import { create as createSale, index as sales } from '@/routes/sales';
+import { index as sales } from '@/routes/sales';
+import { index as pos } from '@/routes/pos';
 import type { NavItem, User } from '@/types';
 
 export type QuickAction = NavItem & {
@@ -26,10 +26,9 @@ export type QuickAction = NavItem & {
 
 const allQuickActions: QuickAction[] = [
     {
-        title: 'فاکتور',
-        href: createSale(),
-        icon: ShoppingCart,
-        badgeIcon: Plus,
+        title: 'صندوق فروش',
+        href: pos(),
+        icon: Monitor,
         iconClass:
             'bg-primary/10 text-primary dark:bg-primary/15 dark:text-primary',
         roles: ['manager', 'accountant', 'cashier'],

@@ -60,7 +60,7 @@ class SalesCheckoutLookupService
      *     track_batches: bool, track_serials: bool
      * }>
      */
-    public function products(int $storeId, int $warehouseId, string $search): array
+    public function products(int $storeId, int $warehouseId, string $search, ?int $categoryId = null): array
     {
         $search = trim(Digits::toLatin($search));
         $stock = InventoryBalance::query()
@@ -74,6 +74,7 @@ class SalesCheckoutLookupService
             ->selectSub($stock, 'stock_quantity')
             ->where('is_active', true)
             ->whereDoesntHave('variants')
+            ->when($categoryId !== null, fn (Builder $query) => $query->where('category_id', $categoryId))
             ->when($search !== '', function (Builder $query) use ($search): void {
                 $term = $this->likeTerm($search);
                 $query->where(function (Builder $query) use ($term): void {

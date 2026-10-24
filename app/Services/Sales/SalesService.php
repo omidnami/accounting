@@ -17,6 +17,7 @@ use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
 use App\Services\Inventory\InventoryService;
+use App\Services\Pos\PosPostingContext;
 use App\Support\Decimal;
 use DomainException;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -192,9 +193,9 @@ class SalesService
         }
     }
 
-    public function confirm(Invoice $invoice, int $warehouseId, User $approver): Invoice
+    public function confirm(Invoice $invoice, int $warehouseId, User $approver, ?PosPostingContext $posContext = null): Invoice
     {
-        return DB::transaction(function () use ($invoice, $warehouseId, $approver): Invoice {
+        return DB::transaction(function () use ($invoice, $warehouseId, $approver, $posContext): Invoice {
             $locked = Invoice::query()
                 ->whereKey($invoice->getKey())
                 ->lockForUpdate()
@@ -217,13 +218,15 @@ class SalesService
                 throw new DomainException('مشتری فاکتور معتبر و متعلق به فروشگاه نیست.');
             }
 
+            $creditIncrease = Decimal::subtract($locked->total, $posContext?->immediateAmount($locked) ?? '0.00', 2);
             $projectedCredit = Decimal::add(
                 $this->receivables->customerOutstanding($customer, true),
-                $locked->total,
+                $creditIncrease,
                 Decimal::MONEY_SCALE,
             );
 
-            if (Decimal::compare($projectedCredit, $customer->credit_limit, Decimal::MONEY_SCALE) > 0) {
+            if (($posContext === null || Decimal::isPositive($creditIncrease))
+                && Decimal::compare($projectedCredit, $customer->credit_limit, Decimal::MONEY_SCALE) > 0) {
                 throw new DomainException('سقف اعتبار مشتری برای این فاکتور کافی نیست.');
             }
 
@@ -321,6 +324,7 @@ class SalesService
                 ],
                 $lines,
                 $approver,
+                $posContext,
             );
 
             $locked->confirmDocument();

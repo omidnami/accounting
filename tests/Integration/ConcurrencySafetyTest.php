@@ -6,6 +6,7 @@ use App\Enums\InvoiceType;
 use App\Enums\PaymentMethod;
 use App\Enums\UserRole;
 use App\Models\Customer;
+use App\Models\InventoryBalance;
 use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\Party;
@@ -14,9 +15,12 @@ use App\Models\Product;
 use App\Models\Receipt;
 use App\Models\Store;
 use App\Models\Supplier;
+use App\Models\TreasuryAccount;
 use App\Models\User;
 use App\Services\Inventory\InventoryService;
 use App\Services\Invoices\InvoiceDeletionService;
+use App\Services\Pos\PosCheckoutService;
+use App\Services\Pos\PosSessionService;
 use App\Services\Purchasing\PurchaseReturnService;
 use App\Services\Purchasing\PurchaseService;
 use App\Services\Purchasing\SupplierPaymentService;
@@ -443,4 +447,50 @@ it('cannot delete an invoice after a concurrent confirmation commits', function 
             ->where('source_type', Invoice::class)
             ->where('source_id', $invoice->id)
             ->count())->toBe(1);
+});
+
+it('posts a retried POS checkout only once under repeatable read', function () {
+    $context = concurrencyIntegrationContext();
+    $cash = TreasuryAccount::query()->where('branch_id', $context['branch']->id)->where('type', 'cash')->firstOrFail();
+    $session = app(PosSessionService::class)->open(
+        $context['branch'], $context['manager'], $context['warehouse']->id, $cash->id, null, '0',
+    );
+    $payload = [
+        'submission_token' => fake()->uuid(), 'session_id' => $session->id,
+        'customer_id' => $context['customer']->id,
+        'items' => [['product_id' => $context['product']->id, 'quantity' => '1', 'unit_price' => '100', 'tax_rate' => '5']],
+        'tenders' => [['method' => 'cash', 'amount' => '105', 'confirmed' => true]],
+    ];
+    $results = runConcurrentScenario(fn () => app(PosCheckoutService::class)
+        ->checkout($session, $context['manager'], $payload)->id);
+    expect($results['a']['ok'])->toBeTrue()->and($results['b']['ok'])->toBeTrue()
+        ->and($results['a']['value'])->toBe($results['b']['value'])
+        ->and(Invoice::query()->count())->toBe(1)->and(Receipt::query()->count())->toBe(1)
+        ->and(InventoryBalance::query()->where('product_id', $context['product']->id)->value('quantity'))->toBe('99.000');
+});
+
+it('counts a just-committed POS sale when closing a shift from an older snapshot', function () {
+    $context = concurrencyIntegrationContext();
+    $cash = TreasuryAccount::query()->where('branch_id', $context['branch']->id)->where('type', 'cash')->firstOrFail();
+    $session = app(PosSessionService::class)->open(
+        $context['branch'], $context['manager'], $context['warehouse']->id, $cash->id, null, '0',
+    );
+    $payload = [
+        'submission_token' => fake()->uuid(), 'session_id' => $session->id,
+        'customer_id' => $context['customer']->id,
+        'items' => [['product_id' => $context['product']->id, 'quantity' => '1', 'unit_price' => '100', 'tax_rate' => '5']],
+        'tenders' => [['method' => 'cash', 'amount' => '105', 'confirmed' => true]],
+    ];
+    $results = runConcurrentScenario(function (string $slot) use ($context, $session, $payload): string {
+        if ($slot === 'a') {
+            app(PosCheckoutService::class)->checkout($session, $context['manager'], $payload);
+        } else {
+            app(PosSessionService::class)->close($session, $context['manager'], '105', '');
+        }
+
+        return $slot;
+    });
+    expect($results['a']['ok'])->toBeTrue()->and($results['b']['ok'])->toBeTrue()
+        ->and($session->fresh()->expected_cash)->toBe('105.00')
+        ->and($session->fresh()->cash_difference)->toBe('0.00');
 });

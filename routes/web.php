@@ -17,6 +17,7 @@ use App\Http\Controllers\InvoiceReturnController;
 use App\Http\Controllers\ManualJournalController;
 use App\Http\Controllers\OperationalReportsController;
 use App\Http\Controllers\PartyController;
+use App\Http\Controllers\PosController;
 use App\Http\Controllers\PrintJobController;
 use App\Http\Controllers\ProductCategoryController;
 use App\Http\Controllers\ProductController;
@@ -35,6 +36,14 @@ use Illuminate\Support\Facades\Route;
 Route::inertia('/', 'Welcome')->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('pos', [PosController::class, 'index'])->name('pos.index');
+    Route::get('pos/products', [PosController::class, 'products'])->name('pos.products');
+    Route::get('pos/activity', [PosController::class, 'activity'])->name('pos.activity');
+    Route::get('pos/attempt', [PosController::class, 'attempt'])->name('pos.attempt');
+    Route::post('pos/sessions', [PosController::class, 'open'])->name('pos.open');
+    Route::post('pos/sessions/{session}/close', [PosController::class, 'close'])->name('pos.close');
+    Route::post('pos/checkout', [PosController::class, 'checkout'])->name('pos.checkout');
+    Route::post('pos/checks/{tender}/register', [PosController::class, 'resolve'])->name('pos.checks.register');
     Route::get('dashboard', DashboardController::class)->name('dashboard');
     Route::get('reports', FinancialReportsController::class)->name('reports.index');
     Route::get('reports/operations', OperationalReportsController::class)

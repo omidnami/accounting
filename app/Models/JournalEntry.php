@@ -6,6 +6,7 @@ use App\Enums\AccountingPeriodStatus;
 use App\Enums\FiscalYearStatus;
 use App\Enums\JournalEntryKind;
 use App\Enums\JournalEntryStatus;
+use App\Services\Pos\PosPostingContext;
 use App\Support\Decimal;
 use Carbon\CarbonImmutable;
 use DomainException;
@@ -199,9 +200,9 @@ class JournalEntry extends Model
         }
     }
 
-    public function finalizePosting(User $approver): self
+    public function finalizePosting(User $approver, ?PosPostingContext $posContext = null): self
     {
-        if (! $approver->canApproveJournalEntries()) {
+        if (! $approver->canApproveJournalEntries() && ! $posContext?->allows($this, $approver)) {
             throw new AuthorizationException('تأیید و ثبت سند فقط برای مدیر و حسابدار مجاز است.');
         }
 
