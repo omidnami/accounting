@@ -66,7 +66,7 @@ const handleLogout = () => {
             <button
                 type="button"
                 dir="rtl"
-                class="flex h-10 shrink-0 items-center gap-2 bg-transparent px-1 text-right focus-visible:outline-none"
+                class="flex h-10 max-w-40 shrink-0 items-center gap-2 bg-transparent px-1 text-right focus-visible:outline-none sm:max-w-56 [&>div]:min-w-0"
             >
                 <UserInfo :user="user" />
                 <ChevronDown class="size-3.5 text-muted-foreground" />

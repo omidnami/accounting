@@ -2,6 +2,7 @@ import { usePage } from '@inertiajs/vue3';
 import {
     BarChart3,
     BookOpen,
+    BriefcaseBusiness,
     LayoutGrid,
     Landmark,
     PackageSearch,
@@ -36,10 +37,13 @@ import { index as treasuryAccounts } from '@/routes/treasury-accounts';
 import { index as users } from '@/routes/users';
 import type { NavEntry, NavItem } from '@/types';
 
-export function useMainNavigation() {
+export function useMainNavigation(
+    options: { groupAccountOperations?: boolean } = {},
+) {
     const user = computed(() => usePage().props.auth.user);
 
     return computed<NavEntry[]>(() => {
+        const accountOperations: NavItem[] = [];
         const items: NavEntry[] = [
             {
                 title: 'داشبورد',
@@ -48,8 +52,13 @@ export function useMainNavigation() {
             },
         ];
 
+        function addAccountOperation(item: NavItem): void {
+            items.push(item);
+            accountOperations.push(item);
+        }
+
         if (user.value && ['manager', 'accountant'].includes(user.value.role)) {
-            items.push({
+            addAccountOperation({
                 title: 'طرف‌حساب‌ها',
                 href: parties(),
                 icon: UsersRound,
@@ -100,7 +109,7 @@ export function useMainNavigation() {
         }
 
         if (user.value && ['manager', 'accountant'].includes(user.value.role)) {
-            items.push({
+            addAccountOperation({
                 title: 'خرید و تأمین',
                 href: purchases(),
                 icon: ShoppingBag,
@@ -111,7 +120,7 @@ export function useMainNavigation() {
             user.value &&
             ['manager', 'accountant', 'cashier'].includes(user.value.role)
         ) {
-            items.push({
+            addAccountOperation({
                 title: 'فروش و صندوق',
                 href: sales(),
                 icon: ShoppingCart,
@@ -196,6 +205,22 @@ export function useMainNavigation() {
                     },
                 ],
             });
+        }
+
+        if (options.groupAccountOperations && accountOperations.length > 0) {
+            const isAccountOperation = (item: NavEntry): boolean =>
+                accountOperations.some((operation) => operation === item);
+            const firstOperationIndex = items.findIndex(isAccountOperation);
+            const groupedItems = items.filter(
+                (item) => !isAccountOperation(item),
+            );
+            groupedItems.splice(firstOperationIndex, 0, {
+                title: 'عملیات حساب',
+                icon: BriefcaseBusiness,
+                children: accountOperations,
+            });
+
+            return groupedItems;
         }
 
         return items;

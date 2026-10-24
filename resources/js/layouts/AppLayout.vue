@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import AppSidebarLayout from '@/layouts/app/AppSidebarLayout.vue';
-import AppTopbarLayout from '@/layouts/app/AppTopbarLayout.vue';
+import AppWorkspaceLayout from '@/layouts/app/AppWorkspaceLayout.vue';
 import { useMenuLayout } from '@/composables/useMenuLayout';
 import type { BreadcrumbItem } from '@/types';
 
@@ -12,10 +11,7 @@ const { menuLayout } = useMenuLayout();
 </script>
 
 <template>
-    <AppTopbarLayout v-if="menuLayout === 'topbar'" :breadcrumbs="breadcrumbs">
+    <AppWorkspaceLayout :menu-layout="menuLayout" :breadcrumbs="breadcrumbs">
         <slot />
-    </AppTopbarLayout>
-    <AppSidebarLayout v-else :breadcrumbs="breadcrumbs">
-        <slot />
-    </AppSidebarLayout>
+    </AppWorkspaceLayout>
 </template>

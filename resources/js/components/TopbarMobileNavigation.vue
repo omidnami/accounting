@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
 import { ChevronDown, Menu } from '@lucide/vue';
+import { ref } from 'vue';
 import AppLogo from '@/components/AppLogo.vue';
 import {
     Collapsible,
@@ -24,6 +25,7 @@ defineProps<{
 }>();
 
 const { isCurrentOrParentUrl, isCurrentUrl } = useCurrentUrl();
+const open = ref(false);
 
 function normalizedPath(href: NavItem['href']): string {
     return toUrl(href).replace(/\/+$/, '') || '/';
@@ -57,7 +59,7 @@ function isGroupActive(group: NavGroup): boolean {
 </script>
 
 <template>
-    <Sheet>
+    <Sheet v-model:open="open">
         <SheetTrigger as-child>
             <button
                 type="button"
@@ -110,6 +112,7 @@ function isGroupActive(group: NavGroup): boolean {
                                     v-for="child in item.children"
                                     :key="child.title"
                                     :href="child.href"
+                                    @click="open = false"
                                     class="block rounded-lg px-3 py-2 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
                                     :class="{
                                         'bg-primary/10 text-primary':
@@ -128,6 +131,7 @@ function isGroupActive(group: NavGroup): boolean {
                     <Link
                         v-else
                         :href="item.href"
+                        @click="open = false"
                         class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
                         :class="{
                             'bg-primary/10 text-primary': isNavItemActive(item),

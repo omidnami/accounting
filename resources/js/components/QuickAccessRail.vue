@@ -7,7 +7,7 @@ const quickActions = useQuickActions();
 
 <template>
     <aside
-        class="sticky top-16 hidden h-[calc(100svh-4rem)] w-21 shrink-0 flex-col overflow-y-auto border-e border-border/70 bg-card/35 py-3 lg:flex"
+        class="sticky top-16 hidden h-[calc(100svh-4rem)] w-21 shrink-0 flex-col self-start overflow-y-auto border-e border-border/70 bg-card/35 py-3 lg:flex print:hidden"
         aria-label="دسترسی سریع"
     >
         <div class="mb-2 px-2 text-center">

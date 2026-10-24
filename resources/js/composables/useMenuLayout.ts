@@ -9,7 +9,13 @@ function readStoredMenuLayout(): MenuLayout {
         return 'sidebar';
     }
 
-    const stored = window.localStorage.getItem(STORAGE_KEY);
+    let stored: string | null = null;
+
+    try {
+        stored = window.localStorage.getItem(STORAGE_KEY);
+    } catch {
+        // Storage may be unavailable; keep the cookie or in-memory preference.
+    }
 
     if (stored === 'topbar' || stored === 'sidebar') {
         return stored;
@@ -37,7 +43,11 @@ export function useMenuLayout() {
             return;
         }
 
-        window.localStorage.setItem(STORAGE_KEY, layout);
+        try {
+            window.localStorage.setItem(STORAGE_KEY, layout);
+        } catch {
+            // Changing the layout should still work when storage is blocked.
+        }
         document.cookie = `${COOKIE_NAME}=${layout};path=/;max-age=31536000;SameSite=Lax`;
         document.documentElement.dataset.menuLayout = layout;
     }

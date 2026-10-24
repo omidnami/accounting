@@ -17,7 +17,7 @@ withDefaults(
     },
 );
 
-const mainNavItems = useMainNavigation();
+const mainNavItems = useMainNavigation({ groupAccountOperations: true });
 </script>
 
 <template>
@@ -26,7 +26,10 @@ const mainNavItems = useMainNavigation();
     >
         <TopbarMobileNavigation :items="mainNavItems" />
 
-        <Link :href="dashboard()" class="flex shrink-0 items-center">
+        <Link
+            :href="dashboard()"
+            class="flex min-w-0 flex-1 items-center lg:flex-none lg:shrink-0 [&>div:last-child]:min-w-0"
+        >
             <AppLogo />
         </Link>
 
