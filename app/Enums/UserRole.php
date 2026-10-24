@@ -100,6 +100,11 @@ enum UserRole: string
         return $this === self::Manager;
     }
 
+    public function canManageStoreSettings(): bool
+    {
+        return $this === self::Manager;
+    }
+
     public function canCloseAccountingPeriods(): bool
     {
         return in_array($this, [self::Manager, self::Accountant], true);

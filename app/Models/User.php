@@ -211,6 +211,11 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
         return $this->role->canManageFiscalYears();
     }
 
+    public function canManageStoreSettings(): bool
+    {
+        return $this->role->canManageStoreSettings();
+    }
+
     public function canCloseAccountingPeriods(): bool
     {
         return $this->role->canCloseAccountingPeriods();

@@ -17,6 +17,7 @@ import { computed } from 'vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
+import SalesReceipt from '@/pages/sales/SalesReceipt.vue';
 import {
     confirm as confirmSaleRoute,
     create as createSale,
@@ -50,6 +51,10 @@ type Props = {
         national_id: string | null;
         tax_id: string | null;
         address: string | null;
+    };
+    print_settings: {
+        paper_width_mm: 58 | 80;
+        copies: number;
     };
     returns: Array<{
         id: number;
@@ -145,6 +150,12 @@ const statusMeta: Record<SaleStatus, { label: string; className: string }> = {
     },
 };
 const isDraft = computed(() => props.invoice.status === 'draft');
+const printCopies = computed(() =>
+    Array.from(
+        { length: Math.max(1, Math.min(5, props.print_settings.copies)) },
+        (_, index) => index + 1,
+    ),
+);
 const canReceive = computed(
     () => props.can_receive && !isDraft.value && Number(props.outstanding) > 0,
 );
@@ -190,8 +201,19 @@ defineOptions({
 <template>
     <Head :title="`فاکتور ${invoice.invoice_number}`" />
 
+    <div class="hidden print:block">
+        <SalesReceipt
+            v-for="copy in printCopies"
+            :key="copy"
+            :seller="seller"
+            :invoice="invoice"
+            :paper-width="print_settings.paper_width_mm"
+            :status-label="statusMeta[invoice.status].label"
+        />
+    </div>
+
     <div
-        class="print-invoice mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8"
+        class="mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8 print:hidden"
     >
         <section
             class="relative overflow-hidden rounded-3xl border border-primary/10 bg-[linear-gradient(135deg,hsl(var(--card))_0%,hsl(var(--primary)/.09)_100%)] p-6 sm:p-8 print:border-none print:bg-white"

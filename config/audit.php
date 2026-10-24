@@ -2,6 +2,7 @@
 
 use App\Models\Account;
 use App\Models\AccountingPeriod;
+use App\Models\Branch;
 use App\Models\Check;
 use App\Models\FiscalYear;
 use App\Models\InventoryMovement;
@@ -24,6 +25,7 @@ return [
     'models' => [
         Account::class,
         AccountingPeriod::class,
+        Branch::class,
         Check::class,
         FiscalYear::class,
         InventoryMovement::class,

@@ -22,6 +22,8 @@ class Branch extends Model
         'address',
         'is_default',
         'is_active',
+        'thermal_paper_width',
+        'thermal_copies',
     ];
 
     protected function casts(): array
@@ -29,6 +31,8 @@ class Branch extends Model
         return [
             'is_default' => 'boolean',
             'is_active' => 'boolean',
+            'thermal_paper_width' => 'integer',
+            'thermal_copies' => 'integer',
         ];
     }
 

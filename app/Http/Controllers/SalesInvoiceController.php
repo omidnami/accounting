@@ -10,6 +10,7 @@ use App\Models\Branch;
 use App\Models\FiscalYear;
 use App\Models\Invoice;
 use App\Models\Store;
+use App\Services\Printing\PrintSettingsService;
 use App\Services\Sales\CustomerReceivableService;
 use App\Services\Sales\SalesReturnService;
 use App\Services\Sales\SalesService;
@@ -173,6 +174,7 @@ class SalesInvoiceController extends Controller
         Invoice $invoice,
         CustomerReceivableService $receivables,
         SalesReturnService $returns,
+        PrintSettingsService $printSettings,
     ): Response {
         abort_unless($request->user()?->canManageSales(), 403);
         $this->assertSalesInvoice($invoice);
@@ -201,6 +203,7 @@ class SalesInvoiceController extends Controller
                 'tax_id' => $store->tax_id,
                 'address' => $store->address,
             ],
+            'print_settings' => $printSettings->forBranch($invoice->branch),
             'returns' => $invoice->childInvoices->map(fn (Invoice $return): array => [
                 'id' => $return->id,
                 'invoice_number' => $return->invoice_number,

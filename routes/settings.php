@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\PrintSettingsController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
 use Illuminate\Auth\Middleware\RequirePassword;
@@ -22,6 +23,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::put('settings/password', [SecurityController::class, 'update'])
         ->middleware('throttle:6,1')
         ->name('user-password.update');
+
+    Route::get('settings/print', [PrintSettingsController::class, 'edit'])
+        ->name('print-settings.edit');
+    Route::patch('settings/print', [PrintSettingsController::class, 'update'])
+        ->name('print-settings.update');
 
     Route::inertia('settings/appearance', 'settings/Appearance')->name('appearance.edit');
 });

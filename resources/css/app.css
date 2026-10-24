@@ -84,7 +84,12 @@
         margin: 10mm;
     }
 
-    @page thermal-receipt {
+    @page thermal-58 {
+        size: 58mm auto;
+        margin: 2mm;
+    }
+
+    @page thermal-80 {
         size: 80mm auto;
         margin: 3mm;
     }
@@ -112,7 +117,7 @@
     }
 
     .print-report,
-    .print-invoice {
+    .thermal-receipt {
         color-scheme: light;
         background: white !important;
         color: #111827 !important;
@@ -168,56 +173,43 @@
         box-shadow: none !important;
     }
 
-    .print-invoice {
-        page: thermal-receipt;
+    .thermal-receipt {
+        page: thermal-80;
         width: 74mm !important;
         max-width: 74mm !important;
         margin: 0 auto !important;
         padding: 0 !important;
         color: black !important;
         font-size: 9pt;
+        break-after: page;
+        print-color-adjust: exact;
     }
 
-    .print-invoice .thermal-hide {
-        display: none !important;
+    .thermal-receipt[data-paper-width='58'] {
+        page: thermal-58;
+        width: 52mm !important;
+        max-width: 52mm !important;
+        font-size: 8pt;
     }
 
-    .print-invoice .thermal-only {
-        display: block !important;
+    .thermal-receipt:last-child {
+        break-after: auto;
     }
 
-    .print-invoice .grid {
-        display: block !important;
-    }
-
-    .print-invoice .overflow-x-auto {
-        overflow: visible !important;
-    }
-
-    .print-invoice section {
-        margin: 0 0 3mm !important;
-        border: 1px solid #bbb !important;
-        border-radius: 2mm !important;
-        padding: 2mm !important;
-        box-shadow: none !important;
-    }
-
-    .print-invoice table {
+    .thermal-receipt table {
         width: 100% !important;
         min-width: 0 !important;
         table-layout: fixed;
-        font-size: 7.5pt;
+        font-size: 8pt;
     }
 
-    .print-invoice th,
-    .print-invoice td {
-        padding: 1.2mm !important;
+    .thermal-receipt th,
+    .thermal-receipt td {
         word-break: break-word;
     }
 
-    .print-invoice .thermal-total {
-        break-inside: avoid;
-        font-size: 10pt;
+    .thermal-receipt[data-paper-width='58'] table {
+        font-size: 7pt;
     }
 }
 

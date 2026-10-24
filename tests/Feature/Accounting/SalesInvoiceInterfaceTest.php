@@ -259,6 +259,10 @@ it('lets cashiers create drafts but requires a manager to confirm them', functio
         ->assertRedirect();
 
     $invoice = Invoice::query()->firstOrFail();
+    $context['branch']->update([
+        'thermal_paper_width' => 58,
+        'thermal_copies' => 3,
+    ]);
 
     $this->actingAs($context['user'])
         ->get(route('sales.show', $invoice))
@@ -267,6 +271,8 @@ it('lets cashiers create drafts but requires a manager to confirm them', functio
             ->component('sales/Show')
             ->where('seller.name', $context['store']->legal_name ?: $context['store']->name)
             ->where('seller.branch_name', $context['branch']->name)
+            ->where('print_settings.paper_width_mm', 58)
+            ->where('print_settings.copies', 3)
             ->where('can_confirm', false));
 
     $this->actingAs($context['user'])

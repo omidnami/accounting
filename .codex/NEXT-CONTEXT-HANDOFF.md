@@ -16,12 +16,13 @@
 وضعیت Git:
 
 - شاخه: `main`
-- آخرین کامیت محلی و remote: `2a6dc62`
-- پیام: `feat(reports): add CSV exports and print layouts`
-- CI همان commit در GitHub موفق است؛ اصلاحات تکمیلی منطق CSV، فیلتر کاردکس،
-  سربرگ چاپ و هویت فروشنده اکنون در worktree آماده commit هستند.
-- migration محلی `2026_10_24_000001_create_stock_counts_and_inventory_transfers`
-  هنوز Pending است؛ پس از commit باید `php artisan migrate` اجرا شود.
+- آخرین کامیت محلی و remote: `164e48b`
+- پیام: `fix(reports): preserve export filters and report totals`
+- CI همین commit در GitHub موفق است.
+- تنظیمات چاپ هر شعبه، چاپ ۵۸/۸۰ میلی‌متر، چند نسخه و قرارداد Print Agent
+  اکنون در worktree آماده commit هستند.
+- migration `2026_10_24_000002_add_print_settings_to_branches` هنوز Pending
+  است؛ پس از commit باید `php artisan migrate` اجرا شود.
 - commit تغییرات بر عهده
   کاربر است.
 
@@ -40,7 +41,7 @@
 
 ## وضعیت کیفیت فعلی
 
-- Pest: `288 tests`, `2218 assertions`
+- Pest: `291 tests`, `2254 assertions`
 - Node calendar: `3 tests`
 - PHPStan: صفر خطا
 - Pint: موفق
@@ -142,6 +143,8 @@ npm run build
 - خروجی کاردکس تمام فیلترهای فعال همان صفحه، شامل نوع گردش و جهت، را حفظ می‌کند.
 - CSV جمع‌ها و مانده‌های کلیدی را دارد و سود دارای COGS ناقص را خالی می‌گذارد.
 - سربرگ چاپ زمینه گزارش و صفحه‌بندی را نشان می‌دهد و فاکتور هویت فروشنده را دارد.
+- تنظیمات چاپ به تفکیک شعبه، عرض کاغذ ۵۸/۸۰ و یک تا پنج نسخه دارد.
+- فاکتور چاپی از نمای مستقل و تکرار کنترل‌شده نسخه‌ها استفاده می‌کند.
 - بازه یک‌طرفه گزارش‌ها اعتبارسنجی می‌شود و خطای 500 نمی‌دهد.
 - حساب و شعبه غیرفعال برای گزارش تاریخی قابل انتخاب‌اند.
 - ردیف فروش بدون COGS snapshot، سود را «نامشخص» نشان می‌دهد.
@@ -221,6 +224,7 @@ npm run build
 - `/reports/export/operations`
 - `/inventory/cardex/export`
 - `/audit-logs/export`
+- `/settings/print`
 - `/settings/profile`
 - `/settings/security`
 
@@ -254,6 +258,7 @@ npm run build
 - `phase-15d`: شمارش، تعدیل و انتقال انبار
 - `phase-15e`: دفتر معین، صورتحساب، Aging و گزارش‌های فروش
 - `phase-15f`: خروجی CSV، چاپ گزارش و چاپ حرارتی فاکتور
+- `phase-15f2`: تنظیمات چاپ هر شعبه و قرارداد Print Agent
 
 ## فایل‌های کلیدی
 
@@ -270,6 +275,7 @@ npm run build
 - `app/Services/Reporting/ReportExportService.php`
 - `app/Services/Reporting/CsvExportService.php`
 - `app/Services/Reporting/AuditLogReportService.php`
+- `app/Services/Printing/PrintSettingsService.php`
 - `app/Services/Accounting/AccountingPeriodLockService.php`
 - `app/Services/Inventory/InventoryService.php`
 - `app/Services/Purchasing/PurchaseService.php`
@@ -314,6 +320,7 @@ npm run build
 - `InventoryTransferController`
 - `OperationalReportsController`
 - `ReportExportController`
+- `Settings\PrintSettingsController`
 
 ### UI
 
@@ -338,6 +345,8 @@ npm run build
 - `resources/js/pages/reports/Operations.vue`
 - `resources/js/pages/audit/Index.vue`
 - `resources/js/pages/sales/Show.vue`
+- `resources/js/pages/sales/SalesReceipt.vue`
+- `resources/js/pages/settings/Print.vue`
 
 ## قواعد اجباری ادامه کار
 
@@ -374,6 +383,8 @@ npm run build
 - کاردکس موجودی پیاده‌سازی شده است؛ فیلتر کالای آن فعلاً select ساده است و
   برای کاتالوگ بسیار بزرگ به combobox جست‌وجوشونده نیاز دارد.
 - بررسی دستی چاپ A4 و چاپگر حرارتی ۸۰ میلی‌متری انجام نشده است.
+- چاپ بی‌صدا و Print Agent پیاده نشده‌اند؛ فقط قرارداد امنیتی و معماری آن‌ها
+  در `.codex/print-agent-architecture.md` آماده شده است.
 - Audit Log و مدیریت کاربران/نقش‌ها وجود دارد؛ غیرفعال‌سازی کاربر، retention و
   alerting برای Audit هنوز پیاده‌سازی نشده‌اند.
 - سند افتتاحیه تکراری وجود ندارد؛ انتقال مانده ترازنامه با دفتر پیوسته انجام
@@ -387,7 +398,7 @@ npm run build
 
 ## گام بعدی پیشنهادی
 
-1. بررسی دستی خروجی‌ها و commit فاز 15F توسط کاربر
+1. بررسی دستی چاپ ۵۸/۸۰ و commit فاز 15F2 توسط کاربر
 2. Phase 15G: آماده‌سازی production
 3. پیش از production، pagination/cache گزارش‌های تجمیعی را در صورت حجم بالا
    اضافه کنید.
@@ -407,6 +418,7 @@ npm run build
 جزئیات Phase 15D در `.codex/phase-15d-stock-count-transfer.md` آمده است.
 جزئیات Phase 15E در `.codex/phase-15e-operational-reports.md` آمده است.
 جزئیات Phase 15F در `.codex/phase-15f-report-exports-print.md` آمده است.
+قرارداد Print Agent در `.codex/print-agent-architecture.md` آمده است.
 نقشه مراحل تکمیل در `.codex/phase-15-roadmap.md` آمده است.
 
 ## الگوی درخواست از Agent بعدی
