@@ -11,6 +11,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Party;
 use App\Models\Product;
+use App\Models\ProductBatch;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Models\Warehouse;
@@ -194,6 +195,9 @@ class PurchaseService
                         'tax_amount' => $taxAmount,
                         'line_total' => $lineTotal,
                         'sort_order' => $index + 1,
+                        'purchase_batch_number' => $item['batch_number'] ?? null,
+                        'purchase_expiry_date' => $item['expiry_date'] ?? null,
+                        'purchase_serial_numbers' => $item['serial_numbers'] ?? null,
                     ]);
 
                     $subtotal = Decimal::add($subtotal, $gross, Decimal::MONEY_SCALE);
@@ -329,6 +333,7 @@ class PurchaseService
             );
 
             foreach ($lockedInvoice->items->sortBy('product_id')->values() as $item) {
+                $product = Product::query()->findOrFail($item->product_id);
                 $baseItemCost = Decimal::subtract(
                     $item->line_total,
                     $item->tax_amount,
@@ -345,6 +350,43 @@ class PurchaseService
                     Decimal::UNIT_COST_SCALE,
                 );
 
+                $batch = null;
+
+                if ($product->track_batches) {
+                    if (! $item->purchase_batch_number) {
+                        throw new DomainException("برای کالای {$product->name} شماره Batch الزامی است.");
+                    }
+
+                    $batch = ProductBatch::query()->firstOrCreate(
+                        [
+                            'product_id' => $product->id,
+                            'batch_number' => trim((string) $item->purchase_batch_number),
+                        ],
+                        [
+                            'production_date' => null,
+                            'expiry_date' => $item->purchase_expiry_date,
+                        ],
+                    );
+
+                    if ($batch->expiry_date !== null
+                        && $item->purchase_expiry_date !== null
+                        && ! $batch->expiry_date->equalTo($item->purchase_expiry_date)) {
+                        throw new DomainException("تاریخ انقضای Batch {$batch->batch_number} با فاکتور سازگار نیست.");
+                    }
+                } elseif ($item->purchase_batch_number !== null) {
+                    throw new DomainException("برای کالای {$product->name} کنترل Batch فعال نیست.");
+                }
+
+                $serialNumbers = $item->purchase_serial_numbers ?? [];
+
+                if ($product->track_serials) {
+                    if (count($serialNumbers) !== (int) round((float) $item->quantity)) {
+                        throw new DomainException("تعداد سریال‌های {$product->name} با مقدار خرید برابر نیست.");
+                    }
+                } elseif ($serialNumbers !== []) {
+                    throw new DomainException("برای کالای {$product->name} کنترل سریال فعال نیست.");
+                }
+
                 $this->inventory->receive(
                     warehouseId: $warehouseId,
                     productId: $item->product_id,
@@ -358,6 +400,8 @@ class PurchaseService
                     reference: $lockedInvoice->invoice_number,
                     description: 'ورود انبار از فاکتور خرید',
                     exactTotalCost: $itemCost,
+                    productBatchId: $batch?->id,
+                    serialNumbers: $serialNumbers,
                 );
 
                 $inventoryTotal = Decimal::add($inventoryTotal, $itemCost, Decimal::MONEY_SCALE);
@@ -435,6 +479,9 @@ class PurchaseService
                 'tax_rate' => isset($item['tax_rate'])
                     ? Decimal::normalize($item['tax_rate'], Decimal::MONEY_SCALE)
                     : null,
+                'batch_number' => $item['batch_number'] ?? null,
+                'expiry_date' => $item['expiry_date'] ?? null,
+                'serial_numbers' => $item['serial_numbers'] ?? [],
             ])
             ->values()
             ->all();

@@ -46,6 +46,8 @@ type ProductDetail = {
     reorder_quantity: string;
     max_stock: string | null;
     stock_policy: 'simple' | 'min_max';
+    track_batches: boolean;
+    track_serials: boolean;
     description: string | null;
     is_active: boolean;
     version: number;
@@ -119,6 +121,8 @@ const form = useForm({
     reorder_quantity: props.product?.reorder_quantity ?? '0',
     max_stock: props.product?.max_stock ?? '',
     stock_policy: props.product?.stock_policy ?? ('simple' as const),
+    track_batches: props.product?.track_batches ?? false,
+    track_serials: props.product?.track_serials ?? false,
     description: props.product?.description ?? '',
     is_active: props.product?.is_active ?? true,
     version: props.product?.version ?? 0,
@@ -519,6 +523,18 @@ defineOptions({
                             </select>
                             <InputError :message="form.errors.stock_policy" />
                         </div>
+                        <label
+                            class="flex items-center gap-2 rounded-xl border p-3 text-xs"
+                        >
+                            <Checkbox v-model="form.track_batches" />
+                            کنترل موجودی بر اساس Batch
+                        </label>
+                        <label
+                            class="flex items-center gap-2 rounded-xl border p-3 text-xs"
+                        >
+                            <Checkbox v-model="form.track_serials" />
+                            کنترل موجودی و فروش بر اساس شماره سریال
+                        </label>
                         <div class="grid gap-2 sm:col-span-2">
                             <Label for="description">توضیحات</Label>
                             <textarea

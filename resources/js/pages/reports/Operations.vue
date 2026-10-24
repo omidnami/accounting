@@ -177,10 +177,11 @@ const applyFilters = () => {
         { preserveState: true, preserveScroll: true, replace: true },
     );
 };
-const exportHref = (report: string) =>
+const exportHref = (report: string, format: 'csv' | 'xlsx' | 'pdf' = 'csv') =>
     exportOperations({
         query: {
             report,
+            format,
             from: props.filters.from,
             to: props.filters.to,
             party_id: props.filters.party_id ?? undefined,
@@ -278,6 +279,42 @@ defineOptions({
                 </template>
                 <Button type="button" class="rounded-xl" @click="printReport">
                     <Printer class="size-4" /> چاپ / PDF
+                </Button>
+                <Button as-child variant="outline" class="rounded-xl">
+                    <a
+                        :href="
+                            exportHref(
+                                activeTab === 'aging'
+                                    ? agingSide === 'receivable'
+                                        ? 'aging_receivable'
+                                        : 'aging_payable'
+                                    : activeTab === 'sales'
+                                      ? 'sales_daily'
+                                      : 'statement',
+                                'xlsx',
+                            )
+                        "
+                    >
+                        <Download class="size-4" /> XLSX
+                    </a>
+                </Button>
+                <Button as-child variant="outline" class="rounded-xl">
+                    <a
+                        :href="
+                            exportHref(
+                                activeTab === 'aging'
+                                    ? agingSide === 'receivable'
+                                        ? 'aging_receivable'
+                                        : 'aging_payable'
+                                    : activeTab === 'sales'
+                                      ? 'sales_daily'
+                                      : 'statement',
+                                'pdf',
+                            )
+                        "
+                    >
+                        <Download class="size-4" /> PDF سرور
+                    </a>
                 </Button>
             </div>
         </section>

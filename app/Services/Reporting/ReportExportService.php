@@ -13,7 +13,7 @@ use App\Models\Warehouse;
 use App\Services\Inventory\InventoryCardexReportService;
 use App\Support\Decimal;
 use Illuminate\Support\LazyCollection;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 class ReportExportService
 {
@@ -27,6 +27,8 @@ class ReportExportService
         private readonly AgingReportService $aging,
         private readonly SalesOperationsReportService $sales,
         private readonly InventoryCardexReportService $cardex,
+        private readonly NativeXlsxExportService $xlsx,
+        private readonly NativePdfExportService $pdf,
     ) {}
 
     public function financial(
@@ -36,7 +38,8 @@ class ReportExportService
         string $to,
         ?int $branchId,
         ?int $accountId,
-    ): StreamedResponse {
+        string $format = 'csv',
+    ): Response {
         if ($report === 'trial') {
             $data = $this->trialBalance->report($store->id, $from, $to, $branchId);
             $rows = $data['rows']->map(fn (array $row): array => [
@@ -76,7 +79,7 @@ class ReportExportService
                 '',
             ]);
 
-            return $this->csv->download('trial-balance-'.$from.'-'.$to.'.csv', [
+            return $this->download($format, 'trial-balance-'.$from.'-'.$to, 'تراز آزمایشی', [
                 'کد حساب', 'حساب', 'نوع', 'سطح',
                 'مانده اول بدهکار', 'مانده اول بستانکار',
                 'گردش بدهکار', 'گردش بستانکار',
@@ -96,7 +99,7 @@ class ReportExportService
                     ['نتیجه', '', 'سود خالص دوره', $data['net_profit']],
                 ]);
 
-            return $this->csv->download('income-statement-'.$from.'-'.$to.'.csv', [
+            return $this->download($format, 'income-statement-'.$from.'-'.$to, 'سود و زیان', [
                 'نوع', 'کد حساب', 'حساب', 'مبلغ',
             ], $rows);
         }
@@ -117,7 +120,7 @@ class ReportExportService
                     ['کنترل', '', 'وضعیت تراز', $data['balanced'] ? 'متوازن' : 'نامتوازن'],
                 ]);
 
-            return $this->csv->download('balance-sheet-'.$to.'.csv', [
+            return $this->download($format, 'balance-sheet-'.$to, 'ترازنامه', [
                 'نوع', 'کد حساب', 'حساب', 'مبلغ',
             ], $rows);
         }
@@ -137,7 +140,7 @@ class ReportExportService
                 yield ['', 'جمع کل', '', '', '', $debit, $credit, ''];
             });
 
-            return $this->csv->download('journal-'.$from.'-'.$to.'.csv', [
+            return $this->download($format, 'journal-'.$from.'-'.$to, 'دفتر روزنامه', [
                 'تاریخ', 'شماره سند', 'شرح سند', 'کد حساب', 'حساب', 'بدهکار', 'بستانکار', 'شرح ردیف',
             ], $rows);
         }
@@ -183,7 +186,7 @@ class ReportExportService
             $data['closing_balance'],
         ]);
 
-        return $this->csv->download('account-ledger-'.$account->code.'-'.$from.'-'.$to.'.csv', [
+        return $this->download($format, 'account-ledger-'.$account->code.'-'.$from.'-'.$to, 'دفتر معین', [
             'تاریخ', 'شماره سند', 'شرح', 'کد حساب', 'حساب', 'بدهکار', 'بستانکار', 'مانده',
         ], $rows);
     }
@@ -195,7 +198,8 @@ class ReportExportService
         string $to,
         ?int $branchId,
         ?int $partyId,
-    ): StreamedResponse {
+        string $format = 'csv',
+    ): Response {
         if ($report === 'statement') {
             $party = Party::query()
                 ->where('store_id', $store->id)
@@ -234,7 +238,7 @@ class ReportExportService
                 $data['closing_balance'],
             ]);
 
-            return $this->csv->download('statement-'.$party->code.'-'.$from.'-'.$to.'.csv', [
+            return $this->download($format, 'statement-'.$party->code.'-'.$from.'-'.$to, 'صورتحساب طرف‌حساب', [
                 'تاریخ', 'شماره سند', 'شرح', 'کد حساب', 'حساب', 'بدهکار', 'بستانکار', 'مانده',
             ], $rows);
         }
@@ -256,7 +260,7 @@ class ReportExportService
             ]);
             $rows->push(['جمع کل', '', '', '', '', $data['total'], '', '']);
 
-            return $this->csv->download(($isReceivable ? 'receivables' : 'payables').'-aging-'.$to.'.csv', [
+            return $this->download($format, ($isReceivable ? 'receivables' : 'payables').'-aging-'.$to, 'Aging مطالبات و بدهی‌ها', [
                 'طرف‌حساب', 'کد طرف‌حساب', 'فاکتور', 'تاریخ', 'سررسید', 'مانده', 'روز تأخیر', 'بازه',
             ], $rows);
         }
@@ -281,7 +285,7 @@ class ReportExportService
                 $data['summary']['cogs_complete'] ? 'بله' : 'خیر',
             ]);
 
-            return $this->csv->download('sales-daily-'.$from.'-'.$to.'.csv', [
+            return $this->download($format, 'sales-daily-'.$from.'-'.$to, 'فروش روزانه', [
                 'تاریخ', 'مقدار', 'فروش خالص', 'COGS', 'سود ناخالص', 'COGS کامل',
             ], $rows);
         }
@@ -309,7 +313,7 @@ class ReportExportService
             $data['summary']['cogs_complete'] ? 'بله' : 'خیر',
         ]);
 
-        return $this->csv->download('sales-products-'.$from.'-'.$to.'.csv', [
+        return $this->download($format, 'sales-products-'.$from.'-'.$to, 'سود کالا', [
             'کد کالا', 'کالا', 'واحد', 'مقدار', 'فروش خالص', 'COGS', 'سود ناخالص', 'حاشیه سود', 'COGS کامل',
         ], $rows);
     }
@@ -323,7 +327,8 @@ class ReportExportService
         ?InventoryMovementType $movementType,
         ?InventoryDirection $direction,
         bool $includeFinancials,
-    ): StreamedResponse {
+        string $format = 'csv',
+    ): Response {
         $product = Product::query()->findOrFail($productId);
         $warehouse = Warehouse::query()
             ->whereKey($warehouseId)
@@ -386,10 +391,30 @@ class ReportExportService
             } while ($page <= $data['movements']->lastPage());
         });
 
-        return $this->csv->download(
-            'cardex-'.$product->code.'-'.$warehouse->code.'-'.$from.'-'.$to.'.csv',
+        return $this->download(
+            $format,
+            'cardex-'.$product->code.'-'.$warehouse->code.'-'.$from.'-'.$to,
+            'کاردکس موجودی',
             $headers,
             $rows,
         );
+    }
+
+    /**
+     * @param  array<int, string>  $headers
+     * @param  iterable<int, array<int, string|int|float|null>>  $rows
+     */
+    private function download(
+        string $format,
+        string $basename,
+        string $title,
+        array $headers,
+        iterable $rows,
+    ): Response {
+        return match ($format) {
+            'xlsx' => $this->xlsx->download($basename, $title, $headers, $rows),
+            'pdf' => $this->pdf->download($basename, $title, $headers, $rows),
+            default => $this->csv->download($basename.'.csv', $headers, $rows),
+        };
     }
 }

@@ -43,6 +43,8 @@ type ProductOption = {
     purchase_price: string;
     tax_rate: string;
     stock_quantity: string;
+    track_batches: boolean;
+    track_serials: boolean;
 };
 type Line = {
     row_id: string;
@@ -55,6 +57,11 @@ type Line = {
     unit_price: string;
     discount_amount: string;
     tax_rate: string;
+    track_batches: boolean;
+    track_serials: boolean;
+    batch_number: string;
+    expiry_date: string;
+    serial_numbers_text: string;
 };
 type AdditionalCost = {
     description: string;
@@ -246,6 +253,11 @@ const addProduct = (product: ProductOption) => {
         unit_price: product.purchase_price,
         discount_amount: '0',
         tax_rate: product.tax_rate,
+        track_batches: product.track_batches,
+        track_serials: product.track_serials,
+        batch_number: '',
+        expiry_date: '',
+        serial_numbers_text: '',
     });
     productSearch.value = '';
     products.value = [];
@@ -279,6 +291,12 @@ const submit = () => {
             unit_price: normalizeNumber(line.unit_price),
             discount_amount: normalizeNumber(line.discount_amount || '0'),
             tax_rate: normalizeNumber(line.tax_rate || '0'),
+            batch_number: line.batch_number || undefined,
+            expiry_date: line.expiry_date || undefined,
+            serial_numbers: line.serial_numbers_text
+                .split(/[\r\n,]+/)
+                .map((serial) => serial.trim())
+                .filter(Boolean),
         })),
         additional_costs: data.additional_costs
             .filter((cost) => cost.description.trim() || cost.amount)
@@ -621,6 +639,65 @@ defineOptions({
                                     >جمع:
                                     {{ money.format(lineTotal(line)) }}</span
                                 >
+                            </div>
+                            <div
+                                v-if="line.track_batches || line.track_serials"
+                                class="mt-3 grid gap-3 border-t border-dashed pt-3 sm:grid-cols-2"
+                            >
+                                <div
+                                    v-if="line.track_batches"
+                                    class="grid gap-1.5"
+                                >
+                                    <Label class="text-[10px]"
+                                        >شماره Batch *</Label
+                                    >
+                                    <Input
+                                        v-model="line.batch_number"
+                                        class="h-10"
+                                    />
+                                    <InputError
+                                        :message="
+                                            lineError(index, 'batch_number')
+                                        "
+                                    />
+                                </div>
+                                <div
+                                    v-if="line.track_batches"
+                                    class="grid gap-1.5"
+                                >
+                                    <Label class="text-[10px]"
+                                        >تاریخ انقضا</Label
+                                    >
+                                    <JalaliDatePicker
+                                        v-model="line.expiry_date"
+                                        placeholder="بدون انقضا"
+                                    />
+                                    <InputError
+                                        :message="
+                                            lineError(index, 'expiry_date')
+                                        "
+                                    />
+                                </div>
+                                <div
+                                    v-if="line.track_serials"
+                                    class="grid gap-1.5 sm:col-span-2"
+                                >
+                                    <Label class="text-[10px]">
+                                        شماره سریال‌ها؛ هر مورد در یک خط *
+                                    </Label>
+                                    <textarea
+                                        v-model="line.serial_numbers_text"
+                                        rows="3"
+                                        dir="ltr"
+                                        class="w-full rounded-xl border bg-background px-3 py-2 text-left font-mono text-xs"
+                                        placeholder="SN-001&#10;SN-002"
+                                    />
+                                    <InputError
+                                        :message="
+                                            lineError(index, 'serial_numbers')
+                                        "
+                                    />
+                                </div>
                             </div>
                         </article>
                     </div>

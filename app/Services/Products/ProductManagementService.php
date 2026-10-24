@@ -65,6 +65,30 @@ class ProductManagementService
             unset($data['parent_product_id'], $data['version']);
             $previousPurchase = Decimal::normalize($locked->purchase_price, 2);
             $previousSale = Decimal::normalize($locked->sale_price, 2);
+
+            if ($locked->track_batches !== (bool) ($data['track_batches'] ?? false)
+                || $locked->track_serials !== (bool) ($data['track_serials'] ?? false)) {
+                $hasStock = $locked->inventoryBalances()->where('quantity', '>', 0)->exists()
+                    || $locked->inventoryMovements()->exists();
+                $hasTracking = $locked->batches()->exists() || $locked->serials()->exists();
+
+                if ((! $locked->track_batches && (bool) ($data['track_batches'] ?? false)
+                    || ! $locked->track_serials && (bool) ($data['track_serials'] ?? false))
+                    && $hasStock) {
+                    throw new DomainException(
+                        'فعال‌سازی ردیابی برای کالای دارای سابقهٔ موجودی مجاز نیست.',
+                    );
+                }
+
+                if (($locked->track_batches && ! (bool) ($data['track_batches'] ?? false)
+                    || $locked->track_serials && ! (bool) ($data['track_serials'] ?? false))
+                    && $hasTracking) {
+                    throw new DomainException(
+                        'غیرفعال‌سازی ردیابی برای کالای دارای Batch یا سریال مجاز نیست.',
+                    );
+                }
+            }
+
             $locked->update([
                 ...$data,
                 'version' => (int) $locked->version + 1,

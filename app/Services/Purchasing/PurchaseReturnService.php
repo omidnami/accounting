@@ -6,10 +6,13 @@ use App\Enums\DocumentType;
 use App\Enums\InventoryMovementType;
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
+use App\Enums\ProductSerialStatus;
 use App\Models\AccountingPeriod;
 use App\Models\InventoryMovement;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
+use App\Models\Product;
+use App\Models\ProductSerial;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\Accounting\AccountingPeriodLockService;
@@ -561,6 +564,12 @@ class PurchaseReturnService
                     'line_total' => $lineTotal,
                 ])->save();
 
+                $product = Product::query()->findOrFail($item->product_id);
+                $trace = $this->traceForPurchaseReturn(
+                    $original,
+                    $product,
+                    Decimal::normalize($item->quantity, Decimal::QUANTITY_SCALE),
+                );
                 $movement = $this->inventory->issue(
                     warehouseId: $warehouseId,
                     productId: $item->product_id,
@@ -572,6 +581,8 @@ class PurchaseReturnService
                     createdBy: $approver->id,
                     reference: $return->invoice_number,
                     description: 'خروج انبار برای برگشت خرید',
+                    serialIds: $trace['serial_ids'],
+                    batchAllocations: $trace['batch_allocations'],
                 );
 
                 $inventoryCost = Decimal::add($inventoryCost, $movement->total_cost, Decimal::MONEY_SCALE);
@@ -659,6 +670,114 @@ class PurchaseReturnService
 
             return $return->refresh()->load(['items', 'parentInvoice']);
         });
+    }
+
+    /**
+     * @return array{
+     *     serial_ids: array<int, int>,
+     *     batch_allocations: array<int, array{product_batch_id: int, quantity: string}>
+     * }
+     */
+    private function traceForPurchaseReturn(
+        Invoice $original,
+        Product $product,
+        string $returnQuantity,
+    ): array {
+        $purchaseMovement = InventoryMovement::query()
+            ->where('source_type', $original->getMorphClass())
+            ->where('source_id', $original->id)
+            ->where('product_id', $product->id)
+            ->where('direction', 'in')
+            ->where('movement_type', InventoryMovementType::Purchase)
+            ->with(['batchAssignments.batch', 'serialAssignments.serial'])
+            ->lockForUpdate()
+            ->first();
+
+        if (! $purchaseMovement) {
+            throw new DomainException('حرکت انبار خرید برای ردیابی برگشت پیدا نشد.');
+        }
+
+        $serialIds = [];
+
+        if ($product->track_serials) {
+            $serialIds = $purchaseMovement->serialAssignments
+                ->map(fn ($assignment): ?ProductSerial => $assignment->serial)
+                ->filter(
+                    fn (?ProductSerial $serial): bool => $serial?->status === ProductSerialStatus::Available,
+                )
+                ->take((int) round((float) $returnQuantity))
+                ->pluck('id')
+                ->map(fn ($id): int => (int) $id)
+                ->values()
+                ->all();
+        }
+
+        if (! $product->track_batches) {
+            return ['serial_ids' => $serialIds, 'batch_allocations' => []];
+        }
+
+        $returnedByBatch = [];
+        $returnedInvoices = Invoice::query()
+            ->where('parent_invoice_id', $original->id)
+            ->where('type', InvoiceType::PurchaseReturn)
+            ->where('status', InvoiceStatus::Confirmed)
+            ->pluck('id');
+
+        if ($returnedInvoices->isNotEmpty()) {
+            $previousMovements = InventoryMovement::query()
+                ->where('source_type', Invoice::class)
+                ->whereIn('source_id', $returnedInvoices)
+                ->where('product_id', $product->id)
+                ->where('direction', 'out')
+                ->with('batchAssignments')
+                ->get();
+
+            foreach ($previousMovements as $previousMovement) {
+                foreach ($previousMovement->batchAssignments as $assignment) {
+                    $returnedByBatch[$assignment->product_batch_id] = Decimal::add(
+                        $returnedByBatch[$assignment->product_batch_id] ?? '0.000',
+                        $assignment->quantity,
+                        3,
+                    );
+                }
+            }
+        }
+
+        $remaining = Decimal::normalize($returnQuantity, 3);
+        $allocations = [];
+
+        foreach ($purchaseMovement->batchAssignments
+            ->sortBy(fn ($assignment): string => $assignment->batch?->expiry_date?->toDateString() ?? '9999-12-31')
+            ->values() as $assignment) {
+            if (! Decimal::isPositive($remaining)) {
+                break;
+            }
+
+            $available = Decimal::subtract(
+                $assignment->quantity,
+                $returnedByBatch[$assignment->product_batch_id] ?? '0.000',
+                3,
+            );
+
+            if (! Decimal::isPositive($available)) {
+                continue;
+            }
+
+            $take = Decimal::compare($available, $remaining, 3) >= 0
+                ? $remaining
+                : $available;
+            $allocations[] = [
+                'product_batch_id' => (int) $assignment->product_batch_id,
+                'quantity' => $take,
+            ];
+            $remaining = Decimal::subtract($remaining, $take, 3);
+        }
+
+        if (Decimal::isPositive($remaining)) {
+            throw new DomainException('مقدار Batch قابل برگشت برای این ردیف کافی نیست.');
+        }
+
+        return ['serial_ids' => $serialIds, 'batch_allocations' => $allocations];
     }
 
     private function assertMatchingIdempotentReturn(Invoice $existing, string $requestHash): void

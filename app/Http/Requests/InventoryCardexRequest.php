@@ -48,6 +48,7 @@ class InventoryCardexRequest extends FormRequest
             'movement_type' => ['nullable', Rule::enum(InventoryMovementType::class)],
             'direction' => ['nullable', Rule::enum(InventoryDirection::class)],
             'page' => ['nullable', 'integer', 'min:1'],
+            'format' => ['nullable', Rule::in(['csv', 'xlsx', 'pdf'])],
         ];
     }
 

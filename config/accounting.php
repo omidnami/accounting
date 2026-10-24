@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'pdf_renderer_binary' => env('PDF_RENDERER_BINARY', '/usr/bin/google-chrome'),
     /*
     |--------------------------------------------------------------------------
     | Default account mapping

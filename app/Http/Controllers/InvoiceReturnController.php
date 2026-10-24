@@ -12,6 +12,7 @@ use App\Models\Branch;
 use App\Models\Invoice;
 use App\Models\Store;
 use App\Services\Branches\BranchContextService;
+use App\Services\Inventory\InventoryTraceabilityService;
 use App\Services\Purchasing\PurchaseReturnService;
 use App\Services\Sales\SalesReturnService;
 use DomainException;
@@ -371,6 +372,7 @@ class InvoiceReturnController extends Controller
                 ->orderBy('name')
                 ->get(['id', 'name', 'is_default'])
             : [];
+        $trace = app(InventoryTraceabilityService::class)->forSource($return);
 
         return Inertia::render('returns/Show', [
             'kind' => $kind,
@@ -387,6 +389,7 @@ class InvoiceReturnController extends Controller
                     'discount_amount' => $item->discount_amount,
                     'tax_amount' => $item->tax_amount,
                     'line_total' => $item->line_total,
+                    'trace' => $trace->get($item->product_id, []),
                 ])->values(),
             ],
             'parent' => $return->parentInvoice

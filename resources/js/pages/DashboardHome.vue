@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import {
     AlertTriangle,
     ArrowLeft,
@@ -67,6 +67,17 @@ const props = defineProps<{
                 quantity: string;
                 reorder_level: string;
                 suggested_order_quantity: string;
+            }>;
+        };
+        expiry_alerts: {
+            count: number;
+            items: Array<{
+                id: number;
+                type: string;
+                severity: string;
+                message: string;
+                batch_number: string | null;
+                product_name: string | null;
             }>;
         };
         recent_activity: Array<{
@@ -377,6 +388,50 @@ defineOptions({
                         <ArrowLeft class="size-4" />
                     </Link>
                 </Button>
+            </div>
+        </section>
+
+        <section
+            v-if="dashboard.expiry_alerts.count > 0"
+            class="rounded-2xl border border-red-500/20 bg-red-500/[.045] p-5"
+        >
+            <div class="flex items-start justify-between gap-4">
+                <div>
+                    <h2 class="text-sm font-bold">هشدار انقضای Batch</h2>
+                    <p class="mt-1 text-[10px] text-muted-foreground">
+                        {{ count.format(dashboard.expiry_alerts.count) }} هشدار
+                        بررسی‌نشده
+                    </p>
+                </div>
+                <AlertTriangle class="size-5 text-red-600" />
+            </div>
+            <div class="mt-4 space-y-2">
+                <div
+                    v-for="alert in dashboard.expiry_alerts.items"
+                    :key="alert.id"
+                    class="flex items-start justify-between gap-3 rounded-xl bg-background/70 px-4 py-3"
+                >
+                    <div>
+                        <p class="text-xs font-semibold">{{ alert.message }}</p>
+                        <p class="mt-1 text-[10px] text-muted-foreground">
+                            {{ alert.product_name }} · Batch
+                            {{ alert.batch_number }}
+                        </p>
+                    </div>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        @click="
+                            router.post(
+                                `/inventory/alerts/${alert.id}/acknowledge`,
+                                {},
+                                { preserveScroll: true },
+                            )
+                        "
+                    >
+                        بررسی شد
+                    </Button>
+                </div>
             </div>
         </section>
 

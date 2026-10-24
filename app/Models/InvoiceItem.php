@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\InvoiceStatus;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,6 +11,16 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property string $quantity
+ * @property string $unit_price
+ * @property string $discount_amount
+ * @property string $tax_amount
+ * @property string $line_total
+ * @property string|null $total_cost_snapshot
+ * @property array<int, string>|null $purchase_serial_numbers
+ * @property CarbonImmutable|null $purchase_expiry_date
+ */
 class InvoiceItem extends Model
 {
     /** @use HasFactory<Factory<static>> */
@@ -31,6 +42,9 @@ class InvoiceItem extends Model
         'unit_cost_snapshot',
         'total_cost_snapshot',
         'sort_order',
+        'purchase_batch_number',
+        'purchase_expiry_date',
+        'purchase_serial_numbers',
     ];
 
     protected function casts(): array
@@ -44,6 +58,8 @@ class InvoiceItem extends Model
             'line_total' => 'decimal:2',
             'unit_cost_snapshot' => 'decimal:4',
             'total_cost_snapshot' => 'decimal:2',
+            'purchase_expiry_date' => 'immutable_date',
+            'purchase_serial_numbers' => 'array',
         ];
     }
 

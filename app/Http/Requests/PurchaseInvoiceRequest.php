@@ -58,6 +58,10 @@ class PurchaseInvoiceRequest extends FormRequest
             'items.*.unit_price' => ['required', 'numeric', 'gt:0', 'decimal:0,2'],
             'items.*.discount_amount' => ['nullable', 'numeric', 'min:0', 'decimal:0,2'],
             'items.*.tax_rate' => ['nullable', 'numeric', 'between:0,100', 'decimal:0,2'],
+            'items.*.batch_number' => ['nullable', 'string', 'max:80'],
+            'items.*.expiry_date' => ['nullable', 'date'],
+            'items.*.serial_numbers' => ['nullable', 'array', 'max:500'],
+            'items.*.serial_numbers.*' => ['string', 'max:120', 'distinct'],
             'additional_costs' => ['nullable', 'array', 'max:20'],
             'additional_costs.*.description' => ['required', 'string', 'max:120'],
             'additional_costs.*.amount' => ['required', 'numeric', 'gt:0', 'decimal:0,2'],
@@ -78,6 +82,15 @@ class PurchaseInvoiceRequest extends FormRequest
                     if (isset($item[$field]) && is_string($item[$field])) {
                         $item[$field] = trim(Digits::normalizeNumber($item[$field]));
                     }
+                }
+
+                if (isset($item['serial_numbers']) && is_string($item['serial_numbers'])) {
+                    $item['serial_numbers'] = preg_split(
+                        '/[\r\n,]+/',
+                        trim($item['serial_numbers']),
+                        -1,
+                        PREG_SPLIT_NO_EMPTY,
+                    );
                 }
 
                 return $item;

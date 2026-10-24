@@ -11,6 +11,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * @property ProductSerialStatus $status
+ * @property int|null $product_batch_id
+ * @property int|null $warehouse_id
+ * @property string $serial_number
  * @property CarbonImmutable|null $acquired_at
  * @property CarbonImmutable|null $sold_at
  */

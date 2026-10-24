@@ -173,7 +173,10 @@ it('tracks price changes and applies min-max reorder suggestions', function () {
 it('registers batches and serial numbers and voids available serials', function () {
     $manager = advancedCatalogUser();
     $this->actingAs($manager)
-        ->post(route('products.store'), advancedProductPayload())
+        ->post(route('products.store'), advancedProductPayload([
+            'track_batches' => true,
+            'track_serials' => true,
+        ]))
         ->assertRedirect(route('products.index'));
     $product = Product::query()->where('code', 'ADV-P-001')->firstOrFail();
     $store = Store::query()->where('code', 'MAIN')->firstOrFail();

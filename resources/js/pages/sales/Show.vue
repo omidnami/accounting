@@ -56,6 +56,7 @@ type Props = {
     can_confirm: boolean;
     can_receive: boolean;
     can_return: boolean;
+    has_print_station: boolean;
     outstanding: string;
     seller: {
         name: string;
@@ -404,6 +405,21 @@ defineOptions({
                     >
                         <Printer class="size-4" />
                         چاپ
+                    </Button>
+                    <Button
+                        v-if="has_print_station && invoice.status !== 'draft'"
+                        variant="outline"
+                        class="rounded-xl"
+                        @click="
+                            router.post(
+                                `/sales/${invoice.id}/print-agent`,
+                                {},
+                                { preserveScroll: true },
+                            )
+                        "
+                    >
+                        <Printer class="size-4" />
+                        چاپ خودکار
                     </Button>
                     <Button as-child variant="outline" class="rounded-xl">
                         <Link :href="createSale()">

@@ -20,6 +20,10 @@ class ProductTrackingService
     {
         $this->assertTrackableProduct($product);
 
+        if (! $product->track_batches) {
+            throw new DomainException('برای این کالا کنترل Batch فعال نیست.');
+        }
+
         return ProductBatch::query()->create([
             'product_id' => $product->id,
             'batch_number' => trim((string) $data['batch_number']),
@@ -41,6 +45,10 @@ class ProductTrackingService
         ?string $notes,
     ): int {
         $this->assertTrackableProduct($product);
+
+        if (! $product->track_serials) {
+            throw new DomainException('برای این کالا کنترل شماره سریال فعال نیست.');
+        }
         $batch = $batchId === null
             ? null
             : ProductBatch::query()

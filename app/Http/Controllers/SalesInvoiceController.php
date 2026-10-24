@@ -9,8 +9,10 @@ use App\Http\Requests\SalesInvoiceRequest;
 use App\Models\Branch;
 use App\Models\FiscalYear;
 use App\Models\Invoice;
+use App\Models\PrintStation;
 use App\Models\Store;
 use App\Services\Branches\BranchContextService;
+use App\Services\Inventory\InventoryTraceabilityService;
 use App\Services\Printing\PrintSettingsService;
 use App\Services\Sales\CustomerReceivableService;
 use App\Services\Sales\SalesReturnService;
@@ -178,6 +180,7 @@ class SalesInvoiceController extends Controller
         CustomerReceivableService $receivables,
         SalesReturnService $returns,
         PrintSettingsService $printSettings,
+        InventoryTraceabilityService $traceability,
     ): Response {
         abort_unless($request->user()?->canManageSales(), 403);
         $this->assertSalesInvoice($invoice);
@@ -190,12 +193,19 @@ class SalesInvoiceController extends Controller
                 ->where('type', InvoiceType::SalesReturn)
                 ->orderByDesc('id'),
         ]);
+        $trace = $traceability->forSource($invoice);
 
         return Inertia::render('sales/Show', [
             'can_confirm' => $request->user()->canConfirmSales(),
             'can_receive' => $request->user()->canManageReceipts(),
             'can_return' => $request->user()->canConfirmSales()
                 && $returns->returnableItems($invoice) !== [],
+            'has_print_station' => PrintStation::query()
+                ->where('store_id', $invoice->store_id)
+                ->where('branch_id', $invoice->branch_id)
+                ->where('status', 'active')
+                ->whereNull('revoked_at')
+                ->exists(),
             'outstanding' => $receivables->outstandingForInvoice($invoice),
             'seller' => [
                 'name' => $store->legal_name ?: $store->name,
@@ -243,6 +253,7 @@ class SalesInvoiceController extends Controller
                     'tax_rate' => $item->tax_rate,
                     'tax_amount' => $item->tax_amount,
                     'line_total' => $item->line_total,
+                    'trace' => $trace->get($item->product_id, []),
                 ])->values(),
             ],
             'warehouses' => $invoice->status === InvoiceStatus::Draft

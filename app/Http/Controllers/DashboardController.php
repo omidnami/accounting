@@ -38,6 +38,7 @@ class DashboardController extends Controller
                     'trend' => [],
                     'monthly_trend' => [],
                     'low_stock' => ['count' => 0, 'items' => []],
+                    'expiry_alerts' => ['count' => 0, 'items' => []],
                     'recent_activity' => [],
                     'setup_required' => true,
                 ],

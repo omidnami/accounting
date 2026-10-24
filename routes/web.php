@@ -8,13 +8,16 @@ use App\Http\Controllers\CustomerReceiptController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FinancialReportsController;
 use App\Http\Controllers\FiscalYearController;
+use App\Http\Controllers\InventoryAlertController;
 use App\Http\Controllers\InventoryCardexController;
 use App\Http\Controllers\InventoryProductLookupController;
+use App\Http\Controllers\InventorySalesAnalyticsController;
 use App\Http\Controllers\InventoryTransferController;
 use App\Http\Controllers\InvoiceReturnController;
 use App\Http\Controllers\ManualJournalController;
 use App\Http\Controllers\OperationalReportsController;
 use App\Http\Controllers\PartyController;
+use App\Http\Controllers\PrintJobController;
 use App\Http\Controllers\ProductCategoryController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\ProductTrackingController;
@@ -36,6 +39,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('reports', FinancialReportsController::class)->name('reports.index');
     Route::get('reports/operations', OperationalReportsController::class)
         ->name('reports.operations');
+    Route::get('reports/analytics', InventorySalesAnalyticsController::class)
+        ->name('reports.analytics');
     Route::get('reports/export/financial', [ReportExportController::class, 'financial'])
         ->name('reports.export.financial');
     Route::get('reports/export/operations', [ReportExportController::class, 'operations'])
@@ -85,6 +90,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('inventory.lookups.products');
     Route::post('inventory/counts/import', [StockCountController::class, 'import'])
         ->name('stock-counts.import');
+    Route::post('inventory/alerts/{alert}/acknowledge', [
+        InventoryAlertController::class,
+        'acknowledge',
+    ])->name('inventory-alerts.acknowledge');
     Route::resource('inventory/counts', StockCountController::class)
         ->parameters(['counts' => 'stockCount'])
         ->names('stock-counts')
@@ -185,6 +194,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('sales/{invoice}', [SalesInvoiceController::class, 'show'])->name('sales.show');
     Route::post('sales/{invoice}/confirm', [SalesInvoiceController::class, 'confirm'])
         ->name('sales.confirm');
+    Route::post('sales/{invoice}/print-agent', [PrintJobController::class, 'queueSales'])
+        ->name('sales.print-agent');
     Route::delete('sales/{invoice}', [SalesInvoiceController::class, 'destroy'])
         ->name('sales.destroy');
     Route::get('sales/{invoice}/return', [InvoiceReturnController::class, 'createSales'])

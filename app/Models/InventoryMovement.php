@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
@@ -97,6 +98,18 @@ class InventoryMovement extends Model
     public function source(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /** @return HasMany<InventoryMovementBatch, $this> */
+    public function batchAssignments(): HasMany
+    {
+        return $this->hasMany(InventoryMovementBatch::class);
+    }
+
+    /** @return HasMany<InventoryMovementSerial, $this> */
+    public function serialAssignments(): HasMany
+    {
+        return $this->hasMany(InventoryMovementSerial::class);
     }
 
     /**

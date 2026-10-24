@@ -164,10 +164,11 @@ const reportTitle = computed(() =>
 );
 const formatDate = (value: string) =>
     date.format(new Date(`${value}T12:00:00Z`));
-const exportHref = computed(() =>
+const exportHref = (format: 'csv' | 'xlsx' | 'pdf' = 'csv') =>
     props.report
         ? exportCardex({
               query: {
+                  format,
                   product_id: props.filters.product_id ?? undefined,
                   warehouse_id: props.filters.warehouse_id ?? undefined,
                   from: props.filters.from,
@@ -176,8 +177,7 @@ const exportHref = computed(() =>
                   direction: props.filters.direction ?? undefined,
               },
           }).url
-        : null,
-);
+        : null;
 const printLabel = computed(() =>
     props.report && props.report.movements.last_page > 1
         ? 'چاپ صفحه'
@@ -304,12 +304,22 @@ defineOptions({
                     </p>
                 </div>
                 <div
-                    v-if="exportHref"
+                    v-if="exportHref()"
                     class="flex flex-wrap gap-2 print:hidden"
                 >
                     <Button as-child variant="outline" class="rounded-xl">
-                        <a :href="exportHref"
+                        <a :href="exportHref('csv')!"
                             ><Download class="size-4" /> CSV (Excel)</a
+                        >
+                    </Button>
+                    <Button as-child variant="outline" class="rounded-xl">
+                        <a :href="exportHref('xlsx')!"
+                            ><Download class="size-4" /> XLSX</a
+                        >
+                    </Button>
+                    <Button as-child variant="outline" class="rounded-xl">
+                        <a :href="exportHref('pdf')!"
+                            ><Download class="size-4" /> PDF سرور</a
                         >
                     </Button>
                     <Button

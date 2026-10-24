@@ -10,6 +10,7 @@ use App\Enums\UserRole;
 use App\Models\Branch;
 use App\Models\Check;
 use App\Models\FiscalYear;
+use App\Models\InventoryAlert;
 use App\Models\InventoryBalance;
 use App\Models\Invoice;
 use App\Models\Payment;
@@ -99,6 +100,7 @@ class DashboardService
             'trend' => [],
             'monthly_trend' => [],
             'low_stock' => ['count' => 0, 'items' => []],
+            'expiry_alerts' => $this->expiryAlerts($store, $branch),
             'recent_activity' => [],
             'setup_required' => false,
         ];
@@ -414,6 +416,33 @@ class DashboardService
                 InvoiceStatus::PartiallyPaid,
             ])
             ->count();
+    }
+
+    /**
+     * @return array{count: int, items: array<int, array<string, mixed>>}
+     */
+    private function expiryAlerts(Store $store, Branch $branch): array
+    {
+        $alerts = InventoryAlert::query()
+            ->with(['batch.product:id,code,name,unit'])
+            ->where('store_id', $store->id)
+            ->where('branch_id', $branch->id)
+            ->whereNull('acknowledged_at')
+            ->orderByDesc('severity')
+            ->orderBy('created_at')
+            ->get();
+
+        return [
+            'count' => $alerts->count(),
+            'items' => $alerts->take(5)->map(fn (InventoryAlert $alert): array => [
+                'id' => $alert->id,
+                'type' => $alert->type,
+                'severity' => $alert->severity,
+                'message' => $alert->message,
+                'batch_number' => $alert->batch?->batch_number,
+                'product_name' => $alert->batch?->product?->name,
+            ])->values()->all(),
+        ];
     }
 
     /**

@@ -166,10 +166,11 @@ const printLabel = computed(() =>
         ? 'چاپ صفحه'
         : 'چاپ / PDF',
 );
-const exportHref = () =>
+const exportHref = (format: 'csv' | 'xlsx' | 'pdf' = 'csv') =>
     exportFinancial({
         query: {
             report: activeTab.value,
+            format,
             from: props.filters.from,
             to: props.filters.to,
             account_id: props.filters.account_id ?? undefined,
@@ -270,9 +271,21 @@ defineOptions({
                 </span>
                 <div class="flex gap-2 print:hidden">
                     <Button as-child variant="outline" class="rounded-xl">
-                        <a :href="exportHref()">
+                        <a :href="exportHref('csv')">
                             <Download class="size-4" />
                             CSV (Excel)
+                        </a>
+                    </Button>
+                    <Button as-child variant="outline" class="rounded-xl">
+                        <a :href="exportHref('xlsx')">
+                            <Download class="size-4" />
+                            XLSX
+                        </a>
+                    </Button>
+                    <Button as-child variant="outline" class="rounded-xl">
+                        <a :href="exportHref('pdf')">
+                            <Download class="size-4" />
+                            PDF سرور
                         </a>
                     </Button>
                     <Button

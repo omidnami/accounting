@@ -51,6 +51,7 @@ import { index as payments } from '@/routes/payments';
 import { index as purchases } from '@/routes/purchases';
 import {
     index as reports,
+    analytics as analyticsReport,
     operations as operationalReports,
 } from '@/routes/reports';
 import { index as journals } from '@/routes/journals';
@@ -97,6 +98,11 @@ const mainNavItems = computed<NavItem[]>(() => {
         items.push({
             title: 'گزارش‌های عملیاتی',
             href: operationalReports(),
+            icon: BarChart3,
+        });
+        items.push({
+            title: 'تحلیل کالا و Batch',
+            href: analyticsReport(),
             icon: BarChart3,
         });
         items.push({

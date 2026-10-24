@@ -57,6 +57,8 @@ class ProductRequest extends FormRequest
             'reorder_quantity' => ['required', 'numeric', 'min:0', 'max:999999999999', 'decimal:0,3'],
             'max_stock' => ['nullable', 'numeric', 'min:0', 'max:999999999999', 'decimal:0,3', 'gte:reorder_level'],
             'stock_policy' => ['required', Rule::enum(ProductStockPolicy::class)],
+            'track_batches' => ['required', 'boolean'],
+            'track_serials' => ['required', 'boolean'],
             'description' => ['nullable', 'string', 'max:2000'],
             'is_active' => ['required', 'boolean'],
             'version' => $product === null ? ['nullable', 'integer', 'min:0'] : ['required', 'integer', 'min:0'],
@@ -74,6 +76,8 @@ class ProductRequest extends FormRequest
             'reorder_quantity' => '0',
             'max_stock' => null,
             'stock_policy' => 'simple',
+            'track_batches' => false,
+            'track_serials' => false,
         ]);
         $normalized = [];
 

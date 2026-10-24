@@ -11,6 +11,7 @@ use App\Models\FiscalYear;
 use App\Models\Invoice;
 use App\Models\Store;
 use App\Services\Branches\BranchContextService;
+use App\Services\Inventory\InventoryTraceabilityService;
 use App\Services\Purchasing\PurchaseReturnService;
 use App\Services\Purchasing\PurchaseService;
 use App\Services\Purchasing\SupplierPayableService;
@@ -176,6 +177,7 @@ class PurchaseInvoiceController extends Controller
         Invoice $invoice,
         SupplierPayableService $payables,
         PurchaseReturnService $returns,
+        InventoryTraceabilityService $traceability,
     ): Response {
         abort_unless($request->user()?->canManagePurchases(), 403);
         $this->assertPurchaseInvoice($invoice);
@@ -187,6 +189,7 @@ class PurchaseInvoiceController extends Controller
                 ->where('type', InvoiceType::PurchaseReturn)
                 ->orderByDesc('id'),
         ]);
+        $trace = $traceability->forSource($invoice);
 
         return Inertia::render('purchases/Show', [
             'can_pay' => $request->user()->canManagePayments(),
@@ -228,6 +231,7 @@ class PurchaseInvoiceController extends Controller
                     'tax_rate' => $item->tax_rate,
                     'tax_amount' => $item->tax_amount,
                     'line_total' => $item->line_total,
+                    'trace' => $trace->get($item->product_id, []),
                 ])->values(),
                 'additional_costs' => $invoice->additionalCosts->map(fn ($cost): array => [
                     'id' => $cost->id,

@@ -163,6 +163,8 @@ class ProductController extends Controller
                 'reorder_quantity' => $product->reorder_quantity,
                 'max_stock' => $product->max_stock,
                 'stock_policy' => $product->stock_policy->value,
+                'track_batches' => $product->track_batches,
+                'track_serials' => $product->track_serials,
                 'description' => $product->description,
                 'is_active' => $product->is_active,
                 'version' => $product->version,

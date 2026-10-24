@@ -18,6 +18,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $reorder_quantity
  * @property string|null $max_stock
  * @property ProductStockPolicy $stock_policy
+ * @property bool $track_batches
+ * @property bool $track_serials
  * @property int|null $category_id
  * @property int|null $parent_product_id
  * @property string|null $variant_color
@@ -47,6 +49,8 @@ class Product extends Model
         'reorder_quantity',
         'max_stock',
         'stock_policy',
+        'track_batches',
+        'track_serials',
         'description',
         'is_active',
         'version',
@@ -63,6 +67,8 @@ class Product extends Model
             'reorder_quantity' => 'decimal:3',
             'max_stock' => 'decimal:3',
             'stock_policy' => ProductStockPolicy::class,
+            'track_batches' => 'boolean',
+            'track_serials' => 'boolean',
             'is_active' => 'boolean',
             'version' => 'integer',
         ];

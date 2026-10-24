@@ -56,7 +56,8 @@ class PurchaseLookupService
     /**
      * @return array<int, array{
      *     id: int, code: string, barcode: string|null, name: string, unit: string,
-     *     purchase_price: string, tax_rate: string, stock_quantity: string
+     *     purchase_price: string, tax_rate: string, stock_quantity: string,
+     *     track_batches: bool, track_serials: bool
      * }>
      */
     public function products(int $storeId, int $warehouseId, string $search): array
@@ -100,6 +101,8 @@ class PurchaseLookupService
                     $product->getAttribute('stock_quantity') ?? 0,
                     Decimal::QUANTITY_SCALE,
                 ),
+                'track_batches' => $product->track_batches,
+                'track_serials' => $product->track_serials,
             ])
             ->all();
     }

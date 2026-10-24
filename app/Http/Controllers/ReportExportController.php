@@ -13,7 +13,7 @@ use App\Support\ReportDateRange;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpFoundation\Response;
 
 class ReportExportController extends Controller
 {
@@ -21,7 +21,7 @@ class ReportExportController extends Controller
         Request $request,
         ReportExportService $exports,
         BranchContextService $branches,
-    ): StreamedResponse {
+    ): Response {
         abort_unless($request->user()?->canViewFinancialReports(), 403);
         $store = $this->mainStore();
         [$from, $to] = $this->dates($request, $store);
@@ -30,6 +30,7 @@ class ReportExportController extends Controller
                 'required',
                 Rule::in(['trial', 'income', 'balance', 'journal', 'ledger']),
             ],
+            'format' => ['nullable', Rule::in(['csv', 'xlsx', 'pdf'])],
             'account_id' => [
                 'nullable',
                 'integer',
@@ -46,6 +47,7 @@ class ReportExportController extends Controller
             $to,
             $branchId,
             $accountId,
+            (string) ($validated['format'] ?? 'csv'),
         );
     }
 
@@ -53,7 +55,7 @@ class ReportExportController extends Controller
         Request $request,
         ReportExportService $exports,
         BranchContextService $branches,
-    ): StreamedResponse {
+    ): Response {
         abort_unless($request->user()?->canViewFinancialReports(), 403);
         $store = $this->mainStore();
         [$from, $to] = $this->dates($request, $store);
@@ -68,6 +70,7 @@ class ReportExportController extends Controller
                     'sales_products',
                 ]),
             ],
+            'format' => ['nullable', Rule::in(['csv', 'xlsx', 'pdf'])],
             'party_id' => [
                 'nullable',
                 'integer',
@@ -84,13 +87,14 @@ class ReportExportController extends Controller
             $to,
             $branchId,
             $partyId,
+            (string) ($validated['format'] ?? 'csv'),
         );
     }
 
     public function cardex(
         InventoryCardexRequest $request,
         ReportExportService $exports,
-    ): StreamedResponse {
+    ): Response {
         $store = $this->mainStore();
         $validated = $request->validated();
 
@@ -107,6 +111,7 @@ class ReportExportController extends Controller
                 ? InventoryDirection::from($validated['direction'])
                 : null,
             $request->user()->canViewInventoryCosts(),
+            (string) ($request->validated('format') ?? 'csv'),
         );
     }
 
