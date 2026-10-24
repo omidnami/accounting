@@ -89,7 +89,7 @@ const paymentOpen = ref(false);
 const customerOpen = ref(false);
 const activityOpen = ref(false);
 const checksOpen = ref(false);
-const shiftOpen = ref(!props.session);
+const shiftOpen = ref(false);
 const lastSale = ref<PosSale | null>(null);
 const successOpen = ref(false);
 const recentSales = ref<PosSale[]>([]);
@@ -133,6 +133,7 @@ let clockTimer: ReturnType<typeof setInterval> | undefined;
 let productAbort: AbortController | undefined;
 let customerAbort: AbortController | undefined;
 let restoring = false;
+let disposed = false;
 const money = (value: number | string) =>
     new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 2 }).format(
         Number(value),
@@ -544,6 +545,11 @@ function hotkeys(event: KeyboardEvent) {
 }
 onMounted(async () => {
     restoring = true;
+    // History may restore old Inertia props from before this shift was opened.
+    // Compare the saved cart with the live shift before restoring its data.
+    await refreshActivity();
+    if (disposed) return;
+    shiftOpen.value = !session.value;
     try {
         const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
         if (saved) {
@@ -571,15 +577,17 @@ onMounted(async () => {
     }
     restoring = false;
     if (pendingPayload.value) await retryCheckout();
+    if (disposed) return;
     clockTimer = setInterval(() => {
         now.value = new Date();
     }, 1000);
     window.addEventListener('keydown', hotkeys);
-    await Promise.all([loadProducts(), refreshActivity()]);
+    await loadProducts();
     await nextTick();
     searchInput.value?.focus();
 });
 onBeforeUnmount(() => {
+    disposed = true;
     clearTimeout(productTimer);
     clearTimeout(customerTimer);
     clearInterval(clockTimer);
