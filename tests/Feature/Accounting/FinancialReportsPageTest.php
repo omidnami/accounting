@@ -28,7 +28,8 @@ it('renders financial reports for a manager', function () {
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('reports/Index')
-            ->has('branches')
+            ->missing('branches')
+            ->missing('filters.branch_id')
             ->has('trialBalance.rows')
             ->has('incomeStatement.revenues')
             ->has('balanceSheet.total_assets')

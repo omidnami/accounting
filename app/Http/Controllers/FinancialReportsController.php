@@ -4,9 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Enums\AccountLevel;
 use App\Models\Account;
-use App\Models\Branch;
 use App\Models\FiscalYear;
 use App\Models\Store;
+use App\Services\Branches\BranchContextService;
 use App\Services\Reporting\AccountLedgerReportService;
 use App\Services\Reporting\FinancialStatementReportService;
 use App\Services\Reporting\JournalReportService;
@@ -25,6 +25,7 @@ class FinancialReportsController extends Controller
         TrialBalanceReportService $trialBalance,
         FinancialStatementReportService $statements,
         AccountLedgerReportService $ledgers,
+        BranchContextService $branches,
     ): Response {
         abort_unless($request->user()?->canViewFinancialReports(), 403);
 
@@ -36,7 +37,6 @@ class FinancialReportsController extends Controller
         $validated = $request->validate([
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
-            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
             'page' => ['nullable', 'integer', 'min:1'],
             'account_id' => ['nullable', 'integer', 'exists:accounts,id'],
         ]);
@@ -51,7 +51,7 @@ class FinancialReportsController extends Controller
 
         $from = $range->from;
         $to = $range->to;
-        $branchId = isset($validated['branch_id']) ? (int) $validated['branch_id'] : null;
+        $branchId = $branches->active($request->user(), $store)->id;
         $accounts = Account::query()
             ->where('store_id', $store->id)
             ->where('level', AccountLevel::Subsidiary)
@@ -63,13 +63,6 @@ class FinancialReportsController extends Controller
             isset($validated['account_id']) ? (int) $validated['account_id'] : $accounts->first()?->id,
         );
 
-        if ($branchId !== null && ! Branch::query()
-            ->whereKey($branchId)
-            ->where('store_id', $store->id)
-            ->exists()) {
-            abort(422, 'شعبه انتخاب‌شده متعلق به فروشگاه نیست.');
-        }
-
         if ($account === null && isset($validated['account_id'])) {
             abort(422, 'حساب انتخاب‌شده متعلق به فروشگاه یا فعال نیست.');
         }
@@ -78,14 +71,9 @@ class FinancialReportsController extends Controller
             'filters' => [
                 'from' => $from,
                 'to' => $to,
-                'branch_id' => $branchId,
                 'account_id' => $account?->id,
             ],
             'accounts' => $accounts,
-            'branches' => $store->branches()
-                ->orderByDesc('is_default')
-                ->orderBy('name')
-                ->get(['id', 'name', 'is_active']),
             'trialBalance' => $trialBalance->report($store->id, $from, $to, $branchId),
             'incomeStatement' => $statements->incomeStatement($store->id, $from, $to, $branchId),
             'balanceSheet' => $statements->balanceSheet($store->id, $to, $branchId),

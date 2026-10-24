@@ -256,24 +256,21 @@ it('marks profit as incomplete when a sales cost snapshot is missing', function 
         ->and($daily[5])->toBe('خیر');
 });
 
-it('keeps inactive accounts and branches selectable for historical reports', function () {
+it('keeps inactive accounts selectable for historical reports', function () {
     $context = operationalReportContext();
     $cash = Account::query()
         ->where('store_id', $context['store']->id)
         ->where('code', '1101')
         ->firstOrFail();
     $cash->update(['is_active' => false]);
-    $context['branch']->update(['is_active' => false]);
-
     $this->actingAs($context['manager'])
         ->get(route('reports.index', [
             'account_id' => $cash->id,
-            'branch_id' => $context['branch']->id,
         ]))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->where('filters.account_id', $cash->id)
-            ->where('filters.branch_id', $context['branch']->id));
+            ->missing('filters.branch_id'));
 });
 
 it('validates effective report ranges when only one date side is provided', function () {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Head, router, useForm } from '@inertiajs/vue3';
-import { Check, Printer, Router as RouterIcon, Store } from '@lucide/vue';
+import { Head, useForm } from '@inertiajs/vue3';
+import { Check, Printer, Router as RouterIcon } from '@lucide/vue';
 import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
@@ -15,17 +15,7 @@ import {
     update as updatePrintSettings,
 } from '@/routes/print-settings';
 
-type BranchOption = {
-    id: number;
-    code: string;
-    name: string;
-    is_default: boolean;
-    is_active: boolean;
-};
-
 const props = defineProps<{
-    branches: BranchOption[];
-    selected_branch_id: number;
     settings: {
         format: InvoicePrintFormat;
         paper_width_mm: 58 | 80;
@@ -35,28 +25,14 @@ const props = defineProps<{
 }>();
 
 const form = useForm({
-    branch_id: props.selected_branch_id,
     format: props.settings.format,
     copies: props.settings.copies,
     header_note: props.settings.header_note ?? '',
 });
-const selectedBranch = computed(() =>
-    props.branches.find((branch) => branch.id === props.selected_branch_id),
-);
 const summary = computed(
     () =>
         `${invoicePrintFormatMap[form.format].label}، ${form.copies} نسخه برای هر چاپ`,
 );
-const changeBranch = () => {
-    router.get(
-        printSettings(),
-        { branch_id: form.branch_id },
-        {
-            preserveScroll: true,
-            replace: true,
-        },
-    );
-};
 const submit = () => {
     form.patch(updatePrintSettings().url, {
         preserveScroll: true,
@@ -82,44 +58,8 @@ defineOptions({
         <Heading
             variant="small"
             title="تنظیمات چاپ فروشگاه"
-            description="قالب پیش‌فرض، تعداد نسخه و متن سربرگ فاکتور را برای هر شعبه تعیین کنید."
+            description="قالب پیش‌فرض، تعداد نسخه و متن سربرگ فاکتور را برای فروشگاه تعیین کنید."
         />
-
-        <section class="rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
-            <div class="flex items-start gap-3">
-                <span
-                    class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary"
-                >
-                    <Store class="size-5" />
-                </span>
-                <div class="min-w-0 flex-1">
-                    <p class="text-sm font-bold">شعبه فعال</p>
-                    <p class="mt-1 text-xs leading-6 text-muted-foreground">
-                        تنظیمات چاپ به شعبهٔ فاکتور وابسته است؛ هر شعبه می‌تواند
-                        چاپگر و کاغذ متفاوتی داشته باشد.
-                    </p>
-                    <label class="mt-4 block max-w-md">
-                        <span class="mb-2 block text-xs font-semibold">
-                            انتخاب شعبه
-                        </span>
-                        <select
-                            v-model="form.branch_id"
-                            class="h-11 w-full rounded-xl border bg-background px-3 text-sm"
-                            @change="changeBranch"
-                        >
-                            <option
-                                v-for="branch in branches"
-                                :key="branch.id"
-                                :value="branch.id"
-                            >
-                                {{ branch.name }} — {{ branch.code }}
-                                {{ branch.is_active ? '' : '(غیرفعال)' }}
-                            </option>
-                        </select>
-                    </label>
-                </div>
-            </div>
-        </section>
 
         <form class="grid gap-5 lg:grid-cols-2" @submit.prevent="submit">
             <section class="rounded-2xl border bg-card p-5 shadow-sm sm:p-6">
@@ -273,9 +213,6 @@ defineOptions({
                 >
                     ذخیره تنظیمات چاپ
                 </Button>
-                <p class="text-xs text-muted-foreground">
-                    {{ selectedBranch?.name }}
-                </p>
             </div>
         </form>
     </div>

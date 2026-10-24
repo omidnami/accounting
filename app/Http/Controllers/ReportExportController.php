@@ -7,6 +7,7 @@ use App\Enums\InventoryMovementType;
 use App\Http\Requests\InventoryCardexRequest;
 use App\Models\FiscalYear;
 use App\Models\Store;
+use App\Services\Branches\BranchContextService;
 use App\Services\Reporting\ReportExportService;
 use App\Support\ReportDateRange;
 use Illuminate\Http\Request;
@@ -19,6 +20,7 @@ class ReportExportController extends Controller
     public function financial(
         Request $request,
         ReportExportService $exports,
+        BranchContextService $branches,
     ): StreamedResponse {
         abort_unless($request->user()?->canViewFinancialReports(), 403);
         $store = $this->mainStore();
@@ -28,18 +30,13 @@ class ReportExportController extends Controller
                 'required',
                 Rule::in(['trial', 'income', 'balance', 'journal', 'ledger']),
             ],
-            'branch_id' => [
-                'nullable',
-                'integer',
-                Rule::exists('branches', 'id')->where('store_id', $store->id),
-            ],
             'account_id' => [
                 'nullable',
                 'integer',
                 Rule::exists('accounts', 'id')->where('store_id', $store->id),
             ],
         ]);
-        $branchId = isset($validated['branch_id']) ? (int) $validated['branch_id'] : null;
+        $branchId = $branches->active($request->user(), $store)->id;
         $accountId = isset($validated['account_id']) ? (int) $validated['account_id'] : null;
 
         return $exports->financial(
@@ -55,6 +52,7 @@ class ReportExportController extends Controller
     public function operations(
         Request $request,
         ReportExportService $exports,
+        BranchContextService $branches,
     ): StreamedResponse {
         abort_unless($request->user()?->canViewFinancialReports(), 403);
         $store = $this->mainStore();
@@ -70,18 +68,13 @@ class ReportExportController extends Controller
                     'sales_products',
                 ]),
             ],
-            'branch_id' => [
-                'nullable',
-                'integer',
-                Rule::exists('branches', 'id')->where('store_id', $store->id),
-            ],
             'party_id' => [
                 'nullable',
                 'integer',
                 Rule::exists('parties', 'id')->where('store_id', $store->id),
             ],
         ]);
-        $branchId = isset($validated['branch_id']) ? (int) $validated['branch_id'] : null;
+        $branchId = $branches->active($request->user(), $store)->id;
         $partyId = isset($validated['party_id']) ? (int) $validated['party_id'] : null;
 
         return $exports->operations(

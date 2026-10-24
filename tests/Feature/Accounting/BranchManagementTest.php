@@ -10,152 +10,100 @@ use Database\Seeders\AccountSeeder;
 use Inertia\Testing\AssertableInertia as Assert;
 
 /**
- * @return array{store: Store, branch: Branch, manager: User}
+ * @return array{store: Store, branch: Branch, warehouse: Warehouse, manager: User}
  */
-function branchManagementContext(): array
+function singleLocationContext(): array
 {
     app(AccountSeeder::class)->run();
     app(AccountingSetupSeeder::class)->run();
     $store = Store::query()->where('code', 'MAIN')->firstOrFail();
     $branch = $store->defaultBranch()->firstOrFail();
+    $warehouse = $branch->warehouses()
+        ->where('is_default', true)
+        ->firstOrFail();
     $manager = User::factory()->create();
     $manager->forceFill([
         'role' => UserRole::Manager,
         'branch_id' => $branch->id,
     ])->save();
 
-    return compact('store', 'branch', 'manager');
+    return compact('store', 'branch', 'warehouse', 'manager');
 }
 
-it('protects branch management by role', function () {
+it('does not expose branch management or switching endpoints', function () {
     $this->get(route('branches.index'))->assertRedirect(route('login'));
-    $accountant = User::factory()->create();
-    $accountant->forceFill(['role' => UserRole::Accountant])->save();
 
-    $this->actingAs($accountant)
+    $user = User::factory()->create();
+    $user->forceFill(['role' => UserRole::Manager])->save();
+
+    $this->actingAs($user)
         ->get(route('branches.index'))
-        ->assertForbidden();
-});
+        ->assertNotFound();
 
-it('creates a branch with its default warehouse', function () {
-    $context = branchManagementContext();
-
-    $this->actingAs($context['manager'])
+    $this->actingAs($user)
         ->post(route('branches.store'), [
-            'code' => 'branch-02',
+            'code' => 'SECOND',
             'name' => 'شعبه دوم',
-            'phone' => '02112345678',
-            'address' => 'تهران',
         ])
-        ->assertRedirect(route('branches.index'))
-        ->assertSessionHasNoErrors();
+        ->assertNotFound();
 
-    $branch = Branch::query()->where('code', 'BRANCH-02')->firstOrFail();
-    $warehouse = Warehouse::query()
-        ->where('branch_id', $branch->id)
-        ->where('is_default', true)
-        ->firstOrFail();
-
-    expect($branch->store_id)->toBe($context['store']->id)
-        ->and($branch->is_default)->toBeFalse()
-        ->and($branch->is_active)->toBeTrue()
-        ->and($warehouse->store_id)->toBe($context['store']->id)
-        ->and($warehouse->code)->toBe('MAIN');
+    $this->actingAs($user)
+        ->patch(route('branches.switch'), ['branch_id' => 1])
+        ->assertNotFound();
 });
 
-it('switches the active branch and limits assigned employees', function () {
-    $context = branchManagementContext();
+it('always uses the default branch despite stale session and employee assignment', function () {
+    $context = singleLocationContext();
     $second = Branch::query()->create([
         'store_id' => $context['store']->id,
         'code' => 'SECOND',
-        'name' => 'شعبه دوم',
+        'name' => 'شعبه قدیمی',
         'is_default' => false,
         'is_active' => true,
     ]);
-    $secondWarehouse = Warehouse::query()->create([
+    Warehouse::query()->create([
         'store_id' => $context['store']->id,
         'branch_id' => $second->id,
         'code' => 'MAIN',
-        'name' => 'انبار شعبه دوم',
+        'name' => 'انبار شعبه قدیمی',
         'is_default' => true,
         'is_active' => true,
     ]);
+    $context['manager']->forceFill(['branch_id' => $second->id])->save();
 
     $this->actingAs($context['manager'])
-        ->patch(route('branches.switch'), ['branch_id' => $second->id])
-        ->assertSessionHasNoErrors()
-        ->assertSessionHas('active_branch_id', $second->id);
-
-    $this->actingAs($context['manager'])
+        ->withSession(['active_branch_id' => $second->id])
         ->get(route('dashboard'))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->where('branch_context.active.id', $second->id)
-            ->where('branch_context.can_switch', true));
+            ->missing('branch_context')
+            ->where('auth.user.id', $context['manager']->id));
 
     $this->actingAs($context['manager'])
+        ->withSession(['active_branch_id' => $second->id])
         ->get(route('sales.create'))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('sales/Create')
-            ->where('defaults.warehouse_id', $secondWarehouse->id));
-
-    $cashier = User::factory()->create();
-    $cashier->forceFill([
-        'role' => UserRole::Cashier,
-        'branch_id' => $second->id,
-    ])->save();
-
-    $this->actingAs($cashier)
-        ->patch(route('branches.switch'), ['branch_id' => $context['branch']->id])
-        ->assertForbidden();
-
-    $this->actingAs($cashier)
-        ->get(route('dashboard'))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('branch_context.active.id', $second->id)
-            ->where('branch_context.can_switch', false));
+            ->where('defaults.warehouse_id', $context['warehouse']->id)
+            ->has('warehouses', 1)
+            ->where('warehouses.0.id', $context['warehouse']->id));
 });
 
-it('changes the default branch and prevents unsafe deactivation', function () {
-    $context = branchManagementContext();
+it('creates and updates employees without assigning them to a branch', function () {
+    $context = singleLocationContext();
     $second = Branch::query()->create([
         'store_id' => $context['store']->id,
         'code' => 'SECOND',
-        'name' => 'شعبه دوم',
-        'is_default' => false,
-        'is_active' => true,
-    ]);
-
-    $this->actingAs($context['manager'])
-        ->patch(route('branches.default', $second))
-        ->assertSessionHasNoErrors();
-
-    expect($context['branch']->refresh()->is_default)->toBeFalse()
-        ->and($second->refresh()->is_default)->toBeTrue();
-
-    $this->actingAs($context['manager'])
-        ->patch(route('branches.status', $second), ['is_active' => false])
-        ->assertSessionHasErrors('branch');
-
-    expect($second->refresh()->is_active)->toBeTrue();
-});
-
-it('creates an employee assigned to a branch', function () {
-    $context = branchManagementContext();
-    $second = Branch::query()->create([
-        'store_id' => $context['store']->id,
-        'code' => 'SECOND',
-        'name' => 'شعبه دوم',
+        'name' => 'شعبه قدیمی',
         'is_default' => false,
         'is_active' => true,
     ]);
 
     $this->actingAs($context['manager'])
         ->post(route('users.store'), [
-            'name' => 'صندوق‌دار شعبه دوم',
-            'email' => 'cashier-branch@example.com',
+            'name' => 'صندوق‌دار فروشگاه',
+            'email' => 'cashier@example.com',
             'role' => UserRole::Cashier->value,
             'branch_id' => $second->id,
             'password' => 'Secure-Pass-123',
@@ -166,9 +114,22 @@ it('creates an employee assigned to a branch', function () {
         ->assertSessionHasNoErrors();
 
     $employee = User::query()
-        ->where('email', 'cashier-branch@example.com')
+        ->where('email', 'cashier@example.com')
         ->firstOrFail();
 
-    expect($employee->branch_id)->toBe($second->id)
+    expect($employee->branch_id)->toBeNull()
         ->and($employee->role)->toBe(UserRole::Cashier);
+
+    $this->actingAs($context['manager'])
+        ->put(route('users.update', $employee), [
+            'name' => 'صندوق‌دار فروشگاه',
+            'email' => 'cashier@example.com',
+            'role' => UserRole::Cashier->value,
+            'branch_id' => $second->id,
+            'version' => $employee->version,
+        ])
+        ->assertRedirect(route('users.index'))
+        ->assertSessionHasNoErrors();
+
+    expect($employee->refresh()->branch_id)->toBeNull();
 });

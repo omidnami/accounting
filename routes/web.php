@@ -96,18 +96,20 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('inventory-transfers.create');
     Route::post('inventory/transfers', [InventoryTransferController::class, 'store'])
         ->name('inventory-transfers.store');
-    Route::patch('active-branch', [ActiveBranchController::class, 'update'])
-        ->name('branches.switch');
-    Route::resource('branches', BranchManagementController::class)
-        ->except(['show', 'destroy']);
-    Route::patch('branches/{branch}/default', [
-        BranchManagementController::class,
-        'setDefault',
-    ])->name('branches.default');
-    Route::patch('branches/{branch}/status', [
-        BranchManagementController::class,
-        'updateStatus',
-    ])->name('branches.status');
+    Route::middleware('single-location-only')->group(function (): void {
+        Route::patch('active-branch', [ActiveBranchController::class, 'update'])
+            ->name('branches.switch');
+        Route::resource('branches', BranchManagementController::class)
+            ->except(['show', 'destroy']);
+        Route::patch('branches/{branch}/default', [
+            BranchManagementController::class,
+            'setDefault',
+        ])->name('branches.default');
+        Route::patch('branches/{branch}/status', [
+            BranchManagementController::class,
+            'updateStatus',
+        ])->name('branches.status');
+    });
     Route::get('audit-logs/export', [AuditLogController::class, 'export'])
         ->name('audit-logs.export');
     Route::get('audit-logs', AuditLogController::class)->name('audit-logs.index');

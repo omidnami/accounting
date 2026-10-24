@@ -3,7 +3,6 @@ import { Head, router } from '@inertiajs/vue3';
 import {
     ArrowLeft,
     BarChart3,
-    Building2,
     CalendarClock,
     Download,
     Printer,
@@ -79,10 +78,8 @@ const props = defineProps<{
     filters: {
         from: string;
         to: string;
-        branch_id: number | null;
         party_id: number | null;
     };
-    branches: Array<{ id: number; name: string; is_active: boolean }>;
     parties: Array<{
         id: number;
         code: string;
@@ -111,7 +108,6 @@ const activeTab = ref<(typeof tabs)[number]['key']>('statement');
 const agingSide = ref<'receivable' | 'payable'>('receivable');
 const from = ref(props.filters.from);
 const to = ref(props.filters.to);
-const branchId = ref(props.filters.branch_id?.toString() ?? '');
 const partyId = ref(props.filters.party_id?.toString() ?? '');
 const money = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 2 });
 const quantity = new Intl.NumberFormat('fa-IR', { maximumFractionDigits: 3 });
@@ -139,11 +135,6 @@ const activeReportLabel = computed(() => {
 
     return 'فروش روزانه و سود کالا';
 });
-const selectedBranchName = computed(
-    () =>
-        props.branches.find((branch) => branch.id === props.filters.branch_id)
-            ?.name ?? 'همه شعبه‌ها',
-);
 const selectedPartyName = computed(() => {
     const party = props.parties.find(
         (item) => item.id === props.filters.party_id,
@@ -173,7 +164,6 @@ const applyFilters = () => {
         {
             from: from.value,
             to: to.value,
-            branch_id: branchId.value || undefined,
             party_id: partyId.value || undefined,
         },
         { preserveState: true, preserveScroll: true, replace: true },
@@ -185,7 +175,6 @@ const exportHref = (report: string) =>
             report,
             from: props.filters.from,
             to: props.filters.to,
-            branch_id: props.filters.branch_id ?? undefined,
             party_id: props.filters.party_id ?? undefined,
         },
     }).url;
@@ -266,30 +255,11 @@ defineOptions({
         </section>
 
         <form
-            class="grid gap-3 rounded-2xl border bg-card p-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.5fr_auto] print:hidden"
+            class="grid gap-3 rounded-2xl border bg-card p-4 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1.5fr_auto] print:hidden"
             @submit.prevent="applyFilters"
         >
             <JalaliDatePicker v-model="from" />
             <JalaliDatePicker v-model="to" />
-            <label class="relative">
-                <Building2
-                    class="absolute inset-y-0 right-3 my-auto size-4 text-muted-foreground"
-                />
-                <select
-                    v-model="branchId"
-                    class="h-11 w-full appearance-none rounded-xl border bg-background pr-9 pl-3 text-sm"
-                >
-                    <option value="">همه شعبه‌ها</option>
-                    <option
-                        v-for="branch in branches"
-                        :key="branch.id"
-                        :value="branch.id"
-                    >
-                        {{ branch.name }}
-                        {{ branch.is_active ? '' : '(غیرفعال)' }}
-                    </option>
-                </select>
-            </label>
             <select
                 v-model="partyId"
                 class="h-11 rounded-xl border bg-background px-3 text-sm"
@@ -340,10 +310,6 @@ defineOptions({
                     <span class="font-bold">بازه:</span>
                     {{ formatDate(props.filters.from) }} تا
                     {{ formatDate(props.filters.to) }}
-                </p>
-                <p>
-                    <span class="font-bold">شعبه:</span>
-                    {{ selectedBranchName }}
                 </p>
                 <p v-if="activeTab === 'statement'">
                     <span class="font-bold">طرف‌حساب:</span>

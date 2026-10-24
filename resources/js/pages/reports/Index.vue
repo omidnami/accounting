@@ -6,7 +6,6 @@ import {
     BookOpen,
     Download,
     BookText,
-    Building2,
     Landmark,
     Printer,
     ReceiptText,
@@ -42,7 +41,6 @@ type Props = {
     filters: {
         from: string;
         to: string;
-        branch_id: number | null;
         account_id: number | null;
     };
     accounts: Array<{
@@ -51,7 +49,6 @@ type Props = {
         name: string;
         is_active: boolean;
     }>;
-    branches: Array<{ id: number; name: string; is_active: boolean }>;
     trialBalance: {
         rows: TrialRow[];
         total_opening_debit: string;
@@ -132,7 +129,6 @@ const tabs = [
 const activeTab = ref<(typeof tabs)[number]['key']>('trial');
 const from = ref(props.filters.from);
 const to = ref(props.filters.to);
-const branchId = ref<string>(props.filters.branch_id?.toString() ?? '');
 const accountId = ref<string>(props.filters.account_id?.toString() ?? '');
 const money = new Intl.NumberFormat('fa-IR', {
     minimumFractionDigits: 0,
@@ -158,11 +154,6 @@ const format = (value: string | null) =>
 const activeReportLabel = computed(
     () => tabs.find((tab) => tab.key === activeTab.value)?.label ?? '',
 );
-const selectedBranchName = computed(
-    () =>
-        props.branches.find((branch) => branch.id === props.filters.branch_id)
-            ?.name ?? 'همه شعبه‌ها',
-);
 const selectedAccountName = computed(() => {
     const account = props.accounts.find(
         (item) => item.id === props.filters.account_id,
@@ -181,7 +172,6 @@ const exportHref = () =>
             report: activeTab.value,
             from: props.filters.from,
             to: props.filters.to,
-            branch_id: props.filters.branch_id ?? undefined,
             account_id: props.filters.account_id ?? undefined,
         },
     }).url;
@@ -193,7 +183,6 @@ const applyFilters = () => {
         {
             from: from.value,
             to: to.value,
-            branch_id: branchId.value || undefined,
             account_id: accountId.value || undefined,
         },
         {
@@ -209,7 +198,6 @@ const changeJournalPage = (page: number) => {
         {
             from: props.filters.from,
             to: props.filters.to,
-            branch_id: props.filters.branch_id ?? undefined,
             page,
         },
         {
@@ -300,7 +288,7 @@ defineOptions({
         </section>
 
         <form
-            class="grid gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1.2fr_1.5fr_auto] print:hidden"
+            class="grid gap-3 rounded-2xl border border-border/70 bg-card p-4 shadow-sm sm:grid-cols-2 xl:grid-cols-[1fr_1.2fr_1fr_auto] print:hidden"
             @submit.prevent="applyFilters"
         >
             <label class="space-y-1.5">
@@ -332,30 +320,6 @@ defineOptions({
                     >تا تاریخ</span
                 >
                 <JalaliDatePicker v-model="to" required />
-            </label>
-            <label class="space-y-1.5">
-                <span class="text-xs font-semibold text-muted-foreground"
-                    >شعبه</span
-                >
-                <span class="relative block">
-                    <Building2
-                        class="absolute inset-y-0 right-3 my-auto size-4 text-muted-foreground"
-                    />
-                    <select
-                        v-model="branchId"
-                        class="h-10 w-full appearance-none rounded-xl border border-input bg-background py-2 pr-9 pl-3 text-sm outline-none focus:border-ring focus:ring-3 focus:ring-ring/20"
-                    >
-                        <option value="">همه شعبه‌ها</option>
-                        <option
-                            v-for="branch in branches"
-                            :key="branch.id"
-                            :value="branch.id.toString()"
-                        >
-                            {{ branch.name }}
-                            {{ branch.is_active ? '' : '(غیرفعال)' }}
-                        </option>
-                    </select>
-                </span>
             </label>
             <Button type="submit" class="mt-auto h-10 rounded-xl px-5">
                 اعمال فیلتر
@@ -395,10 +359,6 @@ defineOptions({
                     <span class="font-bold">بازه:</span>
                     {{ formatReportDate(props.filters.from) }} تا
                     {{ formatReportDate(props.filters.to) }}
-                </p>
-                <p>
-                    <span class="font-bold">شعبه:</span>
-                    {{ selectedBranchName }}
                 </p>
                 <p>
                     <span class="font-bold">حساب دفتر معین:</span>
