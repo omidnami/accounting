@@ -111,6 +111,30 @@
         box-shadow: none !important;
     }
 
+    .print-report,
+    .print-invoice {
+        color-scheme: light;
+        background: white !important;
+        color: #111827 !important;
+        --background: #ffffff;
+        --foreground: #111827;
+        --card: #ffffff;
+        --card-foreground: #111827;
+        --popover: #ffffff;
+        --popover-foreground: #111827;
+        --primary: #065f46;
+        --primary-foreground: #ffffff;
+        --secondary: #f3f4f6;
+        --secondary-foreground: #111827;
+        --muted: #f3f4f6;
+        --muted-foreground: #374151;
+        --accent: #fef3c7;
+        --accent-foreground: #78350f;
+        --border: #9ca3af;
+        --input: #d1d5db;
+        --ring: #065f46;
+    }
+
     .print-report {
         page: report-sheet;
         max-width: none !important;

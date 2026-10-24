@@ -237,6 +237,23 @@ it('marks profit as incomplete when a sales cost snapshot is missing', function 
         ->and($report['summary']['incomplete_cogs_count'])->toBe(1)
         ->and($report['daily'][0]['cogs_complete'])->toBeFalse()
         ->and($report['products'][0]['cogs_complete'])->toBeFalse();
+
+    $response = $this->actingAs($context['manager'])
+        ->get(route('reports.export.operations', [
+            'report' => 'sales_daily',
+            'from' => $context['fiscalYear']->starts_on->toDateString(),
+            'to' => $context['fiscalYear']->ends_on->toDateString(),
+        ]));
+    $content = ltrim($response->streamedContent(), "\xEF\xBB\xBF");
+    $rows = collect(explode("\n", trim($content)))
+        ->map(fn (string $line): array => str_getcsv($line, ';', '"', ''));
+    $daily = $rows->firstWhere(
+        fn (array $row): bool => $row[0] === $context['fiscalYear']->starts_on->toDateString(),
+    );
+
+    expect($daily)->not->toBeNull()
+        ->and($daily[4])->toBe('')
+        ->and($daily[5])->toBe('خیر');
 });
 
 it('keeps inactive accounts and branches selectable for historical reports', function () {
@@ -282,14 +299,14 @@ it('exports every financial and operational report as CSV', function () {
         'to' => $context['fiscalYear']->ends_on->toDateString(),
     ];
     $financialReports = [
-        'trial' => 'کد حساب',
-        'income' => 'مبلغ',
-        'balance' => 'مبلغ',
-        'journal' => 'شماره سند',
-        'ledger' => 'مانده',
+        'trial' => ['header' => 'کد حساب', 'summary' => 'جمع کل'],
+        'income' => ['header' => 'مبلغ', 'summary' => 'سود خالص دوره'],
+        'balance' => ['header' => 'مبلغ', 'summary' => 'جمع حقوق صاحبان سهام'],
+        'journal' => ['header' => 'شماره سند', 'summary' => 'جمع کل'],
+        'ledger' => ['header' => 'مانده', 'summary' => 'مانده اول دوره'],
     ];
 
-    foreach ($financialReports as $report => $expectedHeader) {
+    foreach ($financialReports as $report => $expected) {
         $response = $this->actingAs($context['manager'])->get(route('reports.export.financial', [
             ...$range,
             'report' => $report,
@@ -300,18 +317,19 @@ it('exports every financial and operational report as CSV', function () {
         expect($response->getStatusCode())->toBe(200)
             ->and($response->headers->get('content-type'))->toBe('text/csv; charset=UTF-8')
             ->and($content)->toStartWith("\xEF\xBB\xBF")
-            ->and($content)->toContain($expectedHeader);
+            ->and($content)->toContain($expected['header'])
+            ->and($content)->toContain($expected['summary']);
     }
 
     $operationalReports = [
-        'statement' => 'شماره سند',
-        'aging_receivable' => 'روز تأخیر',
-        'aging_payable' => 'روز تأخیر',
-        'sales_daily' => 'COGS کامل',
-        'sales_products' => 'حاشیه سود',
+        'statement' => ['header' => 'شماره سند', 'summary' => 'مانده اول دوره'],
+        'aging_receivable' => ['header' => 'روز تأخیر', 'summary' => 'جمع کل'],
+        'aging_payable' => ['header' => 'روز تأخیر', 'summary' => 'جمع کل'],
+        'sales_daily' => ['header' => 'COGS کامل', 'summary' => 'جمع کل'],
+        'sales_products' => ['header' => 'حاشیه سود', 'summary' => 'جمع کل'],
     ];
 
-    foreach ($operationalReports as $report => $expectedHeader) {
+    foreach ($operationalReports as $report => $expected) {
         $response = $this->actingAs($context['manager'])->get(route('reports.export.operations', [
             ...$range,
             'report' => $report,
@@ -321,7 +339,8 @@ it('exports every financial and operational report as CSV', function () {
 
         expect($response->getStatusCode())->toBe(200)
             ->and($content)->toStartWith("\xEF\xBB\xBF")
-            ->and($content)->toContain($expectedHeader);
+            ->and($content)->toContain($expected['header'])
+            ->and($content)->toContain($expected['summary']);
     }
 });
 
@@ -349,6 +368,46 @@ it('exports cardex without financial columns for warehouse users', function () {
     expect($content)->not->toContain('بهای واحد')
         ->and($content)->not->toContain('بهای کل')
         ->and($content)->not->toContain('ارزش پس از گردش');
+});
+
+it('preserves cardex movement and direction filters in CSV exports', function () {
+    $context = operationalReportContext();
+    $range = [
+        'product_id' => $context['product']->id,
+        'warehouse_id' => $context['warehouse']->id,
+        'from' => $context['fiscalYear']->starts_on->toDateString(),
+        'to' => $context['fiscalYear']->ends_on->toDateString(),
+    ];
+
+    $saleExport = $this->actingAs($context['manager'])
+        ->get(route('inventory.cardex.export', [
+            ...$range,
+            'movement_type' => 'sale',
+            'direction' => 'out',
+        ]));
+    $saleContent = $saleExport->streamedContent();
+
+    $purchaseExport = $this->actingAs($context['manager'])
+        ->get(route('inventory.cardex.export', [
+            ...$range,
+            'movement_type' => 'purchase',
+            'direction' => 'in',
+        ]));
+    $purchaseContent = $purchaseExport->streamedContent();
+
+    expect($saleExport->getStatusCode())->toBe(200)
+        ->and($saleContent)->toContain(';sale;')
+        ->and($saleContent)->not->toContain(';purchase;')
+        ->and($purchaseContent)->toContain(';purchase;')
+        ->and($purchaseContent)->not->toContain(';sale;');
+
+    $this->actingAs($context['manager'])
+        ->get(route('inventory.cardex.export', [
+            ...$range,
+            'movement_type' => 'sale',
+            'direction' => 'in',
+        ]))
+        ->assertSessionHasErrors('movement_type');
 });
 
 it('protects report exports by role', function () {

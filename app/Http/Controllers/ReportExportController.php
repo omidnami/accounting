@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\InventoryDirection;
+use App\Enums\InventoryMovementType;
+use App\Http\Requests\InventoryCardexRequest;
 use App\Models\FiscalYear;
 use App\Models\Store;
 use App\Services\Reporting\ReportExportService;
@@ -92,27 +95,24 @@ class ReportExportController extends Controller
     }
 
     public function cardex(
-        Request $request,
+        InventoryCardexRequest $request,
         ReportExportService $exports,
     ): StreamedResponse {
-        abort_unless($request->user()?->canViewInventoryReports(), 403);
         $store = $this->mainStore();
-        [$from, $to] = $this->dates($request, $store);
-        $validated = $request->validate([
-            'product_id' => ['required', 'integer', 'exists:products,id'],
-            'warehouse_id' => [
-                'required',
-                'integer',
-                Rule::exists('warehouses', 'id')->where('store_id', $store->id),
-            ],
-        ]);
+        $validated = $request->validated();
 
         return $exports->cardex(
             $store,
             (int) $validated['product_id'],
             (int) $validated['warehouse_id'],
-            $from,
-            $to,
+            $validated['from'],
+            $validated['to'],
+            isset($validated['movement_type'])
+                ? InventoryMovementType::from($validated['movement_type'])
+                : null,
+            isset($validated['direction'])
+                ? InventoryDirection::from($validated['direction'])
+                : null,
             $request->user()->canViewInventoryCosts(),
         );
     }

@@ -265,6 +265,8 @@ it('lets cashiers create drafts but requires a manager to confirm them', functio
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('sales/Show')
+            ->where('seller.name', $context['store']->legal_name ?: $context['store']->name)
+            ->where('seller.branch_name', $context['branch']->name)
             ->where('can_confirm', false));
 
     $this->actingAs($context['user'])

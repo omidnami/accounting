@@ -138,6 +138,14 @@ const money = new Intl.NumberFormat('fa-IR', {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
 });
+const reportDate = new Intl.DateTimeFormat('fa-IR', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+});
+const formatReportDate = (value: string) =>
+    reportDate.format(new Date(`${value}T12:00:00Z`));
 const typeLabel = computed<Record<string, string>>(() => ({
     asset: 'دارایی',
     liability: 'بدهی',
@@ -147,6 +155,26 @@ const typeLabel = computed<Record<string, string>>(() => ({
 }));
 const format = (value: string | null) =>
     value ? money.format(Number(value)) : '—';
+const activeReportLabel = computed(
+    () => tabs.find((tab) => tab.key === activeTab.value)?.label ?? '',
+);
+const selectedBranchName = computed(
+    () =>
+        props.branches.find((branch) => branch.id === props.filters.branch_id)
+            ?.name ?? 'همه شعبه‌ها',
+);
+const selectedAccountName = computed(() => {
+    const account = props.accounts.find(
+        (item) => item.id === props.filters.account_id,
+    );
+
+    return account ? `${account.code} — ${account.name}` : 'انتخاب‌نشده';
+});
+const printLabel = computed(() =>
+    activeTab.value === 'journal' && props.journal.last_page > 1
+        ? 'چاپ صفحه'
+        : 'چاپ / PDF',
+);
 const exportHref = () =>
     exportFinancial({
         query: {
@@ -265,7 +293,7 @@ defineOptions({
                         @click="printReport"
                     >
                         <Printer class="size-4" />
-                        چاپ / PDF
+                        {{ printLabel }}
                     </Button>
                 </div>
             </div>
@@ -354,6 +382,38 @@ defineOptions({
                 {{ tab.label }}
             </button>
         </div>
+
+        <section
+            class="hidden rounded-2xl border bg-card p-4 text-xs print:block"
+        >
+            <div class="grid gap-3 md:grid-cols-2">
+                <p>
+                    <span class="font-bold">گزارش:</span>
+                    {{ activeReportLabel }}
+                </p>
+                <p>
+                    <span class="font-bold">بازه:</span>
+                    {{ formatReportDate(props.filters.from) }} تا
+                    {{ formatReportDate(props.filters.to) }}
+                </p>
+                <p>
+                    <span class="font-bold">شعبه:</span>
+                    {{ selectedBranchName }}
+                </p>
+                <p>
+                    <span class="font-bold">حساب دفتر معین:</span>
+                    {{ selectedAccountName }}
+                </p>
+            </div>
+            <p
+                v-if="activeTab === 'journal' && journal.last_page > 1"
+                class="mt-3 border-t pt-3 font-semibold"
+            >
+                این چاپ فقط صفحه {{ journal.current_page }} از
+                {{ journal.last_page }} است. برای کل بازه از خروجی CSV استفاده
+                کنید.
+            </p>
+        </section>
 
         <template v-if="activeTab === 'trial'">
             <section class="grid gap-4 sm:grid-cols-3">
@@ -688,7 +748,7 @@ defineOptions({
                 </p>
                 <div
                     v-if="journal.last_page > 1"
-                    class="flex items-center justify-between rounded-xl border bg-card px-4 py-3 text-sm"
+                    class="flex items-center justify-between rounded-xl border bg-card px-4 py-3 text-sm print:hidden"
                 >
                     <span class="text-muted-foreground"
                         >{{ journal.from ?? 0 }} تا {{ journal.to ?? 0 }} از

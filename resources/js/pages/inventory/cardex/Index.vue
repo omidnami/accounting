@@ -179,9 +179,34 @@ const exportHref = computed(() =>
                   warehouse_id: props.filters.warehouse_id ?? undefined,
                   from: props.filters.from,
                   to: props.filters.to,
+                  movement_type: props.filters.movement_type ?? undefined,
+                  direction: props.filters.direction ?? undefined,
               },
           }).url
         : null,
+);
+const printLabel = computed(() =>
+    props.report && props.report.movements.last_page > 1
+        ? 'چاپ صفحه'
+        : 'چاپ / PDF',
+);
+const selectedProduct = computed(() =>
+    props.products.find((product) => product.id === props.filters.product_id),
+);
+const selectedWarehouse = computed(() =>
+    props.warehouses.find(
+        (warehouse) => warehouse.id === props.filters.warehouse_id,
+    ),
+);
+const selectedMovementLabel = computed(() =>
+    props.filters.movement_type
+        ? movementLabels[props.filters.movement_type]
+        : 'همه گردش‌ها',
+);
+const selectedDirectionLabel = computed(() =>
+    props.filters.direction
+        ? directionMeta[props.filters.direction].label
+        : 'ورود و خروج',
 );
 const printReport = () => window.print();
 
@@ -301,7 +326,7 @@ defineOptions({
                         class="rounded-xl"
                         @click="printReport"
                     >
-                        <Printer class="size-4" /> چاپ / PDF
+                        <Printer class="size-4" /> {{ printLabel }}
                     </Button>
                 </div>
             </div>
@@ -426,6 +451,49 @@ defineOptions({
                 </Button>
             </div>
         </form>
+
+        <section
+            v-if="report"
+            class="hidden rounded-2xl border bg-card p-4 text-xs print:block"
+        >
+            <div class="grid gap-3 md:grid-cols-3">
+                <p>
+                    <span class="font-bold">گزارش:</span>
+                    {{ reportTitle }}
+                </p>
+                <p>
+                    <span class="font-bold">بازه:</span>
+                    {{ formatDate(filters.from) }} تا
+                    {{ formatDate(filters.to) }}
+                </p>
+                <p>
+                    <span class="font-bold">کالا:</span>
+                    {{ selectedProduct?.name ?? report.product.name }}
+                    <span dir="ltr">({{ report.product.code }})</span>
+                </p>
+                <p>
+                    <span class="font-bold">انبار:</span>
+                    {{ selectedWarehouse?.name ?? report.warehouse.name }}
+                </p>
+                <p>
+                    <span class="font-bold">نوع گردش:</span>
+                    {{ selectedMovementLabel }}
+                </p>
+                <p>
+                    <span class="font-bold">جهت:</span>
+                    {{ selectedDirectionLabel }}
+                </p>
+            </div>
+            <p
+                v-if="report.movements.last_page > 1"
+                class="mt-3 border-t pt-3 font-semibold"
+            >
+                این چاپ فقط صفحه
+                {{ count.format(report.movements.current_page) }} از
+                {{ count.format(report.movements.last_page) }} است. برای کل بازه
+                از خروجی CSV استفاده کنید.
+            </p>
+        </section>
 
         <template v-if="report">
             <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

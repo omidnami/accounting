@@ -126,6 +126,31 @@ const activeAging = computed(() =>
         ? props.receivablesAging
         : props.payablesAging,
 );
+const activeReportLabel = computed(() => {
+    if (activeTab.value === 'statement') {
+        return 'صورتحساب طرف‌حساب';
+    }
+
+    if (activeTab.value === 'aging') {
+        return agingSide.value === 'receivable'
+            ? 'Aging مطالبات مشتریان'
+            : 'Aging بدهی تأمین‌کنندگان';
+    }
+
+    return 'فروش روزانه و سود کالا';
+});
+const selectedBranchName = computed(
+    () =>
+        props.branches.find((branch) => branch.id === props.filters.branch_id)
+            ?.name ?? 'همه شعبه‌ها',
+);
+const selectedPartyName = computed(() => {
+    const party = props.parties.find(
+        (item) => item.id === props.filters.party_id,
+    );
+
+    return party ? `${party.code} — ${party.name}` : 'انتخاب‌نشده';
+});
 const bucketLabels: Record<string, string> = {
     current: 'سررسید نشده',
     days_1_30: '۱ تا ۳۰ روز',
@@ -303,6 +328,30 @@ defineOptions({
             </button>
         </div>
 
+        <section
+            class="hidden rounded-2xl border bg-card p-4 text-xs print:block"
+        >
+            <div class="grid gap-3 md:grid-cols-2">
+                <p>
+                    <span class="font-bold">گزارش:</span>
+                    {{ activeReportLabel }}
+                </p>
+                <p>
+                    <span class="font-bold">بازه:</span>
+                    {{ formatDate(props.filters.from) }} تا
+                    {{ formatDate(props.filters.to) }}
+                </p>
+                <p>
+                    <span class="font-bold">شعبه:</span>
+                    {{ selectedBranchName }}
+                </p>
+                <p v-if="activeTab === 'statement'">
+                    <span class="font-bold">طرف‌حساب:</span>
+                    {{ selectedPartyName }}
+                </p>
+            </div>
+        </section>
+
         <template v-if="activeTab === 'statement'">
             <template v-if="statement">
                 <section class="grid gap-4 sm:grid-cols-4">
@@ -411,7 +460,7 @@ defineOptions({
         </template>
 
         <template v-else-if="activeTab === 'aging'">
-            <div class="flex gap-2">
+            <div class="flex gap-2 print:hidden">
                 <Button
                     :variant="
                         agingSide === 'receivable' ? 'default' : 'outline'

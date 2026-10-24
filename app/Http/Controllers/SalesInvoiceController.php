@@ -176,9 +176,11 @@ class SalesInvoiceController extends Controller
     ): Response {
         abort_unless($request->user()?->canManageSales(), 403);
         $this->assertSalesInvoice($invoice);
+        $store = $this->mainStore();
         $invoice->load([
             'items',
             'customer.party',
+            'branch',
             'childInvoices' => fn ($query) => $query
                 ->where('type', InvoiceType::SalesReturn)
                 ->orderByDesc('id'),
@@ -190,6 +192,15 @@ class SalesInvoiceController extends Controller
             'can_return' => $request->user()->canConfirmSales()
                 && $returns->returnableItems($invoice) !== [],
             'outstanding' => $receivables->outstandingForInvoice($invoice),
+            'seller' => [
+                'name' => $store->legal_name ?: $store->name,
+                'branch_name' => $invoice->branch->name,
+                'phone' => $store->phone,
+                'email' => $store->email,
+                'national_id' => $store->national_id,
+                'tax_id' => $store->tax_id,
+                'address' => $store->address,
+            ],
             'returns' => $invoice->childInvoices->map(fn (Invoice $return): array => [
                 'id' => $return->id,
                 'invoice_number' => $return->invoice_number,

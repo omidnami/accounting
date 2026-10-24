@@ -42,6 +42,15 @@ type Props = {
     can_receive: boolean;
     can_return: boolean;
     outstanding: string;
+    seller: {
+        name: string;
+        branch_name: string;
+        phone: string | null;
+        email: string | null;
+        national_id: string | null;
+        tax_id: string | null;
+        address: string | null;
+    };
     returns: Array<{
         id: number;
         invoice_number: string;
@@ -191,8 +200,32 @@ defineOptions({
                 class="relative flex flex-col justify-between gap-5 md:flex-row md:items-end"
             >
                 <div class="text-center print:mb-2">
+                    <p class="text-base font-black">{{ seller.name }}</p>
+                    <p class="mt-1 text-[10px] text-muted-foreground">
+                        شعبه {{ seller.branch_name }}
+                        <template v-if="seller.phone">
+                            · {{ seller.phone }}
+                        </template>
+                    </p>
+                    <p
+                        v-if="seller.national_id || seller.tax_id"
+                        class="mt-1 text-[9px] text-muted-foreground"
+                    >
+                        <template v-if="seller.national_id">
+                            شناسه ملی: {{ seller.national_id }}
+                        </template>
+                        <template v-if="seller.tax_id">
+                            · شناسه مالیاتی: {{ seller.tax_id }}
+                        </template>
+                    </p>
+                    <p
+                        v-if="seller.address"
+                        class="mx-auto mt-1 max-w-md text-[9px] leading-5 text-muted-foreground"
+                    >
+                        {{ seller.address }}
+                    </p>
                     <div
-                        class="mb-3 flex flex-wrap items-center justify-center gap-2 text-primary print:mb-1"
+                        class="mt-3 mb-3 flex flex-wrap items-center justify-center gap-2 text-primary print:mb-1"
                     >
                         <FileText class="size-5" />
                         <span class="text-xs font-bold">فاکتور فروش</span>
