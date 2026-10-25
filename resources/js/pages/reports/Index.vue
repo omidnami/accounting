@@ -82,17 +82,27 @@ type Props = {
         debit_total: string;
         credit_total: string;
         closing_balance: string;
-        rows: Array<{
-            entry_id: number;
-            entry_number: string;
-            account_code: string;
-            account_name: string;
-            date: string;
-            description: string;
-            debit: string;
-            credit: string;
-            balance: string;
-        }>;
+        rows: {
+            data: Array<{
+                id: number;
+                entry_id: number;
+                entry_number: string;
+                account_code: string;
+                account_name: string;
+                date: string;
+                description: string;
+                debit: string;
+                credit: string;
+                balance: string;
+            }>;
+            current_page: number;
+            last_page: number;
+            from: number | null;
+            to: number | null;
+            total: number;
+            prev_page_url: string | null;
+            next_page_url: string | null;
+        };
     } | null;
     journal: {
         data: Array<{
@@ -161,8 +171,15 @@ const selectedAccountName = computed(() => {
 
     return account ? `${account.code} — ${account.name}` : 'انتخاب‌نشده';
 });
+const printedPage = computed(() =>
+    activeTab.value === 'journal'
+        ? props.journal
+        : activeTab.value === 'ledger'
+          ? props.accountLedger?.rows
+          : null,
+);
 const printLabel = computed(() =>
-    activeTab.value === 'journal' && props.journal.last_page > 1
+    printedPage.value && printedPage.value.last_page > 1
         ? 'چاپ صفحه'
         : 'چاپ / PDF',
 );
@@ -199,7 +216,27 @@ const changeJournalPage = (page: number) => {
         {
             from: props.filters.from,
             to: props.filters.to,
+            account_id: props.filters.account_id ?? undefined,
             page,
+            ledger_page: props.accountLedger?.rows.current_page,
+        },
+        {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        },
+    );
+};
+
+const changeLedgerPage = (page: number) => {
+    router.get(
+        reports(),
+        {
+            from: props.filters.from,
+            to: props.filters.to,
+            account_id: props.filters.account_id ?? undefined,
+            page: props.journal.current_page,
+            ledger_page: page,
         },
         {
             preserveState: true,
@@ -379,12 +416,12 @@ defineOptions({
                 </p>
             </div>
             <p
-                v-if="activeTab === 'journal' && journal.last_page > 1"
+                v-if="printedPage && printedPage.last_page > 1"
                 class="mt-3 border-t pt-3 font-semibold"
             >
-                این چاپ فقط صفحه {{ journal.current_page }} از
-                {{ journal.last_page }} است. برای کل بازه از خروجی CSV استفاده
-                کنید.
+                این چاپ فقط صفحه {{ printedPage.current_page }} از
+                {{ printedPage.last_page }} است. برای کل بازه از خروجی فایل
+                استفاده کنید.
             </p>
         </section>
 
@@ -805,8 +842,8 @@ defineOptions({
                         </thead>
                         <tbody class="divide-y">
                             <tr
-                                v-for="row in accountLedger.rows"
-                                :key="`${row.entry_id}-${row.date}-${row.balance}`"
+                                v-for="row in accountLedger.rows.data"
+                                :key="row.id"
                             >
                                 <td class="px-4 py-3 text-xs">
                                     {{ row.date }}
@@ -839,11 +876,45 @@ defineOptions({
                     </table>
                 </div>
                 <p
-                    v-if="accountLedger.rows.length === 0"
+                    v-if="accountLedger.rows.data.length === 0"
                     class="py-14 text-center text-sm text-muted-foreground"
                 >
                     گردشی برای این حساب در بازه انتخاب‌شده وجود ندارد.
                 </p>
+                <div
+                    v-if="accountLedger.rows.last_page > 1"
+                    class="flex items-center justify-between border-t px-4 py-3 text-sm print:hidden"
+                >
+                    <span class="text-muted-foreground">
+                        {{ accountLedger.rows.from ?? 0 }} تا
+                        {{ accountLedger.rows.to ?? 0 }} از
+                        {{ accountLedger.rows.total }}
+                    </span>
+                    <div class="flex gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            :disabled="!accountLedger.rows.prev_page_url"
+                            @click="
+                                changeLedgerPage(
+                                    accountLedger.rows.current_page - 1,
+                                )
+                            "
+                            >قبلی</Button
+                        >
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            :disabled="!accountLedger.rows.next_page_url"
+                            @click="
+                                changeLedgerPage(
+                                    accountLedger.rows.current_page + 1,
+                                )
+                            "
+                            >بعدی</Button
+                        >
+                    </div>
+                </div>
             </section>
         </template>
     </div>

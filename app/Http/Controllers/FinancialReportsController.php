@@ -38,6 +38,7 @@ class FinancialReportsController extends Controller
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
             'page' => ['nullable', 'integer', 'min:1'],
+            'ledger_page' => ['nullable', 'integer', 'min:1'],
             'account_id' => ['nullable', 'integer', 'exists:accounts,id'],
         ]);
         $from = $validated['from'] ?? $fiscalYear->starts_on->toDateString();
@@ -78,7 +79,10 @@ class FinancialReportsController extends Controller
             'incomeStatement' => $statements->incomeStatement($store->id, $from, $to, $branchId),
             'balanceSheet' => $statements->balanceSheet($store->id, $to, $branchId),
             'accountLedger' => $account
-                ? $ledgers->report($account, $store->id, $from, $to, $branchId)
+                ? $ledgers->pageReport(
+                    $account, $store->id, $from, $to, $branchId,
+                    (int) ($validated['ledger_page'] ?? 1),
+                )
                 : null,
             'journal' => $journals->paginate(
                 $store->id,
