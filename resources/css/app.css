@@ -446,6 +446,83 @@
     --sidebar: hsl(211 36% 9%);
 }
 
+/* The default green keeps the original palette; alternatives use Tailwind colors. */
+:root[data-panel-color='red'] {
+    --panel-light: var(--color-red-700);
+    --panel-dark: var(--color-red-400);
+    --panel-soft: var(--color-red-50);
+    --panel-soft-text: var(--color-red-800);
+}
+:root[data-panel-color='blue'] {
+    --panel-light: var(--color-blue-700);
+    --panel-dark: var(--color-blue-400);
+    --panel-soft: var(--color-blue-50);
+    --panel-soft-text: var(--color-blue-800);
+}
+:root[data-panel-color='violet'] {
+    --panel-light: var(--color-violet-700);
+    --panel-dark: var(--color-violet-400);
+    --panel-soft: var(--color-violet-50);
+    --panel-soft-text: var(--color-violet-800);
+}
+:root[data-panel-color='indigo'] {
+    --panel-light: var(--color-indigo-700);
+    --panel-dark: var(--color-indigo-400);
+    --panel-soft: var(--color-indigo-50);
+    --panel-soft-text: var(--color-indigo-800);
+}
+:root[data-panel-color='rose'] {
+    --panel-light: var(--color-rose-700);
+    --panel-dark: var(--color-rose-400);
+    --panel-soft: var(--color-rose-50);
+    --panel-soft-text: var(--color-rose-800);
+}
+:root[data-panel-color='orange'] {
+    --panel-light: var(--color-orange-700);
+    --panel-dark: var(--color-orange-400);
+    --panel-soft: var(--color-orange-50);
+    --panel-soft-text: var(--color-orange-800);
+}
+:root[data-panel-color='amber'] {
+    --panel-light: var(--color-amber-700);
+    --panel-dark: var(--color-amber-400);
+    --panel-soft: var(--color-amber-50);
+    --panel-soft-text: var(--color-amber-800);
+}
+:root[data-panel-color='teal'] {
+    --panel-light: var(--color-teal-700);
+    --panel-dark: var(--color-teal-400);
+    --panel-soft: var(--color-teal-50);
+    --panel-soft-text: var(--color-teal-800);
+}
+:root[data-panel-color='cyan'] {
+    --panel-light: var(--color-cyan-700);
+    --panel-dark: var(--color-cyan-400);
+    --panel-soft: var(--color-cyan-50);
+    --panel-soft-text: var(--color-cyan-800);
+}
+
+:root[data-panel-color]:not([data-panel-color='green']) {
+    --primary: var(--panel-light);
+    --primary-foreground: #ffffff;
+    --secondary: var(--panel-soft);
+    --secondary-foreground: var(--panel-soft-text);
+    --ring: var(--panel-light);
+    --sidebar-primary: var(--panel-dark);
+    --sidebar-primary-foreground: hsl(211 35% 9%);
+    --sidebar-ring: var(--panel-dark);
+    --chart-1: var(--panel-light);
+}
+
+:root.dark[data-panel-color]:not([data-panel-color='green']) {
+    --primary: var(--panel-dark);
+    --primary-foreground: hsl(211 35% 9%);
+    --secondary: color-mix(in oklab, var(--panel-dark) 12%, hsl(211 23% 16%));
+    --secondary-foreground: hsl(40 20% 94%);
+    --ring: var(--panel-dark);
+    --chart-1: var(--panel-dark);
+}
+
 @layer base {
     * {
         @apply border-border outline-ring/50;

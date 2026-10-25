@@ -51,7 +51,7 @@ it('limits every role to its own actions even when another actor is requested', 
             ->missing('activities.data.0.old_values')
             ->missing('activities.data.0.new_values')
             ->missing('activities.data.0.actor_email')
-            ->missing('activities.data.0.ip_address')
+            ->where('activities.data.0.ip_address', '192.0.2.1')
             ->missing('activities.data.0.user_agent'));
 
     if ($role !== UserRole::Manager) {
@@ -63,7 +63,7 @@ it('paginates personal history newest first and preserves the date filter', func
     $user = User::factory()->create();
     $ids = [];
 
-    for ($index = 0; $index < 16; $index++) {
+    for ($index = 0; $index < 60; $index++) {
         $ids[] = personalActivityLog($user)->id;
     }
 
@@ -71,19 +71,40 @@ it('paginates personal history newest first and preserves the date filter', func
         ->get(route('my-activity.index', ['date' => 'today']))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->where('activities.total', 16)
-            ->where('activities.per_page', 15)
-            ->has('activities.data', 15)
-            ->where('activities.data.0.id', $ids[15])
-            ->where('activities.data.14.id', $ids[1])
+            ->where('activities.total', 50)
+            ->where('activities.last_page', 2)
+            ->where('activities.per_page', 25)
+            ->has('activities.data', 25)
+            ->where('activities.data.0.id', $ids[59])
+            ->where('activities.data.24.id', $ids[35])
             ->where('activities.next_page_url', fn ($url): bool => str_contains($url, 'date=today') && str_contains($url, 'page=2')));
     $this->get(route('my-activity.index', ['date' => 'today', 'page' => 2]))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->where('activities.current_page', 2)
-            ->has('activities.data', 1)
-            ->where('activities.data.0.id', $ids[0])
+            ->has('activities.data', 25)
+            ->where('activities.data.0.id', $ids[34])
+            ->where('activities.data.24.id', $ids[10])
             ->where('activities.next_page_url', null));
+    $this->get(route('my-activity.index', ['page' => 3]))->assertSessionHasErrors('page');
+    expect(AuditLog::query()->where('user_id', $user->id)->count())->toBe(60);
+});
+
+it('shows useful activity details without exposing raw audit values', function () {
+    $user = User::factory()->create();
+    personalActivityLog($user, [
+        'event' => 'updated',
+        'new_values' => ['invoice_number' => 'SI-1405-123', 'name' => 'فاکتور آزمایشی', 'quantity' => 4, 'status' => 'confirmed', 'password' => 'password-secret', 'private' => 'private-secret'],
+    ]);
+    $this->actingAs($user)->get(route('my-activity.index'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('activities.data.0.reference', 'SI-1405-123')
+            ->where('activities.data.0.record_name', 'فاکتور آزمایشی')
+            ->where('activities.data.0.changed_fields', ['نام', 'وضعیت', 'تعداد'])
+            ->where('activities.data.0.ip_address', '192.0.2.1')
+            ->missing('activities.data.0.new_values')
+            ->missing('activities.data.0.old_values'));
 });
 
 it('filters history dates and handles custom and unknown audit events', function () {

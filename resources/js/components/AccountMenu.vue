@@ -2,11 +2,8 @@
 import { Link, router, usePage } from '@inertiajs/vue3';
 import {
     Activity,
-    Check,
     ChevronDown,
     LogOut,
-    PanelRight,
-    PanelTop,
     SlidersHorizontal,
     UserRoundPen,
 } from '@lucide/vue';
@@ -15,12 +12,10 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuLabel,
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import UserInfo from '@/components/UserInfo.vue';
-import { useMenuLayout } from '@/composables/useMenuLayout';
 import { logout } from '@/routes';
 import { index as myActivity } from '@/routes/my-activity';
 import { edit as editAppearance } from '@/routes/appearance';
@@ -28,7 +23,6 @@ import { edit as editProfile } from '@/routes/profile';
 
 const page = usePage();
 const user = computed(() => page.props.auth.user);
-const { menuLayout, setMenuLayout } = useMenuLayout();
 
 const accountActions = [
     {
@@ -45,19 +39,6 @@ const accountActions = [
         title: 'آخرین فعالیت من',
         icon: Activity,
         href: myActivity(),
-    },
-];
-
-const menuLayouts = [
-    {
-        title: 'منوی کناری',
-        value: 'sidebar' as const,
-        icon: PanelRight,
-    },
-    {
-        title: 'منوی بالا',
-        value: 'topbar' as const,
-        icon: PanelTop,
     },
 ];
 
@@ -101,35 +82,6 @@ const handleLogout = () => {
                     />
                     <span>{{ action.title }}</span>
                 </Link>
-            </DropdownMenuItem>
-
-            <DropdownMenuSeparator />
-            <DropdownMenuLabel
-                class="px-2 py-1 text-[10px] text-muted-foreground"
-            >
-                طرح نمایش منو
-            </DropdownMenuLabel>
-            <DropdownMenuItem
-                v-for="layout in menuLayouts"
-                :key="layout.value"
-                as-child
-            >
-                <button
-                    type="button"
-                    dir="rtl"
-                    class="flex w-full cursor-pointer items-center gap-2.5 px-2 py-2 text-right"
-                    @click="setMenuLayout(layout.value)"
-                >
-                    <component
-                        :is="layout.icon"
-                        class="size-4 text-muted-foreground"
-                    />
-                    <span>{{ layout.title }}</span>
-                    <Check
-                        v-if="menuLayout === layout.value"
-                        class="ms-auto size-4 text-primary"
-                    />
-                </button>
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />

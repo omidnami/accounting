@@ -6,6 +6,7 @@ use App\Models\AuditLog;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Str;
 
 class PersonalActivityReportService
 {
@@ -49,21 +50,39 @@ class PersonalActivityReportService
         'pos.check_registered' => 'ثبت چک صندوق',
     ];
 
+    private const FIELD_LABELS = [
+        'name' => 'نام', 'title' => 'عنوان', 'email' => 'ایمیل',
+        'status' => 'وضعیت', 'is_active' => 'فعال بودن', 'role' => 'نقش کاربر',
+        'quantity' => 'تعداد', 'unit_price' => 'قیمت واحد', 'sale_price' => 'قیمت فروش',
+        'purchase_price' => 'قیمت خرید', 'discount_amount' => 'تخفیف',
+        'tax_rate' => 'نرخ مالیات', 'total' => 'جمع مبلغ', 'amount' => 'مبلغ',
+        'invoice_date' => 'تاریخ فاکتور', 'entry_date' => 'تاریخ سند',
+        'due_date' => 'سررسید', 'notes' => 'یادداشت', 'description' => 'شرح',
+        'warehouse_id' => 'انبار', 'customer_id' => 'مشتری', 'supplier_id' => 'تأمین‌کننده',
+        'counted_quantity' => 'تعداد شمارش‌شده', 'payment_method' => 'روش پرداخت',
+    ];
+
     /**
      * @return LengthAwarePaginator<int, array{
      *     id: int, event_label: string, entity_label: string, entity_id: int,
-     *     description: string, created_at: string
+     *     description: string, created_at: string, reference: string|null,
+     *     record_name: string|null, changed_fields: list<string>, ip_address: string|null
      * }>
      */
     public function paginate(User $user, ?string $date = null): LengthAwarePaginator
     {
-        return AuditLog::query()
+        $recent = AuditLog::query()
             ->where('user_id', $user->id)
             ->when($date === 'today', fn (Builder $query) => $query->whereDate('created_at', today()))
             ->when($date === '7_days', fn (Builder $query) => $query->where('created_at', '>=', now()->subDays(7)))
             ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->paginate(15, ['id', 'event', 'auditable_type', 'auditable_id', 'description', 'created_at'])
+            ->limit(50);
+
+        return AuditLog::query()->fromSub($recent, 'audit_logs')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->paginate(25)
             ->withQueryString()
             ->through(function (AuditLog $log): array {
                 $model = class_basename($log->auditable_type);
@@ -80,7 +99,50 @@ class PersonalActivityReportService
                     'entity_id' => $log->auditable_id,
                     'description' => $description,
                     'created_at' => $log->created_at->toIso8601String(),
+                    'reference' => $this->detail($log, [
+                        'invoice_number', 'entry_number', 'receipt_number', 'payment_number',
+                        'check_number', 'count_number', 'transfer_number', 'code',
+                    ]),
+                    'record_name' => $this->detail($log, ['product_name', 'name', 'title']),
+                    'changed_fields' => $this->changedFields($log),
+                    'ip_address' => $log->ip_address,
                 ];
             });
+    }
+
+    /** @param list<string> $keys */
+    private function detail(AuditLog $log, array $keys): ?string
+    {
+        $new = $this->values($log->new_values);
+        $old = $this->values($log->old_values);
+        foreach ($keys as $key) {
+            $value = $new[$key] ?? $old[$key] ?? null;
+
+            if ((is_string($value) || is_int($value)) && (string) $value !== '') {
+                return Str::limit((string) $value, 160);
+            }
+        }
+
+        return null;
+    }
+
+    /** @return list<string> */
+    private function changedFields(AuditLog $log): array
+    {
+        return $log->event === 'updated'
+            ? array_values(array_intersect_key(self::FIELD_LABELS, $this->values($log->new_values)))
+            : [];
+    }
+
+    /** @return array<string, mixed> */
+    private function values(mixed $value): array
+    {
+        if (is_array($value)) {
+            return $value;
+        }
+
+        $decoded = is_string($value) ? json_decode($value, true) : null;
+
+        return is_array($decoded) ? $decoded : [];
     }
 }

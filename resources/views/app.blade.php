@@ -8,6 +8,13 @@
         {{-- Inline script to detect system dark mode preference and apply it immediately --}}
         <script>
             (function() {
+                try {
+                    const panelColor = localStorage.getItem('panel_color');
+                    const colors = ['green', 'red', 'blue', 'violet', 'indigo', 'rose', 'orange', 'amber', 'teal', 'cyan'];
+                    document.documentElement.dataset.panelColor = colors.includes(panelColor) ? panelColor : 'green';
+                } catch {
+                    document.documentElement.dataset.panelColor = 'green';
+                }
                 const appearance = '{{ $appearance ?? "system" }}';
 
                 if (appearance === 'system') {

@@ -15,7 +15,7 @@ class MyActivityController extends Controller
     {
         $validated = $request->validate([
             'date' => ['nullable', Rule::in(['today', '7_days'])],
-            'page' => ['nullable', 'integer', 'min:1'],
+            'page' => ['nullable', 'integer', 'min:1', 'max:2'],
         ]);
 
         return Inertia::render('settings/Activity', [

@@ -14,6 +14,10 @@ const props = defineProps<{
             entity_id: number;
             description: string;
             created_at: string;
+            reference: string | null;
+            record_name: string | null;
+            changed_fields: string[];
+            ip_address: string | null;
         }>;
         current_page: number;
         last_page: number;
@@ -54,7 +58,7 @@ defineOptions({
         <Heading
             variant="small"
             title="آخرین فعالیت من"
-            description="تاریخچهٔ عملیات ثبت‌شده با حساب شما؛ از جدیدترین فعالیت به قدیمی‌ترین."
+            description="تا ۵۰ فعالیت آخر حساب شما، از جدیدترین به قدیمی‌ترین؛ ۲۵ فعالیت در هر صفحه."
         />
         <div
             class="flex items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card p-4"
@@ -102,6 +106,42 @@ defineOptions({
                         {{ activity.entity_label }} · شناسه
                         {{ count.format(activity.entity_id) }}
                     </p>
+                    <dl
+                        v-if="
+                            activity.reference ||
+                            activity.record_name ||
+                            activity.changed_fields.length
+                        "
+                        class="space-y-1.5 rounded-xl bg-muted/40 px-3 py-2.5 text-xs"
+                    >
+                        <div
+                            v-if="activity.reference"
+                            class="flex flex-wrap gap-2"
+                        >
+                            <dt class="text-muted-foreground">شماره / کد:</dt>
+                            <dd class="font-mono" dir="auto">
+                                {{ activity.reference }}
+                            </dd>
+                        </div>
+                        <div
+                            v-if="activity.record_name"
+                            class="flex flex-wrap gap-2"
+                        >
+                            <dt class="text-muted-foreground">نام / عنوان:</dt>
+                            <dd class="break-words">
+                                {{ activity.record_name }}
+                            </dd>
+                        </div>
+                        <div
+                            v-if="activity.changed_fields.length"
+                            class="flex flex-wrap gap-2"
+                        >
+                            <dt class="text-muted-foreground">
+                                موارد ویرایش‌شده:
+                            </dt>
+                            <dd>{{ activity.changed_fields.join('، ') }}</dd>
+                        </div>
+                    </dl>
                     <time
                         :datetime="activity.created_at"
                         class="flex items-center gap-1.5 text-[11px] text-muted-foreground"
@@ -109,6 +149,15 @@ defineOptions({
                         <Clock3 class="size-3.5" />
                         {{ dateTime.format(new Date(activity.created_at)) }}
                     </time>
+                    <p
+                        v-if="activity.ip_address"
+                        class="text-[11px] text-muted-foreground"
+                    >
+                        نشانی IP:
+                        <span dir="ltr" class="inline-block font-mono">{{
+                            activity.ip_address
+                        }}</span>
+                    </p>
                 </div>
             </article>
             <div
