@@ -419,74 +419,83 @@
 }
 .pos-tabs-bar {
     display: flex;
-    align-items: stretch;
-    gap: 6px;
+    align-items: center;
+    gap: 5px;
     flex-shrink: 0;
-    padding: 7px 12px;
-    border-bottom: 1px solid #e7eeea;
-    background: #f7f9f8;
+    padding: 5px 12px;
+    border-bottom: 1px solid #edf1ee;
+    background: #fafcfb;
 }
 .pos-tabs {
     display: flex;
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
-    gap: 5px;
+    gap: 4px;
     overflow-x: auto;
     scrollbar-width: thin;
 }
 .pos-tab {
     display: flex;
-    flex: 1 0 110px;
-    min-width: 0;
-    border: 1px solid #e1e8e4;
-    border-radius: 9px;
-    background: #fff;
-    color: #73847b;
+    flex: 0 1 125px;
+    min-width: 88px;
+    max-width: 140px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: #7b8881;
+}
+.pos-tab:hover {
+    background: #f0f4f1;
 }
 .pos-tab.active {
-    border-color: #9cc8b7;
-    background: #eaf4ee;
-    color: #176953;
-    box-shadow: inset 0 -2px #71ac93;
+    border-color: #d3e4da;
+    background: #edf5f0;
+    color: #276c53;
 }
 .pos-tab > [role='tab'] {
     flex: 1;
     min-width: 0;
-    padding: 6px 9px;
+    min-height: 34px;
+    padding: 3px 7px;
     text-align: right;
 }
 .pos-tab span {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     white-space: nowrap;
-    font-size: 11px;
-    font-weight: 700;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.5;
 }
 .pos-tab b {
-    border-radius: 5px;
-    padding: 0 4px;
-    background: #dcebe2;
-    font-size: 9px;
+    font-size: 8px;
+    font-weight: 500;
+    opacity: 0.65;
 }
 .pos-tab small {
     display: block;
-    max-width: 115px;
+    max-width: 100px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 9px;
-    margin-top: 2px;
-    opacity: 0.8;
+    font-size: 8px;
+    line-height: 1.4;
+    opacity: 0.7;
 }
 .pos-tab-close {
     align-self: center;
     display: grid;
     place-items: center;
-    min-width: 25px;
-    min-height: 30px;
-    border-radius: 6px;
-    margin-left: 3px;
+    min-width: 24px;
+    min-height: 26px;
+    border-radius: 5px;
+    margin-left: 2px;
+    color: #a0aca5;
+}
+.pos-tab-close svg {
+    width: 12px;
+    height: 12px;
 }
 .pos-tab-close:hover {
     background: #fce9e7;
@@ -497,26 +506,35 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
-    width: 38px;
+    gap: 0;
+    width: 30px;
+    min-height: 34px;
     flex-shrink: 0;
-    border: 1px dashed #b1cbbd;
-    border-radius: 9px;
-    color: #32785c;
+    border-radius: 7px;
+    color: #6e8a79;
+}
+.pos-tab-add:hover:not(:disabled) {
+    background: #edf3ef;
+    color: #276c53;
+}
+.pos-tab-add > svg {
+    width: 16px;
+    height: 16px;
 }
 .pos-tab-add small {
-    font-size: 9px;
+    font-size: 8px;
+    line-height: 1.4;
 }
 .pos-invoice-heading {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 19px 21px;
+    padding: 12px 16px;
     border-bottom: 1px solid #eef1ef;
 }
 .pos-invoice-heading h2 {
-    font-size: 16px;
-    font-weight: 750;
+    font-size: 14px;
+    font-weight: 650;
 }
 .pos-invoice-heading span {
     display: block;
@@ -530,9 +548,9 @@
     background: #f5f8f5;
     display: grid;
     place-items: center;
-    width: 43px;
-    height: 43px;
-    border-radius: 12px;
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
 }
 .pos-icon-button {
     position: relative;
@@ -561,9 +579,9 @@
     display: flex;
     gap: 11px;
     align-items: center;
-    margin: 15px 19px;
-    padding: 12px;
-    border: 1px dashed #cfdbd2;
+    margin: 10px 16px;
+    padding: 8px 10px;
+    border: 1px solid #e1e9e3;
     border-radius: 10px;
     background: #fafcf9;
 }
@@ -1068,7 +1086,7 @@
         font-size: 14px;
     }
     .pos-invoice-heading {
-        padding: 23px 25px;
+        padding: 14px 20px;
     }
     .pos-invoice-bottom {
         padding: 0 25px 23px;
