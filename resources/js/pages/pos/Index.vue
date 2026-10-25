@@ -32,9 +32,11 @@ import {
     onMounted,
     ref,
     watch,
+    type Ref,
 } from 'vue';
 import PosCheckoutDialog from '@/components/pos/PosCheckoutDialog.vue';
 import PosCheckReview from '@/components/pos/PosCheckReview.vue';
+import PosViewportNotice from '@/components/pos/PosViewportNotice.vue';
 import {
     Dialog,
     DialogContent,
@@ -76,6 +78,23 @@ const props = defineProps<{
     categories: { id: number; name: string }[];
 }>();
 const user = usePage().props.auth.user;
+const compactViewport =
+    typeof window === 'undefined'
+        ? null
+        : window.matchMedia('(width < 1000px)');
+const viewportTooNarrow = ref(compactViewport?.matches ?? false);
+function updateViewport(event: MediaQueryListEvent) {
+    viewportTooNarrow.value = event.matches;
+}
+// Hide dialogs while blocked without losing their draft inputs or open state.
+function viewportDialog(open: Ref<boolean>) {
+    return computed({
+        get: () => open.value && !viewportTooNarrow.value,
+        set: (value: boolean) => {
+            if (!viewportTooNarrow.value) open.value = value;
+        },
+    });
+}
 const session = ref<PosSession | null>(props.session);
 const lines = ref<PosLine[]>([]);
 const selectedCustomer = ref<PosCustomer | null>(null);
@@ -113,6 +132,12 @@ const held = ref<
     }>
 >([]);
 const heldOpen = ref(false);
+const customerDialog = viewportDialog(customerOpen);
+const activityDialog = viewportDialog(activityOpen);
+const shiftDialog = viewportDialog(shiftOpen);
+const heldDialog = viewportDialog(heldOpen);
+const successDialog = viewportDialog(successOpen);
+
 const storageKey = `pos-draft:${user.id}`;
 const warehouseId = ref(props.warehouses[0]?.id.toString() || '');
 const cashId = ref(
@@ -521,6 +546,7 @@ function fullscreen() {
 }
 function hotkeys(event: KeyboardEvent) {
     if (
+        viewportTooNarrow.value ||
         busy.value ||
         shiftOpen.value ||
         paymentOpen.value ||
@@ -545,6 +571,7 @@ function hotkeys(event: KeyboardEvent) {
     }
 }
 onMounted(async () => {
+    compactViewport?.addEventListener('change', updateViewport);
     restoring = true;
     // History may restore old Inertia props from before this shift was opened.
     // Compare the saved cart with the live shift before restoring its data.
@@ -585,9 +612,10 @@ onMounted(async () => {
     window.addEventListener('keydown', hotkeys);
     await loadProducts();
     await nextTick();
-    searchInput.value?.focus();
+    if (!viewportTooNarrow.value) searchInput.value?.focus();
 });
 onBeforeUnmount(() => {
+    compactViewport?.removeEventListener('change', updateViewport);
     disposed = true;
     clearTimeout(productTimer);
     clearTimeout(customerTimer);
@@ -600,7 +628,7 @@ onBeforeUnmount(() => {
 
 <template>
     <Head title="صندوق فروش" />
-    <div class="pos-screen" dir="rtl">
+    <div class="pos-screen" dir="rtl" :inert="viewportTooNarrow">
         <div
             v-if="pendingPayload && !busy"
             class="pos-recovery"
@@ -1103,6 +1131,7 @@ onBeforeUnmount(() => {
 
         <PosCheckoutDialog
             v-model:open="paymentOpen"
+            :blocked="viewportTooNarrow"
             :total="total"
             :customer="selectedCustomer"
             :card-available="Boolean(session?.card_account_id)"
@@ -1114,12 +1143,13 @@ onBeforeUnmount(() => {
         <PosCheckReview
             v-if="can_review"
             v-model:open="checksOpen"
+            :blocked="viewportTooNarrow"
             :checks="pendingChecks"
             :today="today"
             @resolved="refreshActivity"
         />
 
-        <Dialog v-model:open="customerOpen"
+        <Dialog v-model:open="customerDialog"
             ><DialogContent class="pos-dialog sm:max-w-lg" dir="rtl"
                 ><DialogHeader class="text-right"
                     ><DialogTitle>انتخاب مشتری</DialogTitle
@@ -1186,7 +1216,9 @@ onBeforeUnmount(() => {
             ></Dialog
         >
 
-        <Dialog :open="shiftOpen" @update:open="!busy && (shiftOpen = $event)"
+        <Dialog
+            :open="shiftDialog"
+            @update:open="!busy && (shiftDialog = $event)"
             ><DialogContent class="pos-dialog sm:max-w-lg" dir="rtl"
                 ><DialogHeader class="text-right"
                     ><DialogTitle>{{
@@ -1328,7 +1360,7 @@ onBeforeUnmount(() => {
             ></Dialog
         >
 
-        <Dialog v-model:open="heldOpen"
+        <Dialog v-model:open="heldDialog"
             ><DialogContent class="pos-dialog sm:max-w-lg" dir="rtl"
                 ><DialogHeader class="text-right"
                     ><DialogTitle>فاکتورهای در انتظار</DialogTitle
@@ -1376,7 +1408,7 @@ onBeforeUnmount(() => {
             ></Dialog
         >
 
-        <Dialog v-model:open="activityOpen"
+        <Dialog v-model:open="activityDialog"
             ><DialogContent
                 class="pos-dialog max-h-[90dvh] overflow-y-auto sm:max-w-xl"
                 dir="rtl"
@@ -1424,7 +1456,7 @@ onBeforeUnmount(() => {
             ></Dialog
         >
 
-        <Dialog v-model:open="successOpen"
+        <Dialog v-model:open="successDialog"
             ><DialogContent class="pos-dialog sm:max-w-md" dir="rtl"
                 ><DialogHeader class="text-center"
                     ><div class="pos-success-check"><Check :size="34" /></div>
@@ -1485,4 +1517,5 @@ onBeforeUnmount(() => {
             ></Dialog
         >
     </div>
+    <PosViewportNotice :open="viewportTooNarrow" @fullscreen="fullscreen" />
 </template>

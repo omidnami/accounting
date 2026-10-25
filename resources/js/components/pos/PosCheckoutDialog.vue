@@ -27,6 +27,7 @@ import { normalizeNumber } from '@/lib/number';
 
 const props = defineProps<{
     open: boolean;
+    blocked?: boolean;
     total: string;
     customer: PosCustomer | null;
     cardAvailable: boolean;
@@ -122,7 +123,10 @@ function submit() {
 </script>
 
 <template>
-    <Dialog :open="open" @update:open="!busy && emit('update:open', $event)">
+    <Dialog
+        :open="open && !blocked"
+        @update:open="!blocked && !busy && emit('update:open', $event)"
+    >
         <DialogContent
             class="pos-dialog max-h-[92dvh] overflow-y-auto sm:max-w-3xl"
             dir="rtl"

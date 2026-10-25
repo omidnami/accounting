@@ -14,6 +14,7 @@ import { register } from '@/routes/pos/checks';
 
 const props = defineProps<{
     open: boolean;
+    blocked?: boolean;
     checks: PendingCheck[];
     today: string;
 }>();
@@ -56,7 +57,10 @@ async function resolve() {
 }
 </script>
 <template>
-    <Dialog :open="open" @update:open="!busy && emit('update:open', $event)">
+    <Dialog
+        :open="open && !blocked"
+        @update:open="!blocked && !busy && emit('update:open', $event)"
+    >
         <DialogContent
             class="pos-dialog max-h-[90dvh] overflow-y-auto sm:max-w-3xl"
             dir="rtl"
