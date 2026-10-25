@@ -796,7 +796,8 @@ onBeforeUnmount(() => {
                 </div>
                 <div class="pos-catalog-footer">
                     <span class="flex items-center gap-2"
-                        ><Barcode :size="16" />پشتیبانی از بارکدخوان</span
+                        ><Search :size="16" />برای کالاهای بیشتر جست‌وجو
+                        کنید</span
                     ><span>{{
                         productLoading
                             ? 'به‌روزرسانی…'

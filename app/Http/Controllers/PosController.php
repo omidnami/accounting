@@ -104,7 +104,7 @@ class PosController extends Controller
         $session = PosSession::query()->where('active_user_id', $request->user()->id)->firstOrFail();
 
         return response()->json(['data' => $lookup->products($session->store_id, $session->warehouse_id,
-            (string) ($data['search'] ?? ''), isset($data['category_id']) ? (int) $data['category_id'] : null)]);
+            (string) ($data['search'] ?? ''), isset($data['category_id']) ? (int) $data['category_id'] : null, 15)]);
     }
 
     public function attempt(Request $request): JsonResponse

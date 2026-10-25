@@ -67,6 +67,25 @@ it('opens the dedicated POS for sales roles and protects it from other roles', f
     $this->actingAs(User::factory()->create(['role' => UserRole::Warehouse]))->get(route('pos.index'))->assertForbidden();
 });
 
+it('limits POS product results to fifteen while searching the full catalog', function () {
+    $context = posContext();
+    for ($index = 1; $index <= 25; $index++) {
+        Product::query()->create([
+            'code' => 'LIMIT-'.str_pad((string) $index, 3, '0', STR_PAD_LEFT),
+            'barcode' => '626000'.str_pad((string) $index, 7, '0', STR_PAD_LEFT),
+            'name' => 'کالای کاتالوگ '.str_pad((string) $index, 3, '0', STR_PAD_LEFT),
+            'unit' => 'عدد', 'purchase_price' => 100, 'sale_price' => 200,
+        ]);
+    }
+    $this->actingAs($context['user'])->getJson(route('pos.products'))->assertOk()->assertJsonCount(15, 'data');
+    $this->getJson(route('pos.products', ['search' => 'LIMIT-025']))->assertOk()
+        ->assertJsonCount(1, 'data')->assertJsonPath('data.0.code', 'LIMIT-025');
+    $this->getJson(route('pos.products', ['search' => '6260000000025']))->assertOk()
+        ->assertJsonCount(1, 'data')->assertJsonPath('data.0.code', 'LIMIT-025');
+    $this->getJson(route('sales.lookups.products', ['warehouse_id' => $context['warehouse']->id]))
+        ->assertOk()->assertJsonCount(20, 'data');
+});
+
 it('posts a cashier sale and payment once without granting manual journal rights', function () {
     $context = posContext();
     $payload = posPayload($context);

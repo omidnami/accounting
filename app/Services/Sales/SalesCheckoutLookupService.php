@@ -60,7 +60,7 @@ class SalesCheckoutLookupService
      *     track_batches: bool, track_serials: bool
      * }>
      */
-    public function products(int $storeId, int $warehouseId, string $search, ?int $categoryId = null): array
+    public function products(int $storeId, int $warehouseId, string $search, ?int $categoryId = null, int $limit = 20): array
     {
         $search = trim(Digits::toLatin($search));
         $stock = InventoryBalance::query()
@@ -86,7 +86,7 @@ class SalesCheckoutLookupService
             })
             ->orderBy('name')
             ->orderBy('id')
-            ->limit(20)
+            ->limit(min(20, max(1, $limit)))
             ->get()
             ->map(fn (Product $product): array => [
                 'id' => $product->id,

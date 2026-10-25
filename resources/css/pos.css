@@ -656,6 +656,7 @@
     font-size: 12px;
 }
 .pos-statusbar {
+    flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -800,17 +801,40 @@
     border-radius: 50%;
     margin: 5px auto 20px;
 }
-@media (min-width: 1024px) {
+@media (min-width: 900px) {
     .pos-screen {
         height: 100dvh;
         overflow: hidden;
     }
+    .pos-workspace {
+        grid-template-rows: minmax(0, 1fr);
+    }
     .pos-catalog,
     .pos-invoice {
-        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+    }
+    .pos-catalog-heading,
+    .pos-catalog > .pos-search,
+    .pos-catalog-footer,
+    .pos-invoice-heading,
+    .pos-customer,
+    .pos-invoice-bottom {
+        flex-shrink: 0;
     }
     .pos-product-grid {
-        max-height: 100%;
+        flex: 1;
+        min-height: 0;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: #b8c8be transparent;
+    }
+    .pos-cart-scroll {
+        flex: 1 1 0;
+        min-height: 0;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: #b8c8be transparent;
     }
 }
 @media (min-width: 1600px) {
@@ -849,7 +873,166 @@
         padding-inline: 32px;
     }
 }
-@media (max-width: 1023px) {
+@media (min-width: 900px) and (max-width: 1199px) {
+    .pos-product-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+@media (min-width: 900px) and (max-height: 800px) {
+    .pos-header {
+        height: 60px;
+        padding-inline: 18px;
+    }
+    .pos-brand {
+        width: 37px;
+        height: 37px;
+        border-radius: 11px;
+    }
+    .pos-workspace {
+        padding: 12px;
+        gap: 14px;
+    }
+    .pos-catalog-heading {
+        margin: 0 0 10px;
+    }
+    .pos-catalog-heading h2 {
+        font-size: 20px;
+    }
+    .pos-eyebrow {
+        display: none;
+    }
+    .pos-search {
+        min-height: 46px;
+    }
+    .pos-categories {
+        padding-block: 10px;
+    }
+    .pos-categories button {
+        padding-block: 8px;
+    }
+    .pos-product {
+        min-height: 128px;
+        padding: 12px;
+        gap: 8px;
+    }
+    .pos-catalog-footer {
+        padding-top: 9px;
+    }
+    .pos-invoice-heading {
+        padding: 10px 14px;
+    }
+    .pos-invoice-icon {
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+    }
+    .pos-customer {
+        margin: 9px 13px;
+        padding: 8px 10px;
+    }
+    .pos-cart-table th {
+        padding-block: 8px;
+    }
+    .pos-cart-table td {
+        padding-block: 11px;
+    }
+    .pos-cart-empty {
+        min-height: 0;
+        padding-block: 18px;
+    }
+    .pos-cart-empty .pos-empty-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 20px;
+    }
+    .pos-cart-empty .pos-empty-rule {
+        display: none;
+    }
+    .pos-invoice-bottom {
+        padding: 0 14px 12px;
+    }
+    .pos-note {
+        padding-block: 8px;
+    }
+    .pos-totals {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        padding-block: 10px;
+        gap: 14px;
+    }
+    .pos-totals > span {
+        flex-wrap: wrap;
+        gap: 3px 8px;
+        font-size: 10px;
+    }
+    .pos-grand-total {
+        padding: 10px 0 12px;
+    }
+    .pos-grand-total strong {
+        font-size: 28px;
+    }
+    .pos-checkout-actions > button {
+        min-height: 46px;
+        padding-block: 10px;
+    }
+    .pos-invoice-bottom .pos-error,
+    .pos-invoice-bottom .pos-notice {
+        max-height: 64px;
+        overflow-y: auto;
+    }
+    .pos-statusbar {
+        min-height: 42px;
+        padding-inline: 18px;
+    }
+}
+@media (min-width: 900px) and (max-height: 600px) {
+    .pos-header {
+        height: 52px;
+    }
+    .pos-workspace {
+        padding: 8px;
+        gap: 10px;
+    }
+    .pos-invoice-heading {
+        padding: 6px 12px;
+    }
+    .pos-invoice-heading h2 {
+        font-size: 14px;
+    }
+    .pos-invoice-heading span {
+        margin-top: 1px;
+    }
+    .pos-customer {
+        margin: 6px 12px;
+        padding: 6px 9px;
+    }
+    .pos-customer-icon {
+        width: 30px;
+        height: 30px;
+    }
+    .pos-customer span {
+        display: none;
+    }
+    .pos-invoice-bottom {
+        padding-bottom: 10px;
+    }
+    .pos-totals {
+        padding-block: 8px;
+    }
+    .pos-grand-total {
+        padding: 8px 0 10px;
+    }
+    .pos-grand-total strong {
+        font-size: 26px;
+        line-height: 1.2;
+    }
+    .pos-statusbar {
+        min-height: 36px;
+    }
+    .pos-statusbar button {
+        min-height: 32px;
+    }
+}
+@media (max-width: 899px) {
     .pos-workspace {
         grid-template-columns: 1fr;
         padding: 15px;
