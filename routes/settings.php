@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\MyActivityController;
 use App\Http\Controllers\Settings\PrintSettingsController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
@@ -30,6 +31,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('print-settings.update');
 
     Route::inertia('settings/appearance', 'settings/Appearance')->name('appearance.edit');
+    Route::get('settings/activity', MyActivityController::class)->name('my-activity.index');
 });
 
 Route::get('.well-known/passkey-endpoints', function () {

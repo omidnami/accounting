@@ -22,6 +22,9 @@ import {
 import UserInfo from '@/components/UserInfo.vue';
 import { useMenuLayout } from '@/composables/useMenuLayout';
 import { logout } from '@/routes';
+import { index as myActivity } from '@/routes/my-activity';
+import { edit as editAppearance } from '@/routes/appearance';
+import { edit as editProfile } from '@/routes/profile';
 
 const page = usePage();
 const user = computed(() => page.props.auth.user);
@@ -31,14 +34,17 @@ const accountActions = [
     {
         title: 'ویرایش پروفایل',
         icon: UserRoundPen,
+        href: editProfile(),
     },
     {
         title: 'تنظیمات شخصی',
         icon: SlidersHorizontal,
+        href: editAppearance(),
     },
     {
         title: 'آخرین فعالیت من',
         icon: Activity,
+        href: myActivity(),
     },
 ];
 
@@ -65,6 +71,7 @@ const handleLogout = () => {
         <DropdownMenuTrigger as-child>
             <button
                 type="button"
+                aria-label="منوی حساب کاربری"
                 dir="rtl"
                 class="flex h-10 max-w-40 shrink-0 items-center gap-2 bg-transparent px-1 text-right focus-visible:outline-none sm:max-w-56 [&>div]:min-w-0"
             >
@@ -83,18 +90,17 @@ const handleLogout = () => {
                 :key="action.title"
                 as-child
             >
-                <a
-                    href="#"
+                <Link
+                    :href="action.href"
                     dir="rtl"
                     class="flex w-full cursor-pointer items-center gap-2.5 px-2 py-2 text-right"
-                    @click.prevent
                 >
                     <component
                         :is="action.icon"
                         class="size-4 text-muted-foreground"
                     />
                     <span>{{ action.title }}</span>
-                </a>
+                </Link>
             </DropdownMenuItem>
 
             <DropdownMenuSeparator />
@@ -129,7 +135,8 @@ const handleLogout = () => {
             <DropdownMenuSeparator />
             <DropdownMenuItem as-child>
                 <Link
-                    :href="logout()"
+                    :href="logout.url()"
+                    method="post"
                     as="button"
                     dir="rtl"
                     class="flex w-full cursor-pointer items-center gap-2.5 px-2 py-2 text-right text-destructive"
