@@ -37,7 +37,7 @@ class ProductTrackingService
         $this->assertTrackableProduct($product);
 
         if (! $product->track_batches) {
-            throw new DomainException('برای این کالا کنترل Batch فعال نیست.');
+            throw new DomainException('برای این کالا کنترل سری ساخت فعال نیست.');
         }
 
         return ProductBatch::query()->create([
@@ -224,7 +224,7 @@ class ProductTrackingService
     public function assertTrackableProduct(Product $product): void
     {
         if ($product->variants()->exists()) {
-            throw new DomainException('برای کالای والد تنوع، Batch یا سریال ثبت نمی‌شود؛ تنوع را انتخاب کنید.');
+            throw new DomainException('برای کالای والد تنوع، سری ساخت یا سریال ثبت نمی‌شود؛ تنوع را انتخاب کنید.');
         }
     }
 }

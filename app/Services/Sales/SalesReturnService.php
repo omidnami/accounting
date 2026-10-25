@@ -790,7 +790,7 @@ class SalesReturnService
         }
 
         if (Decimal::isPositive($remaining)) {
-            throw new DomainException('مقدار Batch قابل برگشت برای این ردیف کافی نیست.');
+            throw new DomainException('مقدار سری ساخت قابل برگشت برای این ردیف کافی نیست.');
         }
 
         return ['serial_ids' => $serialIds, 'batch_allocations' => $allocations];

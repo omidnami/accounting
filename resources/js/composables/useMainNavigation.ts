@@ -178,7 +178,7 @@ export function useMainNavigation(
                             href: operationalReports(),
                         },
                         {
-                            title: 'تحلیل کالا و Batch',
+                            title: 'تحلیل کالا و سری ساخت',
                             href: analyticsReport(),
                         },
                     ],

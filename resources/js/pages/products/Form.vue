@@ -535,7 +535,7 @@ defineOptions({
                             class="flex items-center gap-2 rounded-xl border p-3 text-xs"
                         >
                             <Checkbox v-model="form.track_batches" />
-                            کنترل موجودی بر اساس Batch
+                            کنترل موجودی بر اساس سری ساخت
                         </label>
                         <label
                             class="flex items-center gap-2 rounded-xl border p-3 text-xs"
@@ -693,7 +693,7 @@ defineOptions({
                     >
                         <Link :href="productTracking(product.id)">
                             <Barcode class="size-4" />
-                            Batch و شماره سریال
+                            سری ساخت و شماره سریال
                         </Link>
                     </Button>
                     <Button

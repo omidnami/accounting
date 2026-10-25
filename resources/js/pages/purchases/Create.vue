@@ -649,7 +649,7 @@ defineOptions({
                                     class="grid gap-1.5"
                                 >
                                     <Label class="text-[10px]"
-                                        >شماره Batch *</Label
+                                        >شماره سری ساخت *</Label
                                     >
                                     <Input
                                         v-model="line.batch_number"

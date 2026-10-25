@@ -354,7 +354,7 @@ class PurchaseService
 
                 if ($product->track_batches) {
                     if (! $item->purchase_batch_number) {
-                        throw new DomainException("برای کالای {$product->name} شماره Batch الزامی است.");
+                        throw new DomainException("برای کالای {$product->name} شماره سری ساخت الزامی است.");
                     }
 
                     $batch = ProductBatch::query()->firstOrCreate(
@@ -371,10 +371,10 @@ class PurchaseService
                     if ($batch->expiry_date !== null
                         && $item->purchase_expiry_date !== null
                         && ! $batch->expiry_date->equalTo($item->purchase_expiry_date)) {
-                        throw new DomainException("تاریخ انقضای Batch {$batch->batch_number} با فاکتور سازگار نیست.");
+                        throw new DomainException("تاریخ انقضای سری ساخت {$batch->batch_number} با فاکتور سازگار نیست.");
                     }
                 } elseif ($item->purchase_batch_number !== null) {
-                    throw new DomainException("برای کالای {$product->name} کنترل Batch فعال نیست.");
+                    throw new DomainException("برای کالای {$product->name} کنترل سری ساخت فعال نیست.");
                 }
 
                 $serialNumbers = $item->purchase_serial_numbers ?? [];

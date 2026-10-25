@@ -118,7 +118,7 @@ defineOptions({
     layout: {
         breadcrumbs: [
             { title: 'کالا و موجودی', href: productsIndex() },
-            { title: 'Batch و سریال', href: '#' },
+            { title: 'سری ساخت و سریال', href: '#' },
         ],
     },
 });
@@ -141,7 +141,8 @@ defineOptions({
                 </h1>
                 <p class="mt-2 text-sm text-muted-foreground">
                     {{ product.code }} · موجودی انبار همچنان در سطح SKU کنترل
-                    می‌شود و Batch و سریال شناسه‌های ردیابی آن هستند.
+                    می‌شود و سری ساخت (Batch) و شماره سریال شناسه‌های ردیابی آن
+                    هستند.
                 </p>
             </div>
             <div class="flex gap-2">
@@ -160,12 +161,12 @@ defineOptions({
             v-if="product.is_variant_parent"
             class="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-sm text-amber-700"
         >
-            این کالا والد تنوع است. Batch و سریال را روی هر تنوع ثبت کنید.
+            این کالا والد تنوع است. سری ساخت و سریال را روی هر تنوع ثبت کنید.
         </p>
 
         <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <article class="rounded-2xl border bg-card p-4">
-                <p class="text-xs text-muted-foreground">Batchها</p>
+                <p class="text-xs text-muted-foreground">سری‌های ساخت</p>
                 <p class="mt-2 text-2xl font-black">{{ summary.batches }}</p>
             </article>
             <article class="rounded-2xl border bg-card p-4">
@@ -195,11 +196,11 @@ defineOptions({
             >
                 <div class="flex items-center gap-2">
                     <CalendarClock class="size-5 text-primary" />
-                    <h2 class="text-sm font-bold">ثبت Batch</h2>
+                    <h2 class="text-sm font-bold">ثبت سری ساخت</h2>
                 </div>
                 <div class="mt-4 grid gap-4 sm:grid-cols-2">
                     <div class="sm:col-span-2">
-                        <Label for="batch-number">شماره Batch *</Label>
+                        <Label for="batch-number">شماره سری ساخت *</Label>
                         <Input
                             id="batch-number"
                             v-model="batchForm.batch_number"
@@ -243,7 +244,7 @@ defineOptions({
                     class="mt-4 rounded-xl"
                     :disabled="batchForm.processing"
                 >
-                    <Plus class="size-4" /> ثبت Batch
+                    <Plus class="size-4" /> ثبت سری ساخت
                 </Button>
             </form>
 
@@ -275,7 +276,7 @@ defineOptions({
                             v-model="serialForm.product_batch_id"
                             class="h-11 rounded-xl border px-3 text-sm"
                         >
-                            <option value="">بدون Batch</option>
+                            <option value="">بدون سری ساخت</option>
                             <option
                                 v-for="batch in batches"
                                 :key="batch.id"
@@ -326,7 +327,7 @@ defineOptions({
 
         <section class="overflow-hidden rounded-2xl border bg-card">
             <div class="border-b px-5 py-4">
-                <h2 class="text-sm font-bold">Batchها و انقضا</h2>
+                <h2 class="text-sm font-bold">سری‌های ساخت و انقضا</h2>
             </div>
             <div class="divide-y">
                 <div
@@ -364,7 +365,7 @@ defineOptions({
                     v-if="!batches.length"
                     class="py-10 text-center text-sm text-muted-foreground"
                 >
-                    Batchی ثبت نشده است.
+                    سری ساختی ثبت نشده است.
                 </p>
             </div>
         </section>
@@ -378,7 +379,7 @@ defineOptions({
                     <thead class="bg-muted/35 text-[11px]">
                         <tr>
                             <th class="px-5 py-3">سریال</th>
-                            <th class="px-4 py-3">Batch</th>
+                            <th class="px-4 py-3">سری ساخت</th>
                             <th class="px-4 py-3">انبار</th>
                             <th class="px-4 py-3">وضعیت</th>
                             <th class="px-5 py-3"></th>

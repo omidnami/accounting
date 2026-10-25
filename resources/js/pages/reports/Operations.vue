@@ -234,7 +234,8 @@ defineOptions({
             </h1>
             <p class="mt-2 max-w-3xl text-sm leading-7 text-muted-foreground">
                 صورتحساب از اسناد Posted، Aging از مانده واقعی فاکتورها و سود
-                کالا از COGS snapshot همان فروش محاسبه می‌شود.
+                کالا از بهای تمام‌شدهٔ ثبت‌شده در زمان همان فروش (COGS) محاسبه
+                می‌شود.
             </p>
             <div class="mt-5 flex flex-wrap gap-2 print:hidden">
                 <template v-if="activeTab === 'statement'">
@@ -673,8 +674,9 @@ defineOptions({
                 v-if="!sales.summary.cogs_complete"
                 class="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4 text-xs leading-6 text-amber-700 dark:text-amber-300"
             >
-                COGS برای {{ sales.summary.incomplete_cogs_count }} ردیف ثبت
-                نشده است؛ سود ناخالص و حاشیه سود تا تکمیل snapshot قابل اتکا
+                بهای تمام‌شدهٔ کالای فروش‌رفته برای
+                {{ sales.summary.incomplete_cogs_count }} ردیف ثبت نشده است؛ سود
+                ناخالص و حاشیه سود تا تکمیل اطلاعات بهای تمام‌شده قابل اتکا
                 نیست.
             </div>
             <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">

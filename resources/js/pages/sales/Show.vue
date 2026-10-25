@@ -725,8 +725,9 @@ defineOptions({
                         <h2 class="text-sm font-bold">تأیید نهایی فروش</h2>
                     </div>
                     <p class="mt-2 text-[10px] leading-6 text-muted-foreground">
-                        با تأیید، موجودی انبار خارج، COGS ثبت و سند حساب‌های
-                        دریافتنی، فروش، مالیات و موجودی ایجاد می‌شود.
+                        با تأیید، موجودی انبار خارج، بهای تمام‌شدهٔ کالای
+                        فروش‌رفته ثبت و سند حساب‌های دریافتنی، فروش، مالیات و
+                        موجودی ایجاد می‌شود.
                     </p>
                     <label class="mt-4 grid gap-2">
                         <span class="text-[10px] font-semibold"

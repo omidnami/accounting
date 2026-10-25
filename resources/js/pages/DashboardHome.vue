@@ -397,7 +397,7 @@ defineOptions({
         >
             <div class="flex items-start justify-between gap-4">
                 <div>
-                    <h2 class="text-sm font-bold">هشدار انقضای Batch</h2>
+                    <h2 class="text-sm font-bold">هشدار انقضای سری ساخت</h2>
                     <p class="mt-1 text-[10px] text-muted-foreground">
                         {{ count.format(dashboard.expiry_alerts.count) }} هشدار
                         بررسی‌نشده
@@ -414,7 +414,7 @@ defineOptions({
                     <div>
                         <p class="text-xs font-semibold">{{ alert.message }}</p>
                         <p class="mt-1 text-[10px] text-muted-foreground">
-                            {{ alert.product_name }} · Batch
+                            {{ alert.product_name }} · سری ساخت
                             {{ alert.batch_number }}
                         </p>
                     </div>

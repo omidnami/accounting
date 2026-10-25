@@ -91,7 +91,7 @@ class ProductManagementService
                         || $locked->track_serials && ! (bool) ($data['track_serials'] ?? false))
                         && $hasTracking) {
                         throw new DomainException(
-                            'غیرفعال‌سازی ردیابی برای کالای دارای Batch یا سریال مجاز نیست.',
+                            'غیرفعال‌سازی ردیابی برای کالای دارای سری ساخت یا سریال مجاز نیست.',
                         );
                     }
                 }

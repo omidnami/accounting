@@ -389,7 +389,7 @@ class InventoryService
     ): void {
         if (! $product->track_batches && ! $product->track_serials) {
             if ($batchId !== null || $serialNumbers !== [] || $serialIds !== []) {
-                throw new DomainException('کالای بدون ردیابی Batch یا سریال نمی‌پذیرد.');
+                throw new DomainException('کالای بدون ردیابی سری ساخت یا سریال نمی‌پذیرد.');
             }
 
             return;
@@ -406,7 +406,7 @@ class InventoryService
 
             if ($serials->count() !== count($serialIds)
                 || $serials->contains(fn (ProductSerial $serial): bool => $serial->product_batch_id === null)) {
-                throw new DomainException('سریال‌های برگشتی باید Batch معتبر داشته باشند.');
+                throw new DomainException('سریال‌های برگشتی باید سری ساخت معتبر داشته باشند.');
             }
 
             $remainingCost = $totalCost;
@@ -524,7 +524,7 @@ class InventoryService
                     if ($serial?->product_batch_id !== null
                         && $batch !== null
                         && (int) $serial->product_batch_id !== (int) $batch->id) {
-                        throw new DomainException("Batch سریال {$serialNumber} با فاکتور سازگار نیست.");
+                        throw new DomainException("سری ساخت سریال {$serialNumber} با فاکتور سازگار نیست.");
                     }
 
                     if ($serial === null) {
@@ -618,7 +618,7 @@ class InventoryService
             if ($selectedSerials->contains(
                 fn (ProductSerial $serial): bool => $serial->product_batch_id === null,
             )) {
-                throw new DomainException('سریال انتخاب‌شده Batch ندارد.');
+                throw new DomainException('سریال انتخاب‌شده سری ساخت ندارد.');
             }
             $allocations = $batchAllocations !== []
                 ? $batchAllocations
@@ -650,7 +650,7 @@ class InventoryService
 
                 if (! $batchBalance
                     || Decimal::compare($batchBalance->quantity, $allocationQuantity, 3) < 0) {
-                    throw new DomainException("موجودی Batch {$batch->batch_number} کافی نیست.");
+                    throw new DomainException("موجودی سری ساخت {$batch->batch_number} کافی نیست.");
                 }
 
                 $batchBalance->forceFill([
@@ -802,7 +802,7 @@ class InventoryService
         }
 
         if (Decimal::isPositive($remaining)) {
-            throw new DomainException('موجودی Batch قابل برداشت برای این کالا کافی نیست.');
+            throw new DomainException('موجودی سری ساخت قابل برداشت برای این کالا کافی نیست.');
         }
 
         return $allocations;
@@ -817,7 +817,7 @@ class InventoryService
             ->first();
 
         if (! $batch) {
-            throw new DomainException('Batch انتخاب‌شده متعلق به این کالا نیست.');
+            throw new DomainException('سری ساخت انتخاب‌شده متعلق به این کالا نیست.');
         }
 
         return $batch;
@@ -832,7 +832,7 @@ class InventoryService
             InventoryMovementType::Opening,
             InventoryMovementType::Adjustment,
         ], true)) {
-            throw new DomainException('برای ورود این کالا Batch مشخص را انتخاب کنید.');
+            throw new DomainException('برای ورود این کالا سری ساخت مشخص را انتخاب کنید.');
         }
 
         $batchNumber = 'AUTO-'.$date.'-'.$product->id;

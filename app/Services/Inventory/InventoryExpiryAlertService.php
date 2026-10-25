@@ -39,8 +39,8 @@ class InventoryExpiryAlertService
                 $activeBatchIds[] = $batch->id;
                 $productName = $batch->product->name;
                 $message = $type === 'expired'
-                    ? "Batch {$batch->batch_number} از {$productName} منقضی شده است."
-                    : "Batch {$batch->batch_number} از {$productName} تا {$batch->expiry_date->toDateString()} منقضی می‌شود.";
+                    ? "سری ساخت {$batch->batch_number} از {$productName} منقضی شده است."
+                    : "سری ساخت {$batch->batch_number} از {$productName} تا {$batch->expiry_date->toDateString()} منقضی می‌شود.";
                 $alert = InventoryAlert::query()->updateOrCreate(
                     [
                         'product_batch_id' => $batch->id,

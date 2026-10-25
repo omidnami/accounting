@@ -62,13 +62,15 @@ const applyFilters = () =>
 
 defineOptions({
     layout: {
-        breadcrumbs: [{ title: 'تحلیل کالا و Batch', href: analyticsReport() }],
+        breadcrumbs: [
+            { title: 'تحلیل کالا و سری ساخت', href: analyticsReport() },
+        ],
     },
 });
 </script>
 
 <template>
-    <Head title="تحلیل کالا و Batch" />
+    <Head title="تحلیل کالا و سری ساخت" />
 
     <div class="mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
         <section
@@ -79,8 +81,12 @@ defineOptions({
                 <span class="text-xs font-bold">تحلیل پیشرفته کالا</span>
             </div>
             <h1 class="mt-3 text-2xl font-black sm:text-3xl">
-                دسته، تنوع، Batch و کالاهای پرفروش
+                دسته، تنوع، سری ساخت و کالاهای پرفروش
             </h1>
+            <p class="mt-2 text-xs leading-6 text-muted-foreground">
+                سری ساخت (Batch) برای ردیابی گروهی کالاهاست. بهای تمام‌شدهٔ
+                کالای فروش‌رفته (COGS)، بهای کالاهایی است که فروخته شده‌اند.
+            </p>
         </section>
 
         <form
@@ -208,17 +214,21 @@ defineOptions({
         <section class="overflow-hidden rounded-2xl border bg-card">
             <div class="flex items-center gap-2 border-b px-5 py-4">
                 <PackageCheck class="size-4 text-primary" />
-                <h2 class="text-sm font-bold">فروش و COGS بر اساس Batch</h2>
+                <h2 class="text-sm font-bold">
+                    فروش و بهای تمام‌شدهٔ کالای فروش‌رفته بر اساس سری ساخت
+                </h2>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full min-w-[800px] text-right text-xs">
                     <thead class="bg-muted/30">
                         <tr>
-                            <th class="px-4 py-3">Batch</th>
+                            <th class="px-4 py-3">سری ساخت</th>
                             <th class="px-4 py-3">کالا</th>
                             <th class="px-4 py-3">انقضا</th>
                             <th class="px-4 py-3">مقدار فروش</th>
-                            <th class="px-4 py-3">COGS</th>
+                            <th class="px-4 py-3">
+                                بهای تمام‌شدهٔ کالای فروش‌رفته
+                            </th>
                         </tr>
                     </thead>
                     <tbody class="divide-y">

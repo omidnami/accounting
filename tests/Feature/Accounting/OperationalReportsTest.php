@@ -326,7 +326,7 @@ it('exports every financial and operational report as CSV', function () {
         'statement' => ['header' => 'شماره سند', 'summary' => 'مانده اول دوره'],
         'aging_receivable' => ['header' => 'روز تأخیر', 'summary' => 'جمع کل'],
         'aging_payable' => ['header' => 'روز تأخیر', 'summary' => 'جمع کل'],
-        'sales_daily' => ['header' => 'COGS کامل', 'summary' => 'جمع کل'],
+        'sales_daily' => ['header' => 'ثبت کامل بهای تمام‌شده', 'summary' => 'جمع کل'],
         'sales_products' => ['header' => 'حاشیه سود', 'summary' => 'جمع کل'],
     ];
 

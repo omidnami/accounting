@@ -130,7 +130,7 @@ class ProductTrackingController extends Controller
 
         Inertia::flash('toast', [
             'type' => 'success',
-            'message' => 'Batch کالا ثبت شد.',
+            'message' => 'سری ساخت کالا ثبت شد.',
         ]);
 
         return to_route('products.tracking', $product);
