@@ -14,7 +14,6 @@ import {
     Minus,
     Monitor,
     Package,
-    Pause,
     Plus,
     Printer,
     ReceiptText,
@@ -59,6 +58,19 @@ import {
     type PosSession,
     type PosTender,
 } from '@/lib/pos';
+import {
+    MAX_POS_CARTS,
+    activatePosCart,
+    addPosCart,
+    closePosCart,
+    completePosCart,
+    newPosWorkspace,
+    pendingPosCart,
+    resetPosCart,
+    restoreArchivedCart,
+    restorePosWorkspace,
+    type PosCart,
+} from '@/lib/pos-workspace';
 import { dashboard } from '@/routes';
 import * as posRoutes from '@/routes/pos';
 import { close as closeShift } from '@/routes/pos';
@@ -96,14 +108,34 @@ function viewportDialog(open: Ref<boolean>) {
     });
 }
 const session = ref<PosSession | null>(props.session);
-const lines = ref<PosLine[]>([]);
-const selectedCustomer = ref<PosCustomer | null>(null);
-const notes = ref('');
-const token = ref(props.submission_token);
+const workspace = ref(newPosWorkspace(props.submission_token));
+const workspaceReady = ref(false);
+const activeCart = computed(
+    () =>
+        workspace.value.tabs.find(
+            (cart) => cart.id === workspace.value.activeId,
+        ) ?? workspace.value.tabs[0],
+);
+function cartField<K extends keyof PosCart>(key: K) {
+    return computed({
+        get: () => activeCart.value[key],
+        set: (value: PosCart[K]) => {
+            activeCart.value[key] = value;
+        },
+    });
+}
+const lines = cartField('lines');
+const selectedCustomer = cartField('customer');
+const notes = cartField('notes');
+const paymentDraft = cartField('payment');
+const pendingCart = computed(() => pendingPosCart(workspace.value));
 const error = ref('');
 const notice = ref('');
 const busy = ref(false);
-const pendingPayload = ref<Record<string, unknown> | null>(null);
+const pendingPayload = computed(() => pendingCart.value?.pending ?? null);
+const tabsLocked = computed(
+    () => !workspaceReady.value || busy.value || Boolean(pendingCart.value),
+);
 const paymentOpen = ref(false);
 const customerOpen = ref(false);
 const activityOpen = ref(false);
@@ -123,14 +155,7 @@ const customerSearch = ref('');
 const customerResults = ref<PosCustomer[]>([]);
 const customerLoading = ref(false);
 const now = ref(new Date());
-const held = ref<
-    Array<{
-        id: string;
-        customer: PosCustomer | null;
-        lines: PosLine[];
-        notes: string;
-    }>
->([]);
+const held = computed(() => workspace.value.archived);
 const heldOpen = ref(false);
 const customerDialog = viewportDialog(customerOpen);
 const activityDialog = viewportDialog(activityOpen);
@@ -233,23 +258,14 @@ function saveDraft() {
             storageKey,
             JSON.stringify({
                 session_id: session.value?.id,
-                lines: lines.value,
-                customer: selectedCustomer.value,
-                notes: notes.value,
-                token: token.value,
-                held: held.value,
-                pending: pendingPayload.value,
+                workspace: workspace.value,
             }),
         );
     } catch {
         /* The form remains usable when browser storage is unavailable. */
     }
 }
-watch(
-    [lines, selectedCustomer, notes, token, held, pendingPayload],
-    saveDraft,
-    { deep: true },
-);
+watch([workspace], saveDraft, { deep: true });
 
 async function loadProducts() {
     if (!session.value) return;
@@ -287,8 +303,10 @@ watch([search, category], () => {
     productTimer = setTimeout(() => void loadProducts(), 180);
 });
 async function scan() {
-    await loadProducts();
+    const cartId = activeCart.value.id;
     const barcode = normalizeNumber(search.value).trim();
+    await loadProducts();
+    if (cartId !== activeCart.value.id || tabsLocked.value) return;
     const product = products.value.find(
         (item) => item.barcode === barcode || item.code === barcode,
     );
@@ -298,7 +316,7 @@ async function scan() {
     } else notice.value = 'کالای موردنظر را از نتایج انتخاب کنید.';
 }
 function addProduct(product: PosProduct) {
-    if (busy.value || !session.value) return;
+    if (tabsLocked.value || !session.value) return;
     const existing = lines.value.find((line) => line.id === product.id);
     const next = existing ? parseNumber(existing.quantity) + 1 : 1;
     if (next > parseNumber(product.stock_quantity)) {
@@ -329,51 +347,95 @@ function changeQuantity(line: PosLine, delta: number) {
 }
 function clearCart() {
     if (
-        busy.value ||
+        tabsLocked.value ||
         (lines.value.length && !window.confirm('فاکتور در حال ثبت پاک شود؟'))
     )
         return;
-    lines.value = [];
-    selectedCustomer.value = null;
-    notes.value = '';
-    token.value = crypto.randomUUID();
+    resetPosCart(activeCart.value);
     error.value = '';
+    notice.value = '';
 }
-function holdCart() {
-    if (!lines.value.length || busy.value) return;
-    held.value.push({
-        id: crypto.randomUUID(),
-        customer: selectedCustomer.value,
-        lines: structuredClone(lines.value.map((line) => ({ ...line }))),
-        notes: notes.value,
-    });
-    lines.value = [];
-    selectedCustomer.value = null;
-    notes.value = '';
-    token.value = crypto.randomUUID();
-    notice.value = 'فاکتور در انتظار ذخیره شد؛ هنوز فروش ثبت نشده است.';
+function focusTab() {
+    void nextTick(() =>
+        document
+            .getElementById(`pos-tab-${workspace.value.activeId}`)
+            ?.scrollIntoView({ block: 'nearest', inline: 'nearest' }),
+    );
 }
-function restoreHeld(id: string) {
+function switchTab(id: string) {
+    if (tabsLocked.value || !activatePosCart(workspace.value, id)) return;
+    paymentOpen.value = false;
+    customerOpen.value = false;
+    error.value = '';
+    notice.value = '';
+    focusTab();
+}
+function addTab() {
+    if (tabsLocked.value || !session.value) return;
+    if (!addPosCart(workspace.value)) {
+        notice.value = 'حداکثر ۵ فاکتور باز؛ ابتدا یکی را ثبت کنید یا ببندید.';
+        return;
+    }
+    error.value = '';
+    notice.value = '';
+    focusTab();
+}
+function closeTab(id: string) {
+    if (tabsLocked.value) return;
+    const cart = workspace.value.tabs.find((item) => item.id === id);
+    if (!cart) return;
     if (
-        lines.value.length &&
+        (cart.lines.length ||
+            cart.customer ||
+            cart.notes ||
+            cart.payment.rows.length) &&
         !window.confirm(
-            'فاکتور فعلی در انتظار قرار بگیرد و فاکتور انتخابی باز شود؟',
+            `فاکتور باز ${qty(cart.number)} بسته و اطلاعات آن پاک شود؟`,
         )
     )
         return;
-    const saved = held.value.find((cart) => cart.id === id);
-    if (!saved) return;
-    if (lines.value.length) holdCart();
-    lines.value = saved.lines;
-    selectedCustomer.value = saved.customer;
-    notes.value = saved.notes;
-    held.value = held.value.filter((cart) => cart.id !== id);
-    token.value = crypto.randomUUID();
+    closePosCart(workspace.value, id);
+    error.value = '';
+    notice.value = '';
+    focusTab();
+}
+function tabKeydown(event: KeyboardEvent) {
+    const index = workspace.value.tabs.findIndex(
+        (cart) => cart.id === workspace.value.activeId,
+    );
+    const count = workspace.value.tabs.length;
+    const next =
+        event.key === 'ArrowLeft'
+            ? (index + 1) % count
+            : event.key === 'ArrowRight'
+              ? (index - 1 + count) % count
+              : event.key === 'Home'
+                ? 0
+                : event.key === 'End'
+                  ? count - 1
+                  : null;
+    if (next === null || tabsLocked.value) return;
+    event.preventDefault();
+    switchTab(workspace.value.tabs[next].id);
+    void nextTick(() =>
+        document.getElementById(`pos-tab-${workspace.value.activeId}`)?.focus(),
+    );
+}
+function restoreHeld(id: string) {
+    if (tabsLocked.value) return;
+    if (!restoreArchivedCart(workspace.value, id)) {
+        error.value = 'برای بازکردن این فاکتور، ابتدا یکی از ۵ تب را ببندید.';
+        return;
+    }
     heldOpen.value = false;
+    error.value = '';
+    focusTab();
 }
 function removeHeld(id: string) {
-    if (window.confirm('این فاکتور در انتظار حذف شود؟')) {
-        held.value = held.value.filter((cart) => cart.id !== id);
+    if (!tabsLocked.value && window.confirm('این فاکتور در انتظار حذف شود؟')) {
+        workspace.value.archived = workspace.value.archived.filter(
+            (cart) => cart.id !== id,
+        );
     }
 }
 function showError(exception: unknown) {
@@ -434,9 +496,8 @@ async function submitShift() {
     error.value = '';
     try {
         if (session.value) {
-            if (lines.value.length) {
-                error.value =
-                    'ابتدا فاکتور باز را ثبت کنید یا در انتظار قرار دهید.';
+            if (workspace.value.tabs.some((cart) => cart.lines.length)) {
+                error.value = 'ابتدا فاکتورهای باز را ثبت کنید یا ببندید.';
                 return;
             }
             await posRequest(closeShift.url(session.value.id), {
@@ -477,10 +538,10 @@ async function showShift() {
     shiftOpen.value = true;
 }
 async function checkout(tenders: PosTender[], dueDate: string) {
-    if (!session.value || busy.value) return;
-    pendingPayload.value = {
+    if (!session.value || tabsLocked.value) return;
+    activeCart.value.pending = {
         session_id: session.value.id,
-        submission_token: token.value,
+        submission_token: activeCart.value.token,
         customer_id: selectedCustomer.value?.id || null,
         due_date: dueDate || null,
         notes: notes.value || null,
@@ -497,35 +558,37 @@ async function checkout(tenders: PosTender[], dueDate: string) {
     await retryCheckout();
 }
 async function retryCheckout() {
-    if (!pendingPayload.value || busy.value) return;
+    const cart = pendingCart.value;
+    const payload = cart?.pending;
+    if (!cart || !payload || busy.value) return;
+    const submittedToken = String(payload.submission_token);
     busy.value = true;
     error.value = '';
     try {
         // Recover a committed sale before validating/retrying an old payload.
         const status = await posRequest<{ sale: PosSale | null }>(
             posRoutes.attempt.url({
-                query: { token: String(pendingPayload.value.submission_token) },
+                query: { token: submittedToken },
             }),
         );
         const result = status.sale
             ? { sale: status.sale }
             : await posRequest<{ sale: PosSale }>(
                   posRoutes.checkout.url(),
-                  pendingPayload.value,
+                  payload,
               );
-        pendingPayload.value = null;
+        if (!completePosCart(workspace.value, cart.id, submittedToken))
+            throw new Error(
+                'فاکتور ثبت‌شده با تب در انتظار تطبیق ندارد؛ نتیجه را بررسی کنید.',
+            );
         lastSale.value = result.sale;
-        lines.value = [];
-        selectedCustomer.value = null;
-        notes.value = '';
-        token.value = crypto.randomUUID();
         saveDraft();
         paymentOpen.value = false;
         shiftOpen.value = false;
         successOpen.value = true;
         await Promise.all([refreshActivity(), loadProducts()]);
     } catch (exception) {
-        if (exception instanceof PosRequestError) pendingPayload.value = null;
+        if (exception instanceof PosRequestError) cart.pending = null;
         else paymentOpen.value = false;
         saveDraft();
         showError(exception);
@@ -534,7 +597,7 @@ async function retryCheckout() {
     }
 }
 function openPayment() {
-    if (lines.value.length && !invalidLines.value && !busy.value) {
+    if (lines.value.length && !invalidLines.value && !tabsLocked.value) {
         error.value = '';
         paymentOpen.value = true;
     }
@@ -547,7 +610,7 @@ function fullscreen() {
 function hotkeys(event: KeyboardEvent) {
     if (
         viewportTooNarrow.value ||
-        busy.value ||
+        tabsLocked.value ||
         shiftOpen.value ||
         paymentOpen.value ||
         customerOpen.value ||
@@ -580,30 +643,16 @@ onMounted(async () => {
     shiftOpen.value = !session.value;
     try {
         const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
-        if (saved) {
-            pendingPayload.value = saved.pending || null;
-            held.value = Array.isArray(saved.held) ? saved.held : [];
-            if (
-                saved.session_id === session.value?.id &&
-                Array.isArray(saved.lines)
-            ) {
-                lines.value = saved.lines;
-                selectedCustomer.value = saved.customer;
-                notes.value = saved.notes || '';
-                token.value = saved.token || crypto.randomUUID();
-            } else if (Array.isArray(saved.lines) && saved.lines.length) {
-                held.value.push({
-                    id: crypto.randomUUID(),
-                    customer: saved.customer,
-                    lines: saved.lines,
-                    notes: saved.notes || '',
-                });
-            }
-        }
+        if (saved)
+            workspace.value = restorePosWorkspace(
+                saved,
+                props.submission_token,
+            );
     } catch {
         /* Invalid or unavailable browser storage does not block POS. */
     }
     restoring = false;
+    workspaceReady.value = true;
     if (pendingPayload.value) await retryCheckout();
     if (disposed) return;
     clockTimer = setInterval(() => {
@@ -628,7 +677,12 @@ onBeforeUnmount(() => {
 
 <template>
     <Head title="صندوق فروش" />
-    <div class="pos-screen" dir="rtl" :inert="viewportTooNarrow">
+    <div
+        class="pos-screen"
+        dir="rtl"
+        :inert="viewportTooNarrow || !workspaceReady"
+        :aria-busy="!workspaceReady"
+    >
         <div
             v-if="pendingPayload && !busy"
             class="pos-recovery"
@@ -655,7 +709,7 @@ onBeforeUnmount(() => {
                 >
             </div>
         </div>
-        <header class="pos-header">
+        <header class="pos-header" :inert="Boolean(pendingPayload)">
             <div class="flex min-w-0 items-center gap-3">
                 <div class="pos-brand"><Monitor :size="24" /></div>
                 <div class="min-w-0">
@@ -709,7 +763,7 @@ onBeforeUnmount(() => {
             </div>
         </header>
 
-        <div class="pos-workspace">
+        <div class="pos-workspace" :inert="Boolean(pendingPayload)">
             <section class="pos-catalog" aria-label="انتخاب کالا">
                 <div class="pos-catalog-heading">
                     <div>
@@ -854,7 +908,7 @@ onBeforeUnmount(() => {
                             <ReceiptText :size="22" />
                         </div>
                         <div>
-                            <h2>فاکتور جدید</h2>
+                            <h2>فاکتور {{ qty(activeCart.number) }}</h2>
                             <span
                                 >{{ qty(lines.length) }} قلم ·
                                 {{ qty(itemCount) }} واحد</span
@@ -865,11 +919,12 @@ onBeforeUnmount(() => {
                         <button
                             type="button"
                             class="pos-icon-button"
-                            title="فاکتورهای در انتظار"
-                            aria-label="فاکتورهای در انتظار"
+                            v-if="held.length"
+                            title="فاکتورهای قبلی"
+                            aria-label="فاکتورهای قبلی"
                             @click="heldOpen = true"
                         >
-                            <Pause :size="18" /><b
+                            <ReceiptText :size="18" /><b
                                 v-if="held.length"
                                 class="pos-small-count"
                                 >{{ qty(held.length) }}</b
@@ -886,207 +941,293 @@ onBeforeUnmount(() => {
                         </button>
                     </div>
                 </div>
-                <button
-                    class="pos-customer"
-                    type="button"
-                    :disabled="busy"
-                    @click="customerOpen = true"
+                <div class="pos-tabs-bar">
+                    <div
+                        class="pos-tabs"
+                        role="tablist"
+                        aria-label="فاکتورهای باز"
+                        @keydown="tabKeydown"
+                    >
+                        <div
+                            v-for="cart in workspace.tabs"
+                            :key="cart.id"
+                            class="pos-tab"
+                            :class="{ active: cart.id === workspace.activeId }"
+                        >
+                            <button
+                                :id="`pos-tab-${cart.id}`"
+                                type="button"
+                                role="tab"
+                                :aria-selected="cart.id === workspace.activeId"
+                                :tabindex="
+                                    cart.id === workspace.activeId ? 0 : -1
+                                "
+                                :title="cart.customer?.name || 'مشتری نقدی'"
+                                aria-controls="pos-invoice-panel"
+                                :disabled="tabsLocked"
+                                @click="switchTab(cart.id)"
+                            >
+                                <span
+                                    >فاکتور {{ qty(cart.number)
+                                    }}<b v-if="cart.lines.length">{{
+                                        qty(cart.lines.length)
+                                    }}</b></span
+                                >
+                                <small>{{
+                                    cart.customer?.name || 'مشتری نقدی'
+                                }}</small>
+                            </button>
+                            <button
+                                type="button"
+                                class="pos-tab-close"
+                                :aria-label="`بستن فاکتور ${qty(cart.number)}`"
+                                :disabled="tabsLocked"
+                                @click="closeTab(cart.id)"
+                            >
+                                <X :size="13" />
+                            </button>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        class="pos-tab-add"
+                        aria-label="فاکتور جدید"
+                        :title="
+                            workspace.tabs.length >= MAX_POS_CARTS
+                                ? 'حداکثر ۵ فاکتور باز'
+                                : 'فاکتور جدید'
+                        "
+                        :disabled="
+                            !session ||
+                            tabsLocked ||
+                            workspace.tabs.length >= MAX_POS_CARTS
+                        "
+                        @click="addTab"
+                    >
+                        <Plus :size="19" /><small
+                            >{{ qty(workspace.tabs.length) }}/۵</small
+                        >
+                    </button>
+                </div>
+                <div
+                    id="pos-invoice-panel"
+                    :key="activeCart.id"
+                    class="pos-invoice-panel"
+                    role="tabpanel"
+                    :aria-labelledby="`pos-tab-${activeCart.id}`"
                 >
-                    <div class="pos-customer-icon">
-                        <UserRound :size="21" />
-                    </div>
-                    <div class="flex-1 text-right">
-                        <strong>{{
-                            selectedCustomer?.name || 'مشتری نقدی'
-                        }}</strong
-                        ><span>{{
-                            selectedCustomer?.phone ||
-                            (selectedCustomer
-                                ? selectedCustomer.code
-                                : 'برای انتخاب مشتری کلیک کنید')
-                        }}</span>
-                    </div>
-                    <kbd>F4</kbd><ChevronLeft :size="18" />
-                </button>
-                <div class="pos-cart-scroll">
-                    <table v-if="lines.length" class="pos-cart-table">
-                        <thead>
-                            <tr>
-                                <th class="text-right">کالا</th>
-                                <th>تعداد</th>
-                                <th>قیمت واحد</th>
-                                <th>مبلغ</th>
-                                <th><span class="sr-only">حذف</span></th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="(line, index) in lines" :key="line.id">
-                                <td>
-                                    <div class="flex items-start gap-2">
-                                        <span class="pos-row-number">{{
-                                            qty(index + 1)
-                                        }}</span>
-                                        <div>
-                                            <strong>{{ line.name }}</strong
-                                            ><small
-                                                >{{ line.code }} ·
-                                                {{ line.unit }}</small
-                                            ><label class="pos-line-discount"
-                                                >تخفیف<input
-                                                    v-model="
-                                                        line.discount_amount
-                                                    "
-                                                    :disabled="busy"
-                                                    inputmode="decimal"
-                                                    :aria-label="`تخفیف ${line.name}`"
-                                                    dir="ltr"
-                                            /></label>
+                    <button
+                        class="pos-customer"
+                        type="button"
+                        :disabled="busy"
+                        @click="customerOpen = true"
+                    >
+                        <div class="pos-customer-icon">
+                            <UserRound :size="21" />
+                        </div>
+                        <div class="flex-1 text-right">
+                            <strong>{{
+                                selectedCustomer?.name || 'مشتری نقدی'
+                            }}</strong
+                            ><span>{{
+                                selectedCustomer?.phone ||
+                                (selectedCustomer
+                                    ? selectedCustomer.code
+                                    : 'برای انتخاب مشتری کلیک کنید')
+                            }}</span>
+                        </div>
+                        <kbd>F4</kbd><ChevronLeft :size="18" />
+                    </button>
+                    <div class="pos-cart-scroll">
+                        <table v-if="lines.length" class="pos-cart-table">
+                            <thead>
+                                <tr>
+                                    <th class="text-right">کالا</th>
+                                    <th>تعداد</th>
+                                    <th>قیمت واحد</th>
+                                    <th>مبلغ</th>
+                                    <th><span class="sr-only">حذف</span></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    v-for="(line, index) in lines"
+                                    :key="line.id"
+                                >
+                                    <td>
+                                        <div class="flex items-start gap-2">
+                                            <span class="pos-row-number">{{
+                                                qty(index + 1)
+                                            }}</span>
+                                            <div>
+                                                <strong>{{ line.name }}</strong
+                                                ><small
+                                                    >{{ line.code }} ·
+                                                    {{ line.unit }}</small
+                                                ><label
+                                                    class="pos-line-discount"
+                                                    >تخفیف<input
+                                                        v-model="
+                                                            line.discount_amount
+                                                        "
+                                                        :disabled="busy"
+                                                        inputmode="decimal"
+                                                        :aria-label="`تخفیف ${line.name}`"
+                                                        dir="ltr"
+                                                /></label>
+                                            </div>
                                         </div>
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class="pos-quantity">
-                                        <button
-                                            type="button"
-                                            :disabled="busy"
-                                            :aria-label="`افزایش ${line.name}`"
-                                            @click="changeQuantity(line, 1)"
+                                    </td>
+                                    <td>
+                                        <div class="pos-quantity">
+                                            <button
+                                                type="button"
+                                                :disabled="busy"
+                                                :aria-label="`افزایش ${line.name}`"
+                                                @click="changeQuantity(line, 1)"
+                                            >
+                                                <Plus :size="14" /></button
+                                            ><input
+                                                v-model="line.quantity"
+                                                :disabled="busy"
+                                                inputmode="decimal"
+                                                :aria-label="`تعداد ${line.name}`"
+                                                dir="ltr"
+                                            /><button
+                                                type="button"
+                                                :disabled="busy"
+                                                :aria-label="`کاهش ${line.name}`"
+                                                @click="
+                                                    changeQuantity(line, -1)
+                                                "
+                                            >
+                                                <Minus :size="14" />
+                                            </button>
+                                        </div>
+                                        <span
+                                            v-if="
+                                                parseNumber(line.quantity) >
+                                                parseNumber(line.stock_quantity)
+                                            "
+                                            class="text-xs text-rose-600"
+                                            >کسری موجودی</span
                                         >
-                                            <Plus :size="14" /></button
-                                        ><input
-                                            v-model="line.quantity"
+                                    </td>
+                                    <td>
+                                        <input
+                                            v-model="line.unit_price"
+                                            class="pos-price-input"
                                             :disabled="busy"
                                             inputmode="decimal"
-                                            :aria-label="`تعداد ${line.name}`"
+                                            :aria-label="`قیمت ${line.name}`"
                                             dir="ltr"
-                                        /><button
+                                        />
+                                    </td>
+                                    <td class="font-bold tabular-nums">
+                                        {{
+                                            money(
+                                                amountString(
+                                                    lineAmounts(line).total,
+                                                ),
+                                            )
+                                        }}
+                                    </td>
+                                    <td>
+                                        <button
                                             type="button"
+                                            class="pos-remove"
                                             :disabled="busy"
-                                            :aria-label="`کاهش ${line.name}`"
-                                            @click="changeQuantity(line, -1)"
+                                            :aria-label="`حذف ${line.name}`"
+                                            @click="lines.splice(index, 1)"
                                         >
-                                            <Minus :size="14" />
+                                            <X :size="15" />
                                         </button>
-                                    </div>
-                                    <span
-                                        v-if="
-                                            parseNumber(line.quantity) >
-                                            parseNumber(line.stock_quantity)
-                                        "
-                                        class="text-xs text-rose-600"
-                                        >کسری موجودی</span
-                                    >
-                                </td>
-                                <td>
-                                    <input
-                                        v-model="line.unit_price"
-                                        class="pos-price-input"
-                                        :disabled="busy"
-                                        inputmode="decimal"
-                                        :aria-label="`قیمت ${line.name}`"
-                                        dir="ltr"
-                                    />
-                                </td>
-                                <td class="font-bold tabular-nums">
-                                    {{
-                                        money(
-                                            amountString(
-                                                lineAmounts(line).total,
-                                            ),
-                                        )
-                                    }}
-                                </td>
-                                <td>
-                                    <button
-                                        type="button"
-                                        class="pos-remove"
-                                        :disabled="busy"
-                                        :aria-label="`حذف ${line.name}`"
-                                        @click="lines.splice(index, 1)"
-                                    >
-                                        <X :size="15" />
-                                    </button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                    <div v-else class="pos-empty pos-cart-empty">
-                        <div class="pos-empty-icon">
-                            <ShoppingBasket :size="42" stroke-width="1.4" />
-                        </div>
-                        <h3>سبد فروش آماده است</h3>
-                        <p>کالا را انتخاب کنید یا بارکد بزنید.</p>
-                        <div class="pos-empty-rule" />
-                    </div>
-                </div>
-                <div class="pos-invoice-bottom">
-                    <input
-                        v-model="notes"
-                        class="pos-note"
-                        :disabled="busy"
-                        placeholder="یادداشت فاکتور…"
-                        aria-label="یادداشت فاکتور"
-                        maxlength="2000"
-                    />
-                    <div class="pos-totals">
-                        <span
-                            >جمع کالاها<strong>{{
-                                money(subtotal)
-                            }}</strong></span
-                        ><span
-                            >تخفیف<strong class="text-rose-600">{{
-                                money(discount)
-                            }}</strong></span
-                        ><span
-                            >مالیات و عوارض<strong>{{
-                                money(tax)
-                            }}</strong></span
-                        >
-                    </div>
-                    <div class="pos-grand-total">
-                        <span>مبلغ قابل پرداخت</span>
-                        <div>
-                            <strong>{{ money(total) }}</strong
-                            ><small>ریال</small>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div v-else class="pos-empty pos-cart-empty">
+                            <div class="pos-empty-icon">
+                                <ShoppingBasket :size="42" stroke-width="1.4" />
+                            </div>
+                            <h3>سبد فروش آماده است</h3>
+                            <p>کالا را انتخاب کنید یا بارکد بزنید.</p>
+                            <div class="pos-empty-rule" />
                         </div>
                     </div>
-                    <p
-                        v-if="error && !paymentOpen && !shiftOpen"
-                        class="pos-error mb-3"
-                        role="alert"
-                    >
-                        {{ error }}
-                    </p>
-                    <p v-if="notice" class="pos-notice">{{ notice }}</p>
-                    <div class="pos-checkout-actions">
-                        <button
-                            type="button"
-                            class="pos-primary"
-                            :disabled="
-                                !session ||
-                                !lines.length ||
-                                invalidLines ||
-                                busy
-                            "
-                            @click="openPayment"
+                    <div class="pos-invoice-bottom">
+                        <input
+                            v-model="notes"
+                            class="pos-note"
+                            :disabled="busy"
+                            placeholder="یادداشت فاکتور…"
+                            aria-label="یادداشت فاکتور"
+                            maxlength="2000"
+                        />
+                        <div class="pos-totals">
+                            <span
+                                >جمع کالاها<strong>{{
+                                    money(subtotal)
+                                }}</strong></span
+                            ><span
+                                >تخفیف<strong class="text-rose-600">{{
+                                    money(discount)
+                                }}</strong></span
+                            ><span
+                                >مالیات و عوارض<strong>{{
+                                    money(tax)
+                                }}</strong></span
+                            >
+                        </div>
+                        <div class="pos-grand-total">
+                            <span>مبلغ قابل پرداخت</span>
+                            <div>
+                                <strong>{{ money(total) }}</strong
+                                ><small>ریال</small>
+                            </div>
+                        </div>
+                        <p
+                            v-if="error && !paymentOpen && !shiftOpen"
+                            class="pos-error mb-3"
+                            role="alert"
                         >
-                            <CreditCard :size="22" /><span
-                                >پرداخت و ثبت فروش</span
-                            ><kbd>F8</kbd></button
-                        ><button
-                            type="button"
-                            class="pos-secondary"
-                            :disabled="!lines.length || busy"
-                            @click="holdCart"
-                        >
-                            <Pause :size="19" /><span>در انتظار</span>
-                        </button>
+                            {{ error }}
+                        </p>
+                        <p v-if="notice" class="pos-notice">{{ notice }}</p>
+                        <div class="pos-checkout-actions">
+                            <button
+                                type="button"
+                                class="pos-primary"
+                                :disabled="
+                                    !session ||
+                                    !lines.length ||
+                                    invalidLines ||
+                                    busy
+                                "
+                                @click="openPayment"
+                            >
+                                <CreditCard :size="22" /><span
+                                    >پرداخت و ثبت فروش</span
+                                ><kbd>F8</kbd></button
+                            ><button
+                                type="button"
+                                class="pos-secondary"
+                                :disabled="
+                                    !session ||
+                                    tabsLocked ||
+                                    workspace.tabs.length >= MAX_POS_CARTS
+                                "
+                                @click="addTab"
+                            >
+                                <Plus :size="19" /><span>فاکتور جدید</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </section>
         </div>
 
-        <footer class="pos-statusbar">
+        <footer class="pos-statusbar" :inert="Boolean(pendingPayload)">
             <div class="flex min-w-0 items-center gap-3">
                 <span class="pos-avatar">{{ user.name.slice(0, 1) }}</span
                 ><span class="truncate">{{ user.name }}</span
@@ -1130,6 +1271,8 @@ onBeforeUnmount(() => {
         </footer>
 
         <PosCheckoutDialog
+            :key="activeCart.id + activeCart.token"
+            v-model:draft="paymentDraft"
             v-model:open="paymentOpen"
             :blocked="viewportTooNarrow"
             :total="total"
@@ -1363,13 +1506,19 @@ onBeforeUnmount(() => {
         <Dialog v-model:open="heldDialog"
             ><DialogContent class="pos-dialog sm:max-w-lg" dir="rtl"
                 ><DialogHeader class="text-right"
-                    ><DialogTitle>فاکتورهای در انتظار</DialogTitle
+                    ><DialogTitle>فاکتورهای قبلی</DialogTitle
                     ><DialogDescription
                         >این سبدها فقط در همین مرورگر ذخیره‌اند و اثر مالی یا
                         انباری ندارند.</DialogDescription
                     ></DialogHeader
                 >
                 <div class="max-h-96 space-y-2 overflow-auto">
+                    <p
+                        v-if="workspace.tabs.length >= MAX_POS_CARTS"
+                        class="pos-notice"
+                    >
+                        برای بازکردن فاکتور قبلی، ابتدا یکی از ۵ تب را ببندید.
+                    </p>
                     <div
                         v-for="cart in held"
                         :key="cart.id"
@@ -1378,6 +1527,10 @@ onBeforeUnmount(() => {
                         <button
                             type="button"
                             class="pos-review-row flex-1"
+                            :disabled="
+                                tabsLocked ||
+                                workspace.tabs.length >= MAX_POS_CARTS
+                            "
                             @click="restoreHeld(cart.id)"
                         >
                             <div class="text-right">

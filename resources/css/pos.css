@@ -411,6 +411,102 @@
     box-shadow: 0 5px 20px #2d493c05;
     overflow: hidden;
 }
+.pos-invoice-panel {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    flex-direction: column;
+}
+.pos-tabs-bar {
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+    flex-shrink: 0;
+    padding: 7px 12px;
+    border-bottom: 1px solid #e7eeea;
+    background: #f7f9f8;
+}
+.pos-tabs {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    gap: 5px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+.pos-tab {
+    display: flex;
+    flex: 1 0 110px;
+    min-width: 0;
+    border: 1px solid #e1e8e4;
+    border-radius: 9px;
+    background: #fff;
+    color: #73847b;
+}
+.pos-tab.active {
+    border-color: #9cc8b7;
+    background: #eaf4ee;
+    color: #176953;
+    box-shadow: inset 0 -2px #71ac93;
+}
+.pos-tab > [role='tab'] {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 9px;
+    text-align: right;
+}
+.pos-tab span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    font-size: 11px;
+    font-weight: 700;
+}
+.pos-tab b {
+    border-radius: 5px;
+    padding: 0 4px;
+    background: #dcebe2;
+    font-size: 9px;
+}
+.pos-tab small {
+    display: block;
+    max-width: 115px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 9px;
+    margin-top: 2px;
+    opacity: 0.8;
+}
+.pos-tab-close {
+    align-self: center;
+    display: grid;
+    place-items: center;
+    min-width: 25px;
+    min-height: 30px;
+    border-radius: 6px;
+    margin-left: 3px;
+}
+.pos-tab-close:hover {
+    background: #fce9e7;
+    color: #b94e47;
+}
+.pos-tab-add {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    width: 38px;
+    flex-shrink: 0;
+    border: 1px dashed #b1cbbd;
+    border-radius: 9px;
+    color: #32785c;
+}
+.pos-tab-add small {
+    font-size: 9px;
+}
 .pos-invoice-heading {
     display: flex;
     align-items: center;

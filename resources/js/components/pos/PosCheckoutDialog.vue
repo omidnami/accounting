@@ -8,7 +8,7 @@ import {
     ReceiptText,
     UserRound,
 } from '@lucide/vue';
-import { computed, ref, watch } from 'vue';
+import { computed, watch } from 'vue';
 import JalaliDatePicker from '@/components/JalaliDatePicker.vue';
 import {
     Dialog,
@@ -24,6 +24,7 @@ import {
     type PosTender,
 } from '@/lib/pos';
 import { normalizeNumber } from '@/lib/number';
+import type { PosPaymentDraft } from '@/lib/pos-workspace';
 
 const props = defineProps<{
     open: boolean;
@@ -39,16 +40,32 @@ const emit = defineEmits<{
     'update:open': [value: boolean];
     submit: [tenders: PosTender[], dueDate: string];
 }>();
-const mode = ref('cash');
-const dueDate = ref('');
+const draft = defineModel<PosPaymentDraft>('draft', { required: true });
+const mode = computed({
+    get: () => draft.value.mode,
+    set: (value: PosPaymentDraft['mode']) => {
+        draft.value.mode = value;
+    },
+});
+const dueDate = computed({
+    get: () => draft.value.dueDate,
+    set: (value: string) => {
+        draft.value.dueDate = value;
+    },
+});
 const methods = [
     { key: 'cash', label: 'نقد', icon: Banknote },
     { key: 'card', label: 'کارت', icon: CreditCard },
     { key: 'check', label: 'چک', icon: ReceiptText },
     { key: 'credit', label: 'نسیه', icon: NotebookPen },
     { key: 'mixed', label: 'ترکیبی', icon: Layers },
-];
-const rows = ref<PosTender[]>([]);
+] as const;
+const rows = computed({
+    get: () => draft.value.rows,
+    set: (value: PosTender[]) => {
+        draft.value.rows = value;
+    },
+});
 const blank = (method: PosTender['method'], amount = ''): PosTender => ({
     method,
     amount,
@@ -76,9 +93,17 @@ watch(
     () => props.open,
     (open) => {
         if (open) {
-            mode.value = 'cash';
-            dueDate.value = '';
-            resetRows();
+            if (!rows.value.length) resetRows();
+            else if (
+                draft.value.total !== props.total &&
+                rows.value.length === 1 &&
+                ['cash', 'card'].includes(rows.value[0].method) &&
+                rows.value[0].amount === draft.value.total
+            ) {
+                rows.value[0].amount = props.total;
+                rows.value[0].confirmed = false;
+            }
+            draft.value.total = props.total;
         }
     },
 );
