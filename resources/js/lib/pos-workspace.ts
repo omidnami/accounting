@@ -100,7 +100,7 @@ function removeCart(workspace: PosWorkspace, id: string): void {
     }
 }
 export function closePosCart(workspace: PosWorkspace, id: string): boolean {
-    if (pendingPosCart(workspace)) return false;
+    if (workspace.tabs.length <= 1 || pendingPosCart(workspace)) return false;
     removeCart(workspace, id);
     return true;
 }

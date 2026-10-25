@@ -120,7 +120,14 @@ void test('closing a cart keeps the adjacent cart intact and new cart numbers ne
     assert.equal(workspace.activeId, second.id);
     assert.equal(addPosCart(workspace)!.number, 3);
     closePosCart(workspace, workspace.activeId);
-    closePosCart(workspace, second.id);
+    const beforeClose = JSON.parse(JSON.stringify(workspace));
+    assert.equal(closePosCart(workspace, second.id), false);
+    assert.deepEqual(workspace, beforeClose);
+    assert.equal(workspace.tabs[0].number, 2);
+    assert.equal(workspace.tabs[0].lines.length, 1);
+    // Completing a real sale still leaves a fresh cart for the next customer.
+    second.pending = { submission_token: second.token };
+    assert.equal(completePosCart(workspace, second.id, second.token), true);
     assert.equal(workspace.tabs.length, 1);
     assert.equal(workspace.tabs[0].number, 4);
     assert.equal(workspace.tabs[0].lines.length, 0);

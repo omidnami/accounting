@@ -381,7 +381,7 @@ function addTab() {
     focusTab();
 }
 function closeTab(id: string) {
-    if (tabsLocked.value) return;
+    if (tabsLocked.value || workspace.value.tabs.length <= 1) return;
     const cart = workspace.value.tabs.find((item) => item.id === id);
     if (!cart) return;
     if (
@@ -981,7 +981,9 @@ onBeforeUnmount(() => {
                                 type="button"
                                 class="pos-tab-close"
                                 :aria-label="`بستن فاکتور ${qty(cart.number)}`"
-                                :disabled="tabsLocked"
+                                :disabled="
+                                    tabsLocked || workspace.tabs.length <= 1
+                                "
                                 @click="closeTab(cart.id)"
                             >
                                 <X :size="13" />
