@@ -15,12 +15,25 @@ use DomainException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ProductController extends Controller
 {
+    public function image(Request $request, Product $product): StreamedResponse
+    {
+        abort_unless($request->user()?->canManageProducts() || $request->user()?->canManageSales(), 403);
+        abort_if($product->image_path === null || ! Storage::disk('local')->exists($product->image_path), 404);
+
+        return Storage::disk('local')->response($product->image_path, headers: [
+            'Cache-Control' => 'private, max-age=86400',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
     public function index(Request $request, ProductCatalogService $catalog): Response
     {
         abort_unless($request->user()?->canManageProducts(), 403);
@@ -149,6 +162,7 @@ class ProductController extends Controller
                 'id' => $product->id,
                 'code' => $product->code,
                 'barcode' => $product->barcode,
+                'image_url' => $product->imageUrl(),
                 'name' => $product->name,
                 'category_id' => $product->category_id,
                 'parent_product_id' => $product->parent_product_id,

@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $variant_size
  * @property bool $is_active
  * @property int $version
+ * @property string|null $image_path
  */
 class Product extends Model
 {
@@ -38,6 +39,7 @@ class Product extends Model
         'parent_product_id',
         'name',
         'barcode',
+        'image_path',
         'variant_color',
         'variant_size',
         'unit',
@@ -72,6 +74,14 @@ class Product extends Model
             'is_active' => 'boolean',
             'version' => 'integer',
         ];
+    }
+
+    public function imageUrl(): ?string
+    {
+        return $this->image_path === null ? null : route('products.image', [
+            'product' => $this->id,
+            'v' => sha1($this->image_path),
+        ]);
     }
 
     /** @return BelongsTo<ProductCategory, $this> */

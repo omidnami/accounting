@@ -57,7 +57,7 @@ class SalesCheckoutLookupService
      * @return array<int, array{
      *     id: int, code: string, barcode: string|null, name: string, unit: string,
      *     sale_price: string, tax_rate: string, stock_quantity: string,
-     *     track_batches: bool, track_serials: bool
+     *     track_batches: bool, track_serials: bool, image_url: string|null
      * }>
      */
     public function products(int $storeId, int $warehouseId, string $search, ?int $categoryId = null, int $limit = 20): array
@@ -92,6 +92,7 @@ class SalesCheckoutLookupService
                 'id' => $product->id,
                 'code' => $product->code,
                 'barcode' => $product->barcode,
+                'image_url' => $product->imageUrl(),
                 'name' => $product->name,
                 'variant_color' => $product->variant_color,
                 'variant_size' => $product->variant_size,

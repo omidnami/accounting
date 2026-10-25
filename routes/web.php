@@ -151,6 +151,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->except(['show', 'destroy']);
     Route::resource('products', ProductController::class)
         ->except(['show', 'destroy']);
+    Route::get('products/{product}/image', [ProductController::class, 'image'])
+        ->name('products.image');
     Route::resource('product-categories', ProductCategoryController::class)
         ->only(['index', 'store', 'update']);
     Route::get('products/{product}/tracking', [ProductTrackingController::class, 'index'])

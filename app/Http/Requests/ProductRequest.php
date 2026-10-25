@@ -48,6 +48,8 @@ class ProductRequest extends FormRequest
                 Rule::unique('products', 'barcode')->ignore($product?->id),
             ],
             'name' => ['required', 'string', 'max:180'],
+            'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048', 'dimensions:max_width=4096,max_height=4096'],
+            'remove_image' => ['sometimes', 'boolean'],
             'unit' => ['required', 'string', 'max:30'],
             'purchase_price' => ['required', 'numeric', 'min:0', 'max:9999999999999999', 'decimal:0,2'],
             'sale_price' => ['required', 'numeric', 'min:0', 'max:9999999999999999', 'decimal:0,2'],
@@ -114,6 +116,10 @@ class ProductRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'image.image' => 'لطفاً یک تصویر معتبر انتخاب کنید.',
+            'image.mimes' => 'تصویر باید از نوع JPEG، PNG یا WebP باشد.',
+            'image.max' => 'حجم تصویر نباید بیشتر از ۲ مگابایت باشد.',
+            'image.dimensions' => 'ابعاد تصویر نباید بیشتر از ۴۰۹۶ × ۴۰۹۶ پیکسل باشد.',
             'code.regex' => 'کد کالا فقط می‌تواند شامل حروف، اعداد، خط تیره و زیرخط باشد.',
             'barcode.regex' => 'بارکد فقط می‌تواند شامل حروف، اعداد، خط تیره و زیرخط باشد.',
             'tax_rate.between' => 'نرخ مالیات باید بین صفر تا صد باشد.',

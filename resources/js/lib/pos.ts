@@ -4,6 +4,7 @@ export type PosProduct = {
     id: number;
     code: string;
     barcode: string | null;
+    image_url?: string | null;
     name: string;
     unit: string;
     sale_price: string;

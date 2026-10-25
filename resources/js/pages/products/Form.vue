@@ -13,6 +13,7 @@ import {
     Tag,
 } from '@lucide/vue';
 import InputError from '@/components/InputError.vue';
+import ProductImageInput from '@/components/ProductImageInput.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,7 @@ type ProductDetail = {
     parent_product_id: number | null;
     code: string;
     barcode: string | null;
+    image_url: string | null;
     name: string;
     variant_color: string | null;
     variant_size: string | null;
@@ -95,6 +97,8 @@ const props = defineProps<{
 }>();
 
 const form = useForm({
+    image: null as File | null,
+    remove_image: false,
     category_id:
         props.product?.category_id?.toString() ??
         props.parent_product?.category_id?.toString() ??
@@ -168,9 +172,13 @@ const selectParent = (event: Event) => {
 
 const submit = () => {
     if (props.product) {
-        form.put(updateProduct(props.product.id).url, {
-            preserveScroll: true,
-        });
+        form.transform((data) => ({ ...data, _method: 'put' })).post(
+            updateProduct(props.product.id).url,
+            {
+                forceFormData: true,
+                preserveScroll: true,
+            },
+        );
         return;
     }
 
@@ -552,6 +560,13 @@ defineOptions({
             </div>
 
             <aside class="space-y-4 xl:sticky xl:top-6">
+                <ProductImageInput
+                    v-model="form.image"
+                    v-model:remove="form.remove_image"
+                    :existing-url="product?.image_url"
+                    :error="form.errors.image"
+                    :disabled="form.processing"
+                />
                 <section
                     class="rounded-2xl border border-border/70 bg-card p-5 shadow-sm"
                 >

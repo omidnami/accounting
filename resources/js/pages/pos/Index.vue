@@ -97,6 +97,7 @@ const pendingChecks = ref<PendingCheck[]>([]);
 const search = ref('');
 const category = ref<number | null>(null);
 const products = ref<PosProduct[]>([]);
+const failedImages = ref(new Set<string>());
 const productLoading = ref(false);
 const searchInput = ref<HTMLInputElement | null>(null);
 const customerSearch = ref('');
@@ -772,6 +773,18 @@ onBeforeUnmount(() => {
                             }}</span
                             ><Plus :size="17" />
                         </div>
+                        <img
+                            v-if="
+                                product.image_url &&
+                                !failedImages.has(product.image_url)
+                            "
+                            :src="product.image_url"
+                            :alt="product.name"
+                            class="pos-product-image"
+                            loading="lazy"
+                            decoding="async"
+                            @error="failedImages.add(product.image_url)"
+                        />
                         <strong>{{ product.name }}</strong
                         ><span
                             v-if="product.variant_color || product.variant_size"

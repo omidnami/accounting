@@ -7,7 +7,11 @@ use App\Models\ProductPriceHistory;
 use App\Models\User;
 use App\Support\Decimal;
 use DomainException;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use RuntimeException;
+use Throwable;
 
 class ProductManagementService
 {
@@ -16,33 +20,35 @@ class ProductManagementService
      */
     public function create(array $data, User $actor): Product
     {
-        return DB::transaction(function () use ($data, $actor): Product {
-            unset($data['version']);
-            $parentId = isset($data['parent_product_id'])
-                ? (int) $data['parent_product_id']
-                : null;
+        return $this->withImage($data, function (array $data) use ($actor): Product {
+            return DB::transaction(function () use ($data, $actor): Product {
+                unset($data['version']);
+                $parentId = isset($data['parent_product_id'])
+                    ? (int) $data['parent_product_id']
+                    : null;
 
-            if ($parentId !== null) {
-                $parent = Product::query()
-                    ->whereKey($parentId)
-                    ->lockForUpdate()
-                    ->firstOrFail();
-                $this->assertCanAddVariant($parent, $data);
+                if ($parentId !== null) {
+                    $parent = Product::query()
+                        ->whereKey($parentId)
+                        ->lockForUpdate()
+                        ->firstOrFail();
+                    $this->assertCanAddVariant($parent, $data);
 
-                if (trim((string) ($data['name'] ?? '')) === trim($parent->name)) {
-                    $variantLabel = collect([
-                        $this->nullableString($data['variant_color'] ?? null),
-                        $this->nullableString($data['variant_size'] ?? null),
-                    ])->filter()->implode(' / ');
-                    $data['name'] = trim($parent->name.' - '.$variantLabel);
+                    if (trim((string) ($data['name'] ?? '')) === trim($parent->name)) {
+                        $variantLabel = collect([
+                            $this->nullableString($data['variant_color'] ?? null),
+                            $this->nullableString($data['variant_size'] ?? null),
+                        ])->filter()->implode(' / ');
+                        $data['name'] = trim($parent->name.' - '.$variantLabel);
+                    }
                 }
-            }
 
-            $product = Product::query()->create($data);
-            $this->recordPriceHistory($product, $actor, 'create');
+                $product = Product::query()->create($data);
+                $this->recordPriceHistory($product, $actor, 'create');
 
-            return $product->refresh();
-        }, attempts: 3);
+                return $product->refresh();
+            }, attempts: 3);
+        });
     }
 
     /**
@@ -50,57 +56,101 @@ class ProductManagementService
      */
     public function update(Product $product, array $data, User $actor): Product
     {
-        return DB::transaction(function () use ($product, $data, $actor): Product {
-            $locked = Product::query()
-                ->whereKey($product->id)
-                ->lockForUpdate()
-                ->firstOrFail();
+        return $this->withImage($data, function (array $data) use ($product, $actor): Product {
+            return DB::transaction(function () use ($product, $data, $actor): Product {
+                $locked = Product::query()
+                    ->whereKey($product->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
-            if ((int) $locked->version !== (int) ($data['version'] ?? -1)) {
-                throw new DomainException(
-                    'این کالا هم‌زمان توسط کاربر دیگری تغییر کرده است. اطلاعات تازه را دوباره بررسی کنید.',
-                );
-            }
-
-            unset($data['parent_product_id'], $data['version']);
-            $previousPurchase = Decimal::normalize($locked->purchase_price, 2);
-            $previousSale = Decimal::normalize($locked->sale_price, 2);
-
-            if ($locked->track_batches !== (bool) ($data['track_batches'] ?? false)
-                || $locked->track_serials !== (bool) ($data['track_serials'] ?? false)) {
-                $hasStock = $locked->inventoryBalances()->where('quantity', '>', 0)->exists()
-                    || $locked->inventoryMovements()->exists();
-                $hasTracking = $locked->batches()->exists() || $locked->serials()->exists();
-
-                if ((! $locked->track_batches && (bool) ($data['track_batches'] ?? false)
-                    || ! $locked->track_serials && (bool) ($data['track_serials'] ?? false))
-                    && $hasStock) {
+                if ((int) $locked->version !== (int) ($data['version'] ?? -1)) {
                     throw new DomainException(
-                        'فعال‌سازی ردیابی برای کالای دارای سابقهٔ موجودی مجاز نیست.',
+                        'این کالا هم‌زمان توسط کاربر دیگری تغییر کرده است. اطلاعات تازه را دوباره بررسی کنید.',
                     );
                 }
 
-                if (($locked->track_batches && ! (bool) ($data['track_batches'] ?? false)
-                    || $locked->track_serials && ! (bool) ($data['track_serials'] ?? false))
-                    && $hasTracking) {
-                    throw new DomainException(
-                        'غیرفعال‌سازی ردیابی برای کالای دارای Batch یا سریال مجاز نیست.',
-                    );
+                unset($data['parent_product_id'], $data['version']);
+                $previousPurchase = Decimal::normalize($locked->purchase_price, 2);
+                $previousSale = Decimal::normalize($locked->sale_price, 2);
+
+                if ($locked->track_batches !== (bool) ($data['track_batches'] ?? false)
+                    || $locked->track_serials !== (bool) ($data['track_serials'] ?? false)) {
+                    $hasStock = $locked->inventoryBalances()->where('quantity', '>', 0)->exists()
+                        || $locked->inventoryMovements()->exists();
+                    $hasTracking = $locked->batches()->exists() || $locked->serials()->exists();
+
+                    if ((! $locked->track_batches && (bool) ($data['track_batches'] ?? false)
+                        || ! $locked->track_serials && (bool) ($data['track_serials'] ?? false))
+                        && $hasStock) {
+                        throw new DomainException(
+                            'فعال‌سازی ردیابی برای کالای دارای سابقهٔ موجودی مجاز نیست.',
+                        );
+                    }
+
+                    if (($locked->track_batches && ! (bool) ($data['track_batches'] ?? false)
+                        || $locked->track_serials && ! (bool) ($data['track_serials'] ?? false))
+                        && $hasTracking) {
+                        throw new DomainException(
+                            'غیرفعال‌سازی ردیابی برای کالای دارای Batch یا سریال مجاز نیست.',
+                        );
+                    }
                 }
+
+                $previousImage = $locked->image_path;
+                $locked->update([
+                    ...$data,
+                    'version' => (int) $locked->version + 1,
+                ]);
+
+                if (Decimal::compare($previousPurchase, $locked->purchase_price, 2) !== 0
+                    || Decimal::compare($previousSale, $locked->sale_price, 2) !== 0) {
+                    $this->recordPriceHistory($locked, $actor, 'update');
+                }
+
+                if ($previousImage !== null && $previousImage !== $locked->image_path) {
+                    DB::afterCommit(fn () => Storage::disk('local')->delete($previousImage));
+                }
+
+                return $locked->refresh();
+            }, attempts: 3);
+        });
+    }
+
+    /**
+     * Store once outside the retried database transaction; remove failed uploads and
+     * leave the previous image untouched until the product change commits.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  callable(array<string, mixed>): Product  $save
+     */
+    private function withImage(array $data, callable $save): Product
+    {
+        $image = $data['image'] ?? null;
+        $remove = (bool) ($data['remove_image'] ?? false);
+        unset($data['image'], $data['remove_image']);
+        $path = null;
+
+        if ($image instanceof UploadedFile) {
+            $path = $image->store('products', 'local');
+
+            if ($path === false) {
+                throw new RuntimeException('ذخیره تصویر کالا انجام نشد.');
             }
 
-            $locked->update([
-                ...$data,
-                'version' => (int) $locked->version + 1,
-            ]);
+            $data['image_path'] = $path;
+        } elseif ($remove) {
+            $data['image_path'] = null;
+        }
 
-            if (Decimal::compare($previousPurchase, $locked->purchase_price, 2) !== 0
-                || Decimal::compare($previousSale, $locked->sale_price, 2) !== 0) {
-                $this->recordPriceHistory($locked, $actor, 'update');
+        try {
+            return $save($data);
+        } catch (Throwable $exception) {
+            if ($path !== null) {
+                Storage::disk('local')->delete($path);
             }
 
-            return $locked->refresh();
-        }, attempts: 3);
+            throw $exception;
+        }
     }
 
     public function canAddVariant(Product $product): bool
