@@ -10,6 +10,7 @@ use App\Models\Product;
 use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\User;
+use App\Services\Accounting\PostingService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Purchasing\PurchaseService;
 use App\Services\Reporting\AgingReportService;
@@ -20,6 +21,7 @@ use App\Services\Sales\SalesReturnService;
 use App\Services\Sales\SalesService;
 use Database\Seeders\AccountingSetupSeeder;
 use Database\Seeders\AccountSeeder;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -223,6 +225,102 @@ it('renders operational reports and account ledger for financial roles', functio
             ->has('accounts')
             ->has('accountLedger.rows')
             ->where('filters.account_id', fn ($value) => is_int($value)));
+});
+
+it('renders operational reports on database cache hits with class deserialization disabled', function () {
+    $context = operationalReportContext();
+    $from = $context['fiscalYear']->starts_on->toDateString();
+    $to = $context['fiscalYear']->ends_on->toDateString();
+    $storeId = $context['store']->id;
+    $branchId = $context['branch']->id;
+    $partyId = $context['customerParty']->id;
+    config(['cache.default' => 'database', 'cache.serializable_classes' => false]);
+    $this->app->detectEnvironment(fn (): string => 'local');
+
+    // Existing cache entries may contain collections from before the payload fix.
+    Cache::put(
+        "party-statement:{$storeId}:{$branchId}:{$partyId}:{$from}:{$to}",
+        app(PartyStatementReportService::class)->report(
+            $context['customerParty'], $storeId, $from, $to, $branchId,
+        ),
+        60,
+    );
+    Cache::put(
+        "sales-operations:{$storeId}:{$branchId}:{$from}:{$to}",
+        app(SalesOperationsReportService::class)->report($storeId, $from, $to, $branchId),
+        60,
+    );
+
+    foreach (['miss', 'hit'] as $request) {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        $this->actingAs($context['manager'])
+            ->get(route('reports.operations', compact('from', 'to') + ['party_id' => $partyId]))
+            ->assertOk()
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('reports/Operations')
+                ->where('statement.closing_balance', '200.00')
+                ->where('statement.rows.total', 2)
+                ->has('statement.rows.data', 2)
+                ->where('receivablesAging.total', '200.00')
+                ->where('payablesAging.total', '600.00')
+                ->where('sales.summary.gross_profit', '100.00')
+                ->where('sales.daily.data.0.revenue', '200.00')
+                ->where('sales.products.data.0.product_id', $context['product']->id));
+
+        if ($request === 'hit') {
+            expect(collect(DB::getQueryLog())->pluck('query')->filter(
+                fn (string $query): bool => str_contains($query, 'journal_entry_lines')
+                    || str_contains($query, 'invoice_items'),
+            ))->toBeEmpty();
+        }
+    }
+
+    DB::disableQueryLog();
+});
+
+it('paginates cached party statements without changing balances', function () {
+    $context = operationalReportContext();
+    $from = $context['fiscalYear']->starts_on->toDateString();
+    $to = $context['fiscalYear']->ends_on->toDateString();
+    $accounts = Account::query()->where('store_id', $context['store']->id)->pluck('id', 'code');
+    $lines = array_fill(0, 51, [
+        'account_id' => $accounts['1103'],
+        'party_id' => $context['customerParty']->id,
+        'debit' => '1.00',
+        'credit' => '0.00',
+    ]);
+    $lines[] = ['account_id' => $accounts['1101'], 'debit' => '0.00', 'credit' => '51.00'];
+    app(PostingService::class)->post([
+        'store_id' => $context['store']->id,
+        'branch_id' => $context['branch']->id,
+        'fiscal_year_id' => $context['fiscalYear']->id,
+        'accounting_period_id' => $context['fiscalYear']->periods()->orderBy('period_number')->value('id'),
+        'entry_date' => $from,
+        'description' => 'گردش برای آزمون صفحه‌بندی صورتحساب',
+        'created_by' => $context['manager']->id,
+    ], $lines, $context['manager']);
+    config(['cache.default' => 'database', 'cache.serializable_classes' => false]);
+    $this->app->detectEnvironment(fn (): string => 'local');
+    $reports = app(PartyStatementReportService::class);
+    $uncached = $reports->report(
+        $context['customerParty'], $context['store']->id, $from, $to, $context['branch']->id,
+    );
+    $first = $reports->pageReport(
+        $context['customerParty'], $context['store']->id, $from, $to, $context['branch']->id, 1,
+    );
+    $second = $reports->pageReport(
+        $context['customerParty'], $context['store']->id, $from, $to, $context['branch']->id, 2,
+    );
+
+    expect($first['rows']['total'])->toBe(53)
+        ->and($first['rows']['data'])->toHaveCount(50)
+        ->and($second['rows']['current_page'])->toBe(2)
+        ->and($second['rows']['from'])->toBe(51)
+        ->and($second['rows']['to'])->toBe(53)
+        ->and($second['rows']['data'])->toHaveCount(3)
+        ->and($second['rows']['data'])->toBe(array_slice($uncached['rows']->all(), 50))
+        ->and($second['closing_balance'])->toBe('251.00');
 });
 
 it('marks profit as incomplete when a sales cost snapshot is missing', function () {

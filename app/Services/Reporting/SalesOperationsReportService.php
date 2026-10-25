@@ -102,11 +102,17 @@ class SalesOperationsReportService
         int $dailyPage,
         int $productsPage,
     ): array {
-        $build = fn (): array => $this->report($storeId, $from, $to, $branchId);
+        $build = function () use ($storeId, $from, $to, $branchId): array {
+            $data = $this->report($storeId, $from, $to, $branchId);
+            $data['daily'] = $data['daily']->all();
+            $data['products'] = $data['products']->all();
+
+            return $data;
+        };
         $data = app()->environment('testing')
             ? $build()
             : Cache::remember(
-                "sales-operations:{$storeId}:{$branchId}:{$from}:{$to}",
+                "sales-operations:v2:{$storeId}:{$branchId}:{$from}:{$to}",
                 now()->addMinute(),
                 $build,
             );

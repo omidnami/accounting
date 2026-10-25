@@ -111,17 +111,17 @@ class PartyStatementReportService
         ?int $branchId,
         int $page,
     ): array {
-        $build = fn (): array => $this->report(
-            $party,
-            $storeId,
-            $from,
-            $to,
-            $branchId,
-        );
+        $build = function () use ($party, $storeId, $from, $to, $branchId): array {
+            $data = $this->report($party, $storeId, $from, $to, $branchId);
+            // Cache payloads must not require PHP class deserialization.
+            $data['rows'] = $data['rows']->all();
+
+            return $data;
+        };
         $data = app()->environment('testing')
             ? $build()
             : Cache::remember(
-                "party-statement:{$storeId}:{$branchId}:{$party->id}:{$from}:{$to}",
+                "party-statement:v2:{$storeId}:{$branchId}:{$party->id}:{$from}:{$to}",
                 now()->addMinute(),
                 $build,
             );
