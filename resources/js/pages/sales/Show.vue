@@ -43,6 +43,7 @@ import {
     create as createSalesReturn,
     show as showSalesReturn,
 } from '@/routes/sales/returns';
+import { create as createRefund } from '@/routes/returns/refund';
 
 type SaleStatus =
     | 'draft'
@@ -83,6 +84,7 @@ type Props = {
     invoice: {
         id: number;
         invoice_number: string;
+        type: string;
         invoice_date: string;
         due_date: string | null;
         status: SaleStatus;
@@ -420,6 +422,16 @@ defineOptions({
                     >
                         <Printer class="size-4" />
                         چاپ خودکار
+                    </Button>
+                    <Button
+                        v-if="invoice.type === 'sales_return' && can_receive"
+                        as-child
+                        variant="outline"
+                        class="rounded-xl"
+                    >
+                        <Link :href="createRefund(invoice.id)">
+                            ثبت refund مشتری
+                        </Link>
                     </Button>
                     <Button as-child variant="outline" class="rounded-xl">
                         <Link :href="createSale()">

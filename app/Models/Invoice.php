@@ -182,6 +182,18 @@ class Invoice extends Model
         return $this->hasMany(ReceiptAllocation::class);
     }
 
+    /** @return HasMany<ReturnRefund, $this> */
+    public function customerRefunds(): HasMany
+    {
+        return $this->hasMany(ReturnRefund::class, 'original_invoice_id')->where('direction', 'customer');
+    }
+
+    /** @return HasMany<ReturnRefund, $this> */
+    public function supplierRefunds(): HasMany
+    {
+        return $this->hasMany(ReturnRefund::class, 'original_invoice_id')->where('direction', 'supplier');
+    }
+
     protected static function booted(): void
     {
         static::saving(function (Invoice $invoice): void {

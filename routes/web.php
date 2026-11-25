@@ -28,6 +28,7 @@ use App\Http\Controllers\ProductTrackingController;
 use App\Http\Controllers\PurchaseInvoiceController;
 use App\Http\Controllers\PurchaseLookupController;
 use App\Http\Controllers\ReportExportController;
+use App\Http\Controllers\ReturnRefundController;
 use App\Http\Controllers\SalesInvoiceController;
 use App\Http\Controllers\SalesLookupController;
 use App\Http\Controllers\StockCountController;
@@ -148,6 +149,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('audit-logs/export', [AuditLogController::class, 'export'])
         ->name('audit-logs.export');
     Route::get('audit-logs', AuditLogController::class)->name('audit-logs.index');
+    Route::get('returns/{invoice}/refund', [ReturnRefundController::class, 'create'])
+        ->name('returns.refund.create');
+    Route::post('returns/{invoice}/refund', [ReturnRefundController::class, 'store'])
+        ->name('returns.refund.store');
     Route::resource('accounts', AccountController::class)
         ->parameters(['account' => 'account'])
         ->except(['show', 'destroy']);

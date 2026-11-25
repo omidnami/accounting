@@ -244,8 +244,8 @@ class JournalEntry extends Model
         $fiscalYear = FiscalYear::query()->find($this->fiscal_year_id);
         $period = AccountingPeriod::query()->find($this->accounting_period_id);
 
-        if (! $branch || (int) $branch->store_id !== (int) $this->store_id) {
-            throw new DomainException('شعبه سند باید متعلق به فروشگاه سند باشد.');
+        if (! $branch || (int) $branch->store_id !== (int) $this->store_id || ! $branch->is_active) {
+            throw new DomainException('شعبه سند باید فعال و متعلق به فروشگاه سند باشد.');
         }
 
         if (! $fiscalYear || (int) $fiscalYear->store_id !== (int) $this->store_id) {

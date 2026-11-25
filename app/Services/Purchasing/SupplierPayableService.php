@@ -7,6 +7,7 @@ use App\Enums\InvoiceType;
 use App\Enums\TreasuryDocumentStatus;
 use App\Models\Invoice;
 use App\Models\PaymentAllocation;
+use App\Models\ReturnRefund;
 use App\Models\Supplier;
 use App\Support\Decimal;
 use Illuminate\Database\Eloquent\Collection;
@@ -21,10 +22,13 @@ class SupplierPayableService
             ->whereIn('status', [
                 InvoiceStatus::Confirmed,
                 InvoiceStatus::PartiallyPaid,
+                InvoiceStatus::Paid,
+                InvoiceStatus::Reversed,
             ])
             ->with([
                 'paymentAllocations.payment',
                 'childInvoices',
+                'supplierRefunds',
             ])
             ->orderBy('id')
             ->get();
@@ -33,9 +37,7 @@ class SupplierPayableService
         foreach ($invoices as $invoice) {
             $outstanding = $this->outstandingFromLoadedRelations($invoice);
 
-            if (Decimal::isPositive($outstanding)) {
-                $total = Decimal::add($total, $outstanding, Decimal::MONEY_SCALE);
-            }
+            $total = Decimal::add($total, $outstanding, Decimal::MONEY_SCALE);
         }
 
         return $total;
@@ -72,15 +74,21 @@ class SupplierPayableService
 
             $remaining = Decimal::subtract($invoice->total, $paid, Decimal::MONEY_SCALE);
             $remaining = Decimal::subtract($remaining, $returned, Decimal::MONEY_SCALE);
+            $refunded = (string) ReturnRefund::query()
+                ->where('original_invoice_id', $invoice->id)
+                ->where('direction', 'supplier')
+                ->where('status', 'posted')
+                ->lockForUpdate()
+                ->sum('amount');
+            $remaining = Decimal::add($remaining, $refunded, Decimal::MONEY_SCALE);
 
-            return Decimal::compare($remaining, '0', Decimal::MONEY_SCALE) > 0
-                ? $remaining
-                : '0.00';
+            return $remaining;
         }
 
-        $invoice->loadMissing([
+        $invoice->load([
             'paymentAllocations.payment',
             'childInvoices',
+            'supplierRefunds',
         ]);
 
         return $this->outstandingFromLoadedRelations($invoice);
@@ -95,10 +103,13 @@ class SupplierPayableService
             ->whereIn('status', [
                 InvoiceStatus::Confirmed,
                 InvoiceStatus::PartiallyPaid,
+                InvoiceStatus::Paid,
+                InvoiceStatus::Reversed,
             ])
             ->with([
                 'paymentAllocations.payment',
                 'childInvoices',
+                'supplierRefunds',
             ])
             ->get();
         $total = '0.00';
@@ -106,9 +117,7 @@ class SupplierPayableService
         foreach ($invoices as $invoice) {
             $outstanding = $this->outstandingFromLoadedRelations($invoice);
 
-            if (Decimal::isPositive($outstanding)) {
-                $total = Decimal::add($total, $outstanding, Decimal::MONEY_SCALE);
-            }
+            $total = Decimal::add($total, $outstanding, Decimal::MONEY_SCALE);
         }
 
         return $total;
@@ -131,10 +140,13 @@ class SupplierPayableService
             ->whereIn('status', [
                 InvoiceStatus::Confirmed,
                 InvoiceStatus::PartiallyPaid,
+                InvoiceStatus::Paid,
+                InvoiceStatus::Reversed,
             ])
             ->with([
                 'paymentAllocations.payment',
                 'childInvoices',
+                'supplierRefunds',
             ])
             ->when($focusInvoiceId !== null, function ($query) use ($focusInvoiceId): void {
                 $query->orderByRaw('CASE WHEN id = ? THEN 0 ELSE 1 END', [$focusInvoiceId]);
@@ -169,9 +181,14 @@ class SupplierPayableService
 
         $remaining = Decimal::subtract($invoice->total, $paid, Decimal::MONEY_SCALE);
         $remaining = Decimal::subtract($remaining, $returned, Decimal::MONEY_SCALE);
+        $refunded = '0.00';
 
-        return Decimal::compare($remaining, '0', Decimal::MONEY_SCALE) > 0
-            ? $remaining
-            : '0.00';
+        foreach ($invoice->supplierRefunds as $refund) {
+            if ($refund->status === 'posted') {
+                $refunded = Decimal::add($refunded, $refund->amount, Decimal::MONEY_SCALE);
+            }
+        }
+
+        return Decimal::add($remaining, $refunded, Decimal::MONEY_SCALE);
     }
 }

@@ -232,6 +232,7 @@ class SalesInvoiceController extends Controller
                 'invoice_date' => $invoice->invoice_date->toDateString(),
                 'due_date' => $invoice->due_date?->toDateString(),
                 'status' => $invoice->status->value,
+                'type' => $invoice->type->value,
                 'subtotal' => $invoice->subtotal,
                 'discount_total' => $invoice->discount_total,
                 'tax_total' => $invoice->tax_total,

@@ -9,12 +9,19 @@ use DomainException;
 
 class BranchContextService
 {
-    public function active(User $_user, Store $store): Branch
+    public function active(User $user, Store $store): Branch
     {
-        return Branch::query()
+        $query = Branch::query()
             ->where('store_id', $store->id)
-            ->where('is_default', true)
-            ->first()
+            ->where('is_active', true);
+
+        if ($user->branch_id !== null) {
+            $query->whereKey($user->branch_id);
+        } else {
+            $query->where('is_default', true);
+        }
+
+        return $query->first()
             ?? throw new DomainException('شعبهٔ فعالی برای این کاربر وجود ندارد.');
     }
 

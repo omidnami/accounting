@@ -52,7 +52,7 @@ it('does not expose branch management or switching endpoints', function () {
         ->assertNotFound();
 });
 
-it('always uses the default branch despite stale session and employee assignment', function () {
+it('uses the employee assigned active branch instead of stale session data', function () {
     $context = singleLocationContext();
     $second = Branch::query()->create([
         'store_id' => $context['store']->id,
@@ -61,7 +61,7 @@ it('always uses the default branch despite stale session and employee assignment
         'is_default' => false,
         'is_active' => true,
     ]);
-    Warehouse::query()->create([
+    $secondWarehouse = Warehouse::query()->create([
         'store_id' => $context['store']->id,
         'branch_id' => $second->id,
         'code' => 'MAIN',
@@ -85,9 +85,9 @@ it('always uses the default branch despite stale session and employee assignment
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('sales/Create')
-            ->where('defaults.warehouse_id', $context['warehouse']->id)
+            ->where('defaults.warehouse_id', $secondWarehouse->id)
             ->has('warehouses', 1)
-            ->where('warehouses.0.id', $context['warehouse']->id));
+            ->where('warehouses.0.id', $secondWarehouse->id));
 });
 
 it('creates and updates employees without assigning them to a branch', function () {

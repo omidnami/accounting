@@ -26,6 +26,7 @@ import {
     create as createPurchaseReturn,
     show as showPurchaseReturn,
 } from '@/routes/purchases/returns';
+import { create as createRefund } from '@/routes/returns/refund';
 
 type Status =
     | 'draft'
@@ -49,6 +50,7 @@ const props = defineProps<{
     invoice: {
         id: number;
         invoice_number: string;
+        type: string;
         invoice_date: string;
         due_date: string | null;
         status: Status;
@@ -175,6 +177,15 @@ defineOptions({
                 <div class="flex gap-2 print:hidden">
                     <Button variant="outline" @click="printInvoice">
                         <Printer class="size-4" /> چاپ
+                    </Button>
+                    <Button
+                        v-if="invoice.type === 'purchase_return' && can_pay"
+                        as-child
+                        variant="outline"
+                    >
+                        <Link :href="createRefund(invoice.id)">
+                            دریافت refund تأمین‌کننده
+                        </Link>
                     </Button>
                     <Button as-child variant="outline">
                         <Link :href="createPurchase()">خرید جدید</Link>

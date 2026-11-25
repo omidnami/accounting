@@ -176,26 +176,29 @@ class FiscalYearSetupService
 
     public function ensureSequences(FiscalYear $fiscalYear): void
     {
-        $branch = Branch::query()
+        $branches = Branch::query()
             ->where('store_id', $fiscalYear->store_id)
-            ->where('is_default', true)
-            ->firstOrFail();
+            ->where('is_active', true)
+            ->orderBy('id')
+            ->get();
 
-        foreach (DocumentType::cases() as $type) {
-            DocumentSequence::query()->firstOrCreate(
-                [
-                    'store_id' => $fiscalYear->store_id,
-                    'branch_id' => $branch->id,
-                    'fiscal_year_id' => $fiscalYear->id,
-                    'document_type' => $type,
-                ],
-                [
-                    'prefix' => self::SEQUENCE_PREFIXES[$type->value].$fiscalYear->title.'-',
-                    'next_number' => 1,
-                    'padding' => 6,
-                    'is_active' => true,
-                ],
-            );
+        foreach ($branches as $branch) {
+            foreach (DocumentType::cases() as $type) {
+                DocumentSequence::query()->firstOrCreate(
+                    [
+                        'store_id' => $fiscalYear->store_id,
+                        'branch_id' => $branch->id,
+                        'fiscal_year_id' => $fiscalYear->id,
+                        'document_type' => $type,
+                    ],
+                    [
+                        'prefix' => self::SEQUENCE_PREFIXES[$type->value].$fiscalYear->title.'-',
+                        'next_number' => 1,
+                        'padding' => 6,
+                        'is_active' => true,
+                    ],
+                );
+            }
         }
     }
 }
