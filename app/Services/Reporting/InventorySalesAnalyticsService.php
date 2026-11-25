@@ -162,8 +162,7 @@ class InventorySalesAnalyticsService
             ->join('products', 'products.id', '=', 'product_batches.product_id')
             ->where('inventory_movements.store_id', $storeId)
             ->where('inventory_movements.branch_id', $branchId)
-            ->where('inventory_movements.movement_type', 'sale')
-            ->where('inventory_movements.direction', 'out')
+            ->whereIn('inventory_movements.movement_type', ['sale', 'sales_return'])
             ->whereDate('inventory_movements.movement_date', '>=', $from)
             ->whereDate('inventory_movements.movement_date', '<=', $to)
             ->select([
@@ -173,8 +172,8 @@ class InventorySalesAnalyticsService
                 'products.code',
                 'products.name',
             ])
-            ->selectRaw('SUM(inventory_movement_batches.quantity) as quantity')
-            ->selectRaw('SUM(inventory_movement_batches.total_cost) as cogs')
+            ->selectRaw("SUM(CASE WHEN inventory_movements.movement_type = 'sale' THEN inventory_movement_batches.quantity ELSE -inventory_movement_batches.quantity END) as quantity")
+            ->selectRaw("SUM(CASE WHEN inventory_movements.movement_type = 'sale' THEN inventory_movement_batches.total_cost ELSE -inventory_movement_batches.total_cost END) as cogs")
             ->groupBy(
                 'product_batches.id',
                 'product_batches.batch_number',

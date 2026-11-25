@@ -26,6 +26,7 @@ use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
 use App\Support\Decimal;
 use DomainException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 class CustomerReceiptService
@@ -84,220 +85,230 @@ class CustomerReceiptService
             'allocations' => $canonicalAllocations,
         ], JSON_THROW_ON_ERROR));
 
-        return DB::transaction(function () use (
-            $storeId,
-            $branchId,
-            $fiscalYearId,
-            $customerId,
-            $receiptDate,
-            $paymentMethod,
-            $allocations,
-            $approver,
-            $idempotencyKey,
-            $treasuryAccountId,
-            $checkId,
-            $reference,
-            $description,
-            $requestHash,
-            $canonicalAllocations,
-            $posContext,
-            $posTenderId,
-        ): Receipt {
-            $existing = Receipt::query()->where('idempotency_key', $idempotencyKey)->first();
+        try {
+            return DB::transaction(function () use (
+                $storeId,
+                $branchId,
+                $fiscalYearId,
+                $customerId,
+                $receiptDate,
+                $paymentMethod,
+                $allocations,
+                $approver,
+                $idempotencyKey,
+                $treasuryAccountId,
+                $checkId,
+                $reference,
+                $description,
+                $requestHash,
+                $canonicalAllocations,
+                $posContext,
+                $posTenderId,
+            ): Receipt {
+                $existing = Receipt::query()->where('idempotency_key', $idempotencyKey)->first();
 
-            if ($existing) {
-                if ($existing->idempotency_request_hash !== null
-                    && ! hash_equals($existing->idempotency_request_hash, $requestHash)) {
-                    throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+                if ($existing) {
+                    if ($existing->idempotency_request_hash !== null
+                        && ! hash_equals($existing->idempotency_request_hash, $requestHash)) {
+                        throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+                    }
+
+                    return $existing->load(['allocations.invoice', 'customer.party', 'check']);
                 }
 
-                return $existing->load(['allocations.invoice', 'customer.party', 'check']);
-            }
+                $customer = Customer::query()->with('party')->findOrFail($customerId);
 
-            $customer = Customer::query()->with('party')->findOrFail($customerId);
-
-            if (! $customer->is_active || ! $customer->party?->is_active) {
-                throw new DomainException('مشتری دریافت فعال نیست.');
-            }
-
-            if ((int) $customer->party->store_id !== $storeId) {
-                throw new DomainException('مشتری باید متعلق به فروشگاه دریافت باشد.');
-            }
-
-            $branch = Branch::query()->findOrFail($branchId);
-            $fiscalYear = FiscalYear::query()->findOrFail($fiscalYearId);
-
-            if ((int) $branch->store_id !== $storeId || (int) $fiscalYear->store_id !== $storeId) {
-                throw new DomainException('شعبه و سال مالی باید متعلق به فروشگاه دریافت باشند.');
-            }
-
-            $period = AccountingPeriod::query()
-                ->where('store_id', $storeId)
-                ->where('fiscal_year_id', $fiscalYearId)
-                ->whereDate('starts_on', '<=', $receiptDate)
-                ->whereDate('ends_on', '>=', $receiptDate)
-                ->first();
-
-            if (! $period) {
-                throw new DomainException('برای تاریخ دریافت دوره مالی پیدا نشد.');
-            }
-
-            $invoiceIds = collect($allocations)->pluck('invoice_id')->map(fn ($id): int => (int) $id);
-
-            if ($invoiceIds->duplicates()->isNotEmpty()) {
-                throw new DomainException('یک فاکتور نمی‌تواند چند تخصیص در یک دریافت داشته باشد.');
-            }
-
-            $invoices = Invoice::query()
-                ->whereIn('id', $invoiceIds)
-                ->orderBy('id')
-                ->lockForUpdate()
-                ->get()
-                ->keyBy('id');
-            $amountTotal = '0.00';
-
-            foreach ($allocations as $allocation) {
-                $invoice = $invoices->get((int) $allocation['invoice_id']);
-
-                if (! $invoice
-                    || $invoice->type !== InvoiceType::Sales
-                    || (int) $invoice->customer_id !== $customer->id
-                    || (int) $invoice->branch_id !== $branchId
-                    || ! in_array($invoice->status, [
-                        InvoiceStatus::Confirmed,
-                        InvoiceStatus::PartiallyPaid,
-                    ], true)) {
-                    throw new DomainException('فاکتور فروش انتخاب‌شده معتبر نیست.');
+                if (! $customer->is_active || ! $customer->party?->is_active) {
+                    throw new DomainException('مشتری دریافت فعال نیست.');
                 }
 
-                $amount = Decimal::normalize($allocation['amount'], 2);
-
-                if (! Decimal::isPositive($amount)
-                    || Decimal::compare(
-                        $amount,
-                        $this->receivables->outstandingForInvoice($invoice, true),
-                        2,
-                    ) > 0) {
-                    throw new DomainException('مبلغ دریافت از مانده فاکتور بیشتر است.');
+                if ((int) $customer->party->store_id !== $storeId) {
+                    throw new DomainException('مشتری باید متعلق به فروشگاه دریافت باشد.');
                 }
 
-                $amountTotal = Decimal::add($amountTotal, $amount, 2);
-            }
+                $branch = Branch::query()->findOrFail($branchId);
+                $fiscalYear = FiscalYear::query()->findOrFail($fiscalYearId);
 
-            $check = null;
-            $treasuryAccount = null;
-
-            if ($paymentMethod === PaymentMethod::Check) {
-                $check = Check::query()->lockForUpdate()->findOrFail($checkId);
-
-                if ($check->type !== CheckType::Receivable
-                    || $check->status !== CheckStatus::Pending
-                    || $check->receipt()->exists()
-                    || $check->payment()->exists()
-                    || (int) $check->customer_id !== $customer->id
-                    || (int) $check->store_id !== $storeId
-                    || (int) $check->branch_id !== $branchId
-                    || Decimal::compare($check->amount, $amountTotal, 2) !== 0) {
-                    throw new DomainException('چک دریافتی با مشتری یا مبلغ دریافت سازگار نیست.');
+                if ((int) $branch->store_id !== $storeId || (int) $fiscalYear->store_id !== $storeId) {
+                    throw new DomainException('شعبه و سال مالی باید متعلق به فروشگاه دریافت باشند.');
                 }
-            } elseif ($checkId !== null) {
-                throw new DomainException('برای روش‌های غیرچکی نباید شناسه چک ارسال شود.');
-            } else {
-                $treasuryType = match ($paymentMethod) {
-                    PaymentMethod::Cash => TreasuryAccountType::Cash,
-                    PaymentMethod::Bank => TreasuryAccountType::Bank,
-                    PaymentMethod::Card => TreasuryAccountType::Card,
-                };
-                $treasuryAccount = TreasuryAccount::query()
+
+                $period = AccountingPeriod::query()
                     ->where('store_id', $storeId)
-                    ->where('branch_id', $branchId)
-                    ->where('type', $treasuryType)
-                    ->where('is_active', true)
-                    ->when($treasuryAccountId !== null, fn ($query) => $query->whereKey($treasuryAccountId))
-                    ->orderByDesc('is_default')
-                    ->lockForUpdate()
+                    ->where('fiscal_year_id', $fiscalYearId)
+                    ->whereDate('starts_on', '<=', $receiptDate)
+                    ->whereDate('ends_on', '>=', $receiptDate)
                     ->first();
 
-                if (! $treasuryAccount || ! $treasuryAccount->glAccount()->where('is_active', true)->exists()) {
-                    throw new DomainException('حساب خزانه فعال برای این روش دریافت پیدا نشد.');
+                if (! $period) {
+                    throw new DomainException('برای تاریخ دریافت دوره مالی پیدا نشد.');
                 }
-            }
 
-            $receipt = Receipt::query()->create([
-                'store_id' => $storeId,
-                'branch_id' => $branchId,
-                'fiscal_year_id' => $fiscalYearId,
-                'receipt_number' => $this->documentNumbers->next(
-                    $storeId,
-                    $branchId,
-                    $fiscalYearId,
-                    DocumentType::Receipt,
-                ),
-                'idempotency_key' => $idempotencyKey,
-                'idempotency_request_hash' => $requestHash,
-                'receipt_date' => $receiptDate,
-                'amount' => $amountTotal,
-                'payment_method' => $paymentMethod,
-                'treasury_account_id' => $treasuryAccount?->id,
-                'customer_id' => $customer->id,
-                'check_id' => $check?->id,
-                'created_by' => $approver->id,
-                'reference' => $reference,
-                'status' => TreasuryDocumentStatus::Pending,
-                'description' => $description,
-            ]);
+                $invoiceIds = collect($allocations)->pluck('invoice_id')->map(fn ($id): int => (int) $id);
 
-            foreach ($canonicalAllocations as $allocation) {
-                ReceiptAllocation::query()->create([
-                    'receipt_id' => $receipt->id,
-                    'invoice_id' => $allocation['invoice_id'],
-                    'amount' => Decimal::normalize($allocation['amount'], 2),
-                ]);
-            }
+                if ($invoiceIds->duplicates()->isNotEmpty()) {
+                    throw new DomainException('یک فاکتور نمی‌تواند چند تخصیص در یک دریافت داشته باشد.');
+                }
 
-            $posContext?->prepareTreasuryDocument($receipt, $approver, $posTenderId);
+                $invoices = Invoice::query()
+                    ->whereIn('id', $invoiceIds)
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get()
+                    ->keyBy('id');
+                $amountTotal = '0.00';
 
-            $this->posting->post(
-                [
+                foreach ($allocations as $allocation) {
+                    $invoice = $invoices->get((int) $allocation['invoice_id']);
+
+                    if (! $invoice
+                        || $invoice->type !== InvoiceType::Sales
+                        || (int) $invoice->customer_id !== $customer->id
+                        || (int) $invoice->branch_id !== $branchId
+                        || ! in_array($invoice->status, [
+                            InvoiceStatus::Confirmed,
+                            InvoiceStatus::PartiallyPaid,
+                        ], true)) {
+                        throw new DomainException('فاکتور فروش انتخاب‌شده معتبر نیست.');
+                    }
+
+                    $amount = Decimal::normalize($allocation['amount'], 2);
+
+                    if (! Decimal::isPositive($amount)
+                        || Decimal::compare(
+                            $amount,
+                            $this->receivables->outstandingForInvoice($invoice, true),
+                            2,
+                        ) > 0) {
+                        throw new DomainException('مبلغ دریافت از مانده فاکتور بیشتر است.');
+                    }
+
+                    $amountTotal = Decimal::add($amountTotal, $amount, 2);
+                }
+
+                $check = null;
+                $treasuryAccount = null;
+
+                if ($paymentMethod === PaymentMethod::Check) {
+                    $check = Check::query()->lockForUpdate()->findOrFail($checkId);
+
+                    if ($check->type !== CheckType::Receivable
+                        || $check->status !== CheckStatus::Pending
+                        || $check->receipt()->exists()
+                        || $check->payment()->exists()
+                        || (int) $check->customer_id !== $customer->id
+                        || (int) $check->store_id !== $storeId
+                        || (int) $check->branch_id !== $branchId
+                        || Decimal::compare($check->amount, $amountTotal, 2) !== 0) {
+                        throw new DomainException('چک دریافتی با مشتری یا مبلغ دریافت سازگار نیست.');
+                    }
+                } elseif ($checkId !== null) {
+                    throw new DomainException('برای روش‌های غیرچکی نباید شناسه چک ارسال شود.');
+                } else {
+                    $treasuryType = match ($paymentMethod) {
+                        PaymentMethod::Cash => TreasuryAccountType::Cash,
+                        PaymentMethod::Bank => TreasuryAccountType::Bank,
+                        PaymentMethod::Card => TreasuryAccountType::Card,
+                    };
+                    $treasuryAccount = TreasuryAccount::query()
+                        ->where('store_id', $storeId)
+                        ->where('branch_id', $branchId)
+                        ->where('type', $treasuryType)
+                        ->where('is_active', true)
+                        ->when($treasuryAccountId !== null, fn ($query) => $query->whereKey($treasuryAccountId))
+                        ->orderByDesc('is_default')
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (! $treasuryAccount || ! $treasuryAccount->glAccount()->where('is_active', true)->exists()) {
+                        throw new DomainException('حساب خزانه فعال برای این روش دریافت پیدا نشد.');
+                    }
+                }
+
+                $receipt = Receipt::query()->create([
                     'store_id' => $storeId,
                     'branch_id' => $branchId,
                     'fiscal_year_id' => $fiscalYearId,
-                    'accounting_period_id' => $period->id,
-                    'entry_date' => $receiptDate,
-                    'description' => "دریافت از مشتری {$receipt->receipt_number}",
-                    'source_type' => $receipt->getMorphClass(),
-                    'source_id' => $receipt->id,
+                    'receipt_number' => $this->documentNumbers->next(
+                        $storeId,
+                        $branchId,
+                        $fiscalYearId,
+                        DocumentType::Receipt,
+                    ),
+                    'idempotency_key' => $idempotencyKey,
+                    'idempotency_request_hash' => $requestHash,
+                    'receipt_date' => $receiptDate,
+                    'amount' => $amountTotal,
+                    'payment_method' => $paymentMethod,
+                    'treasury_account_id' => $treasuryAccount?->id,
+                    'customer_id' => $customer->id,
+                    'check_id' => $check?->id,
                     'created_by' => $approver->id,
-                ],
-                [
+                    'reference' => $reference,
+                    'status' => TreasuryDocumentStatus::Pending,
+                    'description' => $description,
+                ]);
+
+                foreach ($canonicalAllocations as $allocation) {
+                    ReceiptAllocation::query()->create([
+                        'receipt_id' => $receipt->id,
+                        'invoice_id' => $allocation['invoice_id'],
+                        'amount' => Decimal::normalize($allocation['amount'], 2),
+                    ]);
+                }
+
+                $posContext?->prepareTreasuryDocument($receipt, $approver, $posTenderId);
+
+                $this->posting->post(
                     [
-                        'account_id' => $treasuryAccount
-                            ? $treasuryAccount->gl_account_id
-                            : $this->settings->defaultAccountId('checks_receivable', $storeId),
-                        'debit' => $amountTotal,
-                        'credit' => '0.00',
-                        'description' => 'منبع دریافت',
+                        'store_id' => $storeId,
+                        'branch_id' => $branchId,
+                        'fiscal_year_id' => $fiscalYearId,
+                        'accounting_period_id' => $period->id,
+                        'entry_date' => $receiptDate,
+                        'description' => "دریافت از مشتری {$receipt->receipt_number}",
+                        'source_type' => $receipt->getMorphClass(),
+                        'source_id' => $receipt->id,
+                        'created_by' => $approver->id,
                     ],
                     [
-                        'account_id' => $this->settings->defaultAccountId('accounts_receivable', $storeId),
-                        'party_id' => $customer->party_id,
-                        'debit' => '0.00',
-                        'credit' => $amountTotal,
-                        'description' => 'کاهش مطالبات مشتری',
+                        [
+                            'account_id' => $treasuryAccount
+                                ? $treasuryAccount->gl_account_id
+                                : $this->settings->defaultAccountId('checks_receivable', $storeId),
+                            'debit' => $amountTotal,
+                            'credit' => '0.00',
+                            'description' => 'منبع دریافت',
+                        ],
+                        [
+                            'account_id' => $this->settings->defaultAccountId('accounts_receivable', $storeId),
+                            'party_id' => $customer->party_id,
+                            'debit' => '0.00',
+                            'credit' => $amountTotal,
+                            'description' => 'کاهش مطالبات مشتری',
+                        ],
                     ],
-                ],
-                $approver,
-                $posContext,
-            );
+                    $approver,
+                    $posContext,
+                );
 
-            $receipt->markConfirmed();
+                $receipt->markConfirmed();
 
-            foreach ($allocations as $allocation) {
-                $invoice = $invoices->get((int) $allocation['invoice_id']);
-                $invoice->syncSettlementStatus();
+                foreach ($allocations as $allocation) {
+                    $invoice = $invoices->get((int) $allocation['invoice_id']);
+                    $invoice->syncSettlementStatus();
+                }
+
+                return $receipt->refresh()->load(['allocations.invoice', 'customer.party', 'check']);
+            }, attempts: 3);
+        } catch (UniqueConstraintViolationException) {
+            $existing = Receipt::query()->where('idempotency_key', $idempotencyKey)->first();
+
+            if ($existing && hash_equals((string) $existing->idempotency_request_hash, $requestHash)) {
+                return $existing->load(['allocations.invoice', 'customer.party', 'check']);
             }
 
-            return $receipt->refresh()->load(['allocations.invoice', 'customer.party', 'check']);
-        }, attempts: 3);
+            throw new DomainException('سند خزانه با این کلید تکرارپذیری قبلاً ثبت شده است.');
+        }
     }
 }

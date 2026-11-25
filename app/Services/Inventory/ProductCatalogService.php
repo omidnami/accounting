@@ -169,6 +169,10 @@ class ProductCatalogService
         $inventoryValue = InventoryBalance::query()
             ->where('store_id', $storeId)
             ->when($warehouseId !== null, fn (Builder $query) => $query->where('warehouse_id', $warehouseId))
+            ->when($categoryId !== null, fn (Builder $query) => $query->whereIn(
+                'product_id',
+                Product::query()->where('category_id', $categoryId)->select('id'),
+            ))
             ->sum('inventory_value');
 
         return [

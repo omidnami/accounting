@@ -124,6 +124,10 @@ class SalesService
                         throw new DomainException('کالای انتخاب‌شده غیرفعال است.');
                     }
 
+                    if ($product->variants()->exists()) {
+                        throw new DomainException('کالای والد تنوع موجودی مستقل ندارد؛ یکی از تنوع‌ها را انتخاب کنید.');
+                    }
+
                     $quantity = Decimal::normalize($item['quantity'], Decimal::QUANTITY_SCALE);
                     $unitPrice = Decimal::normalize($item['unit_price'], Decimal::MONEY_SCALE);
 
@@ -255,7 +259,7 @@ class SalesService
 
             $cogs = '0.00';
 
-            foreach ($locked->items as $item) {
+            foreach ($locked->items->sortBy('product_id')->values() as $item) {
                 $product = Product::query()->findOrFail($item->product_id);
 
                 if ($product->isStockItem()) {

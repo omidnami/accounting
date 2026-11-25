@@ -241,6 +241,10 @@ it('closes temporary accounts to retained earnings and reverses the closing on r
         );
     }
 
+    $lastPeriod = $year->periods()->orderByDesc('period_number')->firstOrFail();
+    $originalClosedAt = $lastPeriod->closed_at;
+    $originalClosedBy = $lastPeriod->closed_by;
+
     $closed = $closingService->closeFiscalYear(
         $store,
         $year,
@@ -269,6 +273,8 @@ it('closes temporary accounts to retained earnings and reverses the closing on r
     );
 
     expect($closing->source_type)->toBe($year->getMorphClass())
+        ->and($lastPeriod->fresh()->closed_at->equalTo($originalClosedAt))->toBeTrue()
+        ->and($lastPeriod->fresh()->closed_by)->toBe($originalClosedBy)
         ->and($closing->source_id)->toBe($year->id)
         ->and($retainedLine->credit)->toBe('800.00')
         ->and($retainedLine->debit)->toBe('0.00')
@@ -303,6 +309,20 @@ it('closes temporary accounts to retained earnings and reverses the closing on r
         ->and($reversalRetainedLine->debit)->toBe('800.00')
         ->and($reversalRetainedLine->credit)->toBe('0.00')
         ->and($incomeAfterReopen['net_profit'])->toBe('800.00');
+});
+
+it('requires accounting periods to be closed in order', function () {
+    ['store' => $store, 'year' => $year] = periodClosingContext();
+    $manager = periodClosingUser(UserRole::Manager);
+    $second = $year->periods()->orderBy('period_number')->skip(1)->firstOrFail();
+
+    expect(fn () => app(PeriodClosingService::class)->closePeriod(
+        $store,
+        $second,
+        AccountingPeriodStatus::Closed,
+        $manager,
+        'بستن نامرتب',
+    ))->toThrow(DomainException::class, 'به ترتیب');
 });
 
 it('does not close the current fiscal year before its end date', function () {

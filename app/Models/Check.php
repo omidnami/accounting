@@ -188,11 +188,16 @@ class Check extends Model
             : CheckStatus::Spent;
 
         $this->statusTransitionAuthorized = true;
-        $this->status = $status;
-        $this->settled_at = now();
-        $this->settlement_entry_id = $entry->id;
-        $this->settlement_treasury_account_id = $treasuryAccount->id;
-        $this->save();
+
+        try {
+            $this->status = $status;
+            $this->settled_at = now();
+            $this->settlement_entry_id = $entry->id;
+            $this->settlement_treasury_account_id = $treasuryAccount->id;
+            $this->save();
+        } finally {
+            $this->statusTransitionAuthorized = false;
+        }
 
         return $this;
     }
@@ -201,10 +206,34 @@ class Check extends Model
     {
         $this->assertSettlementEntry($entry);
         $this->statusTransitionAuthorized = true;
-        $this->status = CheckStatus::Bounced;
-        $this->bounced_at = now();
-        $this->bounce_entry_id = $entry->id;
-        $this->save();
+
+        try {
+            $this->status = CheckStatus::Bounced;
+            $this->bounced_at = now();
+            $this->bounce_entry_id = $entry->id;
+            $this->save();
+        } finally {
+            $this->statusTransitionAuthorized = false;
+        }
+
+        return $this;
+    }
+
+    public function markCancelled(string $reason): self
+    {
+        if ($this->status !== CheckStatus::Pending || $this->receipt()->exists() || $this->payment()->exists()) {
+            throw new DomainException('فقط چک در انتظار و بدون اتصال قابل ابطال است.');
+        }
+
+        $this->statusTransitionAuthorized = true;
+
+        try {
+            $this->status = CheckStatus::Cancelled;
+            $this->description = trim(($this->description ?? '')."\n".'ابطال: '.$reason);
+            $this->save();
+        } finally {
+            $this->statusTransitionAuthorized = false;
+        }
 
         return $this;
     }

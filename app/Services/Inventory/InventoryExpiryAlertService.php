@@ -17,8 +17,9 @@ class InventoryExpiryAlertService
     public function refresh(?CarbonImmutable $today = null): int
     {
         $activeBatchIds = [];
+        $activeAlerts = [];
 
-        return DB::transaction(function () use ($today, &$activeBatchIds): int {
+        return DB::transaction(function () use ($today, &$activeBatchIds, &$activeAlerts): int {
             $balances = InventoryBatchBalance::query()
                 ->with(['batch.product', 'warehouse.branch'])
                 ->where('quantity', '>', 0)
@@ -42,6 +43,14 @@ class InventoryExpiryAlertService
                 }
 
                 $activeBatchIds[] = $batch->id;
+                $activeAlerts[$batch->id.'|'.$type.'|'.$balance->branch_id.'|'.$balance->warehouse_id] = true;
+                InventoryAlert::query()
+                    ->where('product_batch_id', $batch->id)
+                    ->where('branch_id', $balance->branch_id)
+                    ->where('warehouse_id', $balance->warehouse_id)
+                    ->where('type', '!=', $type)
+                    ->whereNull('acknowledged_at')
+                    ->delete();
                 $productName = $batch->product->name;
                 $message = $type === 'expired'
                     ? "سری ساخت {$batch->batch_number} از {$productName} منقضی شده است."
@@ -50,10 +59,13 @@ class InventoryExpiryAlertService
                     [
                         'product_batch_id' => $batch->id,
                         'type' => $type,
+                        'branch_id' => $balance->branch_id,
+                        'warehouse_id' => $balance->warehouse_id,
                     ],
                     [
                         'store_id' => $balance->store_id,
                         'branch_id' => $balance->branch_id,
+                        'warehouse_id' => $balance->warehouse_id,
                         'severity' => $type === 'expired' ? 'critical' : 'warning',
                         'message' => $message,
                     ],
@@ -65,12 +77,15 @@ class InventoryExpiryAlertService
             }
 
             InventoryAlert::query()
-                ->when(
-                    $activeBatchIds !== [],
-                    fn ($query) => $query->whereNotIn('product_batch_id', $activeBatchIds),
-                    fn ($query) => $query,
-                )
-                ->delete();
+                ->whereNull('acknowledged_at')
+                ->get()
+                ->each(function (InventoryAlert $alert) use ($activeAlerts): void {
+                    $key = $alert->product_batch_id.'|'.$alert->type.'|'.$alert->branch_id.'|'.$alert->warehouse_id;
+
+                    if (! isset($activeAlerts[$key])) {
+                        $alert->delete();
+                    }
+                });
 
             return $created;
         });

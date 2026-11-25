@@ -86,6 +86,7 @@ class AccountingPeriod extends Model
     public function transitionStatus(
         AccountingPeriodStatus $status,
         ?int $closedBy = null,
+        ?CarbonImmutable $closedAt = null,
     ): self {
         $this->statusTransitionAuthorized = true;
 
@@ -93,7 +94,7 @@ class AccountingPeriod extends Model
             $this->forceFill([
                 'status' => $status,
                 'closed_by' => $status === AccountingPeriodStatus::Open ? null : $closedBy,
-                'closed_at' => $status === AccountingPeriodStatus::Open ? null : now(),
+                'closed_at' => $status === AccountingPeriodStatus::Open ? null : ($closedAt ?? now()),
             ])->save();
         } finally {
             $this->statusTransitionAuthorized = false;

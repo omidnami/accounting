@@ -8,4 +8,5 @@ enum CheckStatus: string
     case Collected = 'collected';
     case Bounced = 'bounced';
     case Spent = 'spent';
+    case Cancelled = 'cancelled';
 }

@@ -21,19 +21,20 @@ class NativePdfExportService
         $html = $this->html($title, $headers, $rows);
         $htmlFile = tempnam(sys_get_temp_dir(), 'hsabyar-pdf-html-');
         $pdfFile = tempnam(sys_get_temp_dir(), 'hsabyar-pdf-');
-
-        if ($htmlFile === false || $pdfFile === false) {
-            throw new RuntimeException('Cannot create PDF temporary files.');
-        }
-
-        file_put_contents($htmlFile, $html);
-        $binary = (string) config('accounting.pdf_renderer_binary', '/usr/bin/google-chrome');
-
-        if (! is_executable($binary)) {
-            throw new RuntimeException('Configured PDF renderer is not executable.');
-        }
+        $response = null;
 
         try {
+            if ($htmlFile === false || $pdfFile === false) {
+                throw new RuntimeException('Cannot create PDF temporary files.');
+            }
+
+            file_put_contents($htmlFile, $html);
+            $binary = (string) config('accounting.pdf_renderer_binary', '/usr/bin/google-chrome');
+
+            if (! is_executable($binary)) {
+                throw new RuntimeException('Configured PDF renderer is not executable.');
+            }
+
             (new Process([
                 $binary,
                 '--headless',
@@ -43,22 +44,27 @@ class NativePdfExportService
                 '--no-pdf-header-footer',
                 'file://'.$htmlFile,
             ]))->setTimeout(60)->mustRun();
+            $safeName = preg_replace('/[^\p{L}\p{N}._-]+/u', '-', $filename) ?: 'export.pdf';
+
+            if (! str_ends_with(mb_strtolower($safeName), '.pdf')) {
+                $safeName .= '.pdf';
+            }
+
+            $response = response()
+                ->download($pdfFile, $safeName, [
+                    'Content-Type' => 'application/pdf',
+                    'Cache-Control' => 'no-store, no-cache',
+                ])
+                ->deleteFileAfterSend(true);
+
+            return $response;
         } finally {
             @unlink($htmlFile);
+
+            if ($response === null) {
+                @unlink($pdfFile);
+            }
         }
-
-        $safeName = preg_replace('/[^\p{L}\p{N}._-]+/u', '-', $filename) ?: 'export.pdf';
-
-        if (! str_ends_with(mb_strtolower($safeName), '.pdf')) {
-            $safeName .= '.pdf';
-        }
-
-        return response()
-            ->download($pdfFile, $safeName, [
-                'Content-Type' => 'application/pdf',
-                'Cache-Control' => 'no-store, no-cache',
-            ])
-            ->deleteFileAfterSend(true);
     }
 
     /**

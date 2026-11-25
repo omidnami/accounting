@@ -10,6 +10,7 @@ use App\Models\InventoryTransfer;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\JournalEntry;
+use App\Models\JournalEntryLine;
 use App\Models\Party;
 use App\Models\Payment;
 use App\Models\PaymentAllocation;
@@ -33,6 +34,7 @@ return [
         Invoice::class,
         InvoiceItem::class,
         JournalEntry::class,
+        JournalEntryLine::class,
         Party::class,
         Payment::class,
         PaymentAllocation::class,
@@ -53,4 +55,7 @@ return [
         'two_factor_secret',
         'two_factor_recovery_codes',
     ],
+
+    'retention_days' => (int) env('AUDIT_RETENTION_DAYS', 365),
+    'archive_path' => storage_path('app/audit-archive'),
 ];

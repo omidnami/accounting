@@ -326,7 +326,8 @@ it('transfers multiple products in one atomic document', function () {
     );
 
     expect($transfer->items)->toHaveCount(2)
-        ->and($transfer->quantity)->toBe('5.000')
+        ->and($transfer->quantity)->toBeNull()
+        ->and($transfer->unit_cost)->toBeNull()
         ->and($transfer->total_cost)->toBe('800.00')
         ->and(InventoryMovement::query()
             ->where('source_type', InventoryTransfer::class)

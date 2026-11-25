@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Store;
 use App\Models\Warehouse;
+use App\Services\Branches\BranchContextService;
 use App\Services\Sales\SalesCheckoutLookupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,9 +34,11 @@ class SalesLookupController extends Controller
             'search' => ['nullable', 'string', 'max:100'],
         ]);
         $store = $this->mainStore();
+        $branch = app(BranchContextService::class)->active($request->user(), $store);
         $warehouse = Warehouse::query()
             ->whereKey((int) $validated['warehouse_id'])
             ->where('store_id', $store->id)
+            ->where('branch_id', $branch->id)
             ->where('is_active', true)
             ->firstOrFail();
 

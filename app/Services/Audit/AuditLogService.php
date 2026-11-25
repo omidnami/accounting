@@ -37,9 +37,21 @@ class AuditLogService
             $actorEmail ??= $model->email;
         }
 
+        $storeId = $model->getAttribute('store_id');
+        $branchId = $model->getAttribute('branch_id');
+
+        if ($storeId === null && method_exists($model, 'journalEntry')) {
+            $parent = $model->journalEntry()->first();
+
+            if ($parent !== null) {
+                $storeId = $parent->store_id;
+                $branchId = $parent->branch_id;
+            }
+        }
+
         return AuditLog::query()->create([
-            'store_id' => $model->getAttribute('store_id'),
-            'branch_id' => $model->getAttribute('branch_id'),
+            'store_id' => $storeId,
+            'branch_id' => $branchId,
             'user_id' => $actorId,
             'actor_name' => $actorName,
             'actor_email' => $actorEmail,

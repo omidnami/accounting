@@ -52,6 +52,7 @@ class InventoryProductLookupController extends Controller
             'data' => $lookup->products(
                 $store->id,
                 $warehouseId,
+                $branch->id,
                 (string) ($validated['search'] ?? ''),
                 (bool) ($validated['include_inactive'] ?? false),
             ),

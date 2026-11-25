@@ -4,13 +4,19 @@ namespace App\Services\Sales;
 
 use App\Models\Customer;
 use App\Models\InventoryBalance;
+use App\Models\InventoryBatchBalance;
 use App\Models\Product;
+use App\Support\BusinessClock;
 use App\Support\Decimal;
 use App\Support\Digits;
 use Illuminate\Database\Eloquent\Builder;
 
 class SalesCheckoutLookupService
 {
+    public function __construct(
+        private readonly BusinessClock $clock,
+    ) {}
+
     /**
      * @return array<int, array{
      *     id: int, code: string, name: string, phone: string|null,
@@ -68,10 +74,18 @@ class SalesCheckoutLookupService
             ->whereColumn('inventory_balances.product_id', 'products.id')
             ->where('inventory_balances.store_id', $storeId)
             ->where('inventory_balances.warehouse_id', $warehouseId);
+        $expired = InventoryBatchBalance::query()
+            ->join('product_batches', 'product_batches.id', '=', 'inventory_batch_balances.product_batch_id')
+            ->selectRaw('COALESCE(SUM(inventory_batch_balances.quantity), 0)')
+            ->whereColumn('product_batches.product_id', 'products.id')
+            ->where('inventory_batch_balances.store_id', $storeId)
+            ->where('inventory_batch_balances.warehouse_id', $warehouseId)
+            ->whereDate('product_batches.expiry_date', '<', $this->clock->today($storeId)->toDateString());
 
         return Product::query()
             ->select('products.*')
             ->selectSub($stock, 'stock_quantity')
+            ->selectSub($expired, 'expired_quantity')
             ->where('is_active', true)
             ->whereDoesntHave('variants')
             ->when($categoryId !== null, fn (Builder $query) => $query->where('category_id', $categoryId))
@@ -84,6 +98,7 @@ class SalesCheckoutLookupService
                         ->orWhere('barcode', 'like', $term);
                 });
             })
+            ->orderByRaw('CASE WHEN barcode = ? THEN 0 WHEN code = ? THEN 1 ELSE 2 END', [$search, $search])
             ->orderBy('name')
             ->orderBy('id')
             ->limit(min(20, max(1, $limit)))
@@ -101,7 +116,11 @@ class SalesCheckoutLookupService
                 'tax_rate' => $product->tax_rate,
                 'item_type' => $product->item_type,
                 'stock_quantity' => Decimal::normalize(
-                    $product->getAttribute('stock_quantity') ?? 0,
+                    Decimal::subtract(
+                        $product->getAttribute('stock_quantity') ?? 0,
+                        $product->getAttribute('expired_quantity') ?? 0,
+                        Decimal::QUANTITY_SCALE,
+                    ),
                     Decimal::QUANTITY_SCALE,
                 ),
                 'track_batches' => $product->track_batches,

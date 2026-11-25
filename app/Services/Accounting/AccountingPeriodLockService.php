@@ -7,6 +7,7 @@ use App\Enums\FiscalYearStatus;
 use App\Models\AccountingPeriod;
 use App\Models\Branch;
 use App\Models\FiscalYear;
+use App\Models\Store;
 use Carbon\CarbonImmutable;
 use DomainException;
 
@@ -48,12 +49,13 @@ class AccountingPeriodLockService
         string $date,
     ): array {
         $entryDate = CarbonImmutable::parse($date)->toDateString();
+        $store = Store::query()->find($storeId);
         $branch = Branch::query()
             ->whereKey($branchId)
             ->where('store_id', $storeId)
             ->first();
 
-        if (! $branch || ! $branch->is_active) {
+        if (! $store || ! $store->is_active || ! $branch || ! $branch->is_active) {
             throw new DomainException('شعبه انتخاب‌شده فعال و متعلق به فروشگاه نیست.');
         }
 

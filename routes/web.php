@@ -201,6 +201,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('checks/create', [CheckController::class, 'create'])->name('checks.create');
     Route::post('checks', [CheckController::class, 'store'])->name('checks.store');
     Route::get('checks/{check}', [CheckController::class, 'show'])->name('checks.show');
+    Route::post('checks/{check}/cancel', [CheckController::class, 'cancel'])->name('checks.cancel');
     Route::post('checks/{check}/settle', [CheckController::class, 'settle'])->name('checks.settle');
     Route::post('checks/{check}/bounce', [CheckController::class, 'bounce'])->name('checks.bounce');
     Route::get('purchases/lookups/suppliers', [PurchaseLookupController::class, 'suppliers'])

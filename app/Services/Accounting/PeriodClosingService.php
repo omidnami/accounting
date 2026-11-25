@@ -59,6 +59,20 @@ class PeriodClosingService
                 throw new DomainException('دوره انتخاب‌شده در وضعیت قابل بستن نیست.');
             }
 
+            $previousPeriod = AccountingPeriod::query()
+                ->where('fiscal_year_id', $fiscalYear->id)
+                ->where('period_number', '<', $lockedPeriod->period_number)
+                ->orderByDesc('period_number')
+                ->first();
+
+            if ($previousPeriod !== null
+                && (($targetStatus === AccountingPeriodStatus::Closed
+                        && $previousPeriod->status !== AccountingPeriodStatus::Closed)
+                    || ($targetStatus === AccountingPeriodStatus::SoftClosed
+                        && $previousPeriod->status === AccountingPeriodStatus::Open))) {
+                throw new DomainException('دوره‌ها باید به ترتیب شماره بسته شوند.');
+            }
+
             $blockers = $this->blockingDocuments(
                 $lockedStore,
                 $fiscalYear,

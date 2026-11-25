@@ -77,7 +77,9 @@ class ProfileUpdateTest extends TestCase
             ->assertRedirect(route('home'));
 
         $this->assertGuest();
-        $this->assertNull($user->fresh());
+        $this->assertNotNull($user->fresh());
+        $this->assertFalse($user->fresh()->is_active);
+        $this->assertStringStartsWith('deleted-', $user->fresh()->email);
     }
 
     public function test_correct_password_must_be_provided_to_delete_account()
@@ -135,7 +137,8 @@ class ProfileUpdateTest extends TestCase
             ->assertRedirect(route('home'));
 
         $this->assertGuest();
-        $this->assertNull($manager->fresh());
+        $this->assertNotNull($manager->fresh());
+        $this->assertFalse($manager->fresh()->is_active);
         $this->assertNotNull($otherManager->fresh());
     }
 }

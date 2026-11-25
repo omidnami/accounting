@@ -19,6 +19,7 @@ class InventoryProductLookupService
     public function products(
         int $storeId,
         ?int $warehouseId,
+        ?int $branchId,
         string $search,
         bool $includeInactive = false,
     ): array {
@@ -30,7 +31,8 @@ class InventoryProductLookupService
             ->when(
                 $warehouseId !== null,
                 fn (Builder $query) => $query->where('inventory_balances.warehouse_id', $warehouseId),
-                fn (Builder $query) => $query->whereRaw('1 = 0'),
+                fn (Builder $query) => $query
+                    ->when($branchId !== null, fn (Builder $query) => $query->where('inventory_balances.branch_id', $branchId)),
             );
 
         return Product::query()

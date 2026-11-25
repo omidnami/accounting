@@ -25,6 +25,7 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import {
     bounce as bounceCheck,
+    cancel as cancelCheck,
     index as checksIndex,
     settle as settleCheck,
 } from '@/routes/checks';
@@ -40,7 +41,7 @@ import {
 import { show as showSale } from '@/routes/sales';
 
 type CheckType = 'receivable' | 'payable';
-type CheckStatus = 'pending' | 'collected' | 'spent' | 'bounced';
+type CheckStatus = 'pending' | 'collected' | 'spent' | 'bounced' | 'cancelled';
 type TreasuryKind = 'receipt' | 'payment';
 
 type Entry = {
@@ -119,6 +120,9 @@ const settlementForm = useForm({
 const bounceForm = useForm({
     bounce_date: props.defaults.action_date,
 });
+const cancelForm = useForm({
+    reason: '',
+});
 const showBounce = ref(false);
 const money = new Intl.NumberFormat('fa-IR', {
     minimumFractionDigits: 0,
@@ -164,6 +168,13 @@ const statusMeta: Record<
             'border-amber-500/20 bg-amber-500/[.055] text-amber-800 dark:text-amber-200',
         message:
             'چک ثبت شده اما هنوز وصول یا خرج نشده است؛ حساب بانکی تغییر نکرده است.',
+    },
+    cancelled: {
+        label: 'ابطال‌شده',
+        icon: CircleX,
+        badgeClass: 'bg-muted text-muted-foreground',
+        panelClass: 'border-border bg-muted/30 text-muted-foreground',
+        message: 'چک پیش از اتصال یا تسویه ابطال شده است.',
     },
     collected: {
         label: 'وصول‌شده',
@@ -646,6 +657,36 @@ defineOptions({
                             تأییدشده متصل کنید.
                         </p>
                     </form>
+                </article>
+
+                <article
+                    v-if="isPending && !isLinked"
+                    class="rounded-2xl border bg-card p-5"
+                >
+                    <h2 class="text-sm font-bold">ابطال چک</h2>
+                    <p class="mt-1 text-[10px] leading-5 text-muted-foreground">
+                        فقط چک در انتظار و بدون اتصال به دریافت/پرداخت قابل
+                        ابطال است.
+                    </p>
+                    <Input
+                        v-model="cancelForm.reason"
+                        class="mt-3"
+                        placeholder="دلیل ابطال"
+                    />
+                    <InputError :message="cancelForm.errors.reason" />
+                    <Button
+                        type="button"
+                        variant="outline"
+                        class="mt-3 w-full rounded-xl text-red-600"
+                        :disabled="cancelForm.processing || !cancelForm.reason"
+                        @click="
+                            cancelForm.post(cancelCheck(check.id).url, {
+                                preserveScroll: true,
+                            })
+                        "
+                    >
+                        <CircleX class="size-4" /> ابطال چک
+                    </Button>
                 </article>
 
                 <article

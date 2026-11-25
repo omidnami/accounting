@@ -400,12 +400,6 @@ class PurchaseReturnService
                 'discount_total' => $discountTotal,
                 'tax_total' => $taxTotal,
                 'total' => $total,
-                'idempotency_request_hash' => hash('sha256', json_encode([
-                    'parent_invoice_id' => $original->id,
-                    'return_date' => $returnDate,
-                    'notes' => $notes,
-                    'items' => $items,
-                ], JSON_THROW_ON_ERROR)),
             ])->save();
 
             return $return->refresh()->load('items');
@@ -492,8 +486,8 @@ class PurchaseReturnService
 
             $supplier = $return->supplier;
 
-            if (! $supplier?->party?->is_active) {
-                throw new DomainException('طرف‌حساب برگشت خرید فعال نیست.');
+            if (! $supplier?->party) {
+                throw new DomainException('طرف‌حساب برگشت خرید معتبر نیست.');
             }
 
             if ((int) $supplier->party->store_id !== (int) $return->store_id) {

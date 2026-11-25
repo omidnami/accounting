@@ -8,6 +8,7 @@ use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Laravel\Fortify\Events\PasswordUpdatedViaController;
 use Laravel\Fortify\Events\RecoveryCodeReplaced;
@@ -100,7 +101,7 @@ class SecurityAuditListener
         $request = app()->runningInConsole() ? null : request();
         $user = $user instanceof User ? $user : null;
 
-        AuditLog::query()->create([
+        $log = AuditLog::query()->create([
             'user_id' => $user?->getKey(),
             'actor_name' => $user?->name,
             'actor_email' => $user?->email,
@@ -112,5 +113,9 @@ class SecurityAuditListener
             'ip_address' => $request?->ip(),
             'user_agent' => $request?->userAgent(),
         ]);
+
+        if (in_array($name, ['auth.login_failed', 'auth.2fa_failed', 'auth.password_reset'], true)) {
+            Log::warning('Security audit alert', ['event' => $name, 'audit_log_id' => $log->id]);
+        }
     }
 }

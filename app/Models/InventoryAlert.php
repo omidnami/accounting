@@ -10,6 +10,7 @@ class InventoryAlert extends Model
     protected $fillable = [
         'store_id',
         'branch_id',
+        'warehouse_id',
         'product_batch_id',
         'type',
         'severity',

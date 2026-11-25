@@ -139,6 +139,10 @@ class PurchaseService
                         throw new DomainException('کالای انتخاب‌شده غیرفعال است.');
                     }
 
+                    if ($product->variants()->exists()) {
+                        throw new DomainException('کالای والد تنوع موجودی مستقل ندارد؛ یکی از تنوع‌ها را انتخاب کنید.');
+                    }
+
                     $quantity = Decimal::normalize($item['quantity'], Decimal::QUANTITY_SCALE);
 
                     if (! Decimal::isPositive($quantity)) {
@@ -352,6 +356,10 @@ class PurchaseService
                 );
 
                 if ($product->isStockItem()) {
+                    if (! Decimal::isPositive($itemCost)) {
+                        throw new DomainException('هزینهٔ ورود انبار نمی‌تواند صفر یا منفی باشد.');
+                    }
+
                     $batch = null;
 
                     if ($product->track_batches) {

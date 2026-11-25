@@ -12,6 +12,7 @@ use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Logout;
 use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -48,6 +49,12 @@ class AppServiceProvider extends ServiceProvider
         $this->registerAuditObservers();
         $this->registerSecurityAuditListener();
         $this->registerPeriodCloseBlockers();
+
+        $trustedHosts = (array) config('app.trusted_hosts', []);
+
+        if ($trustedHosts !== []) {
+            Request::setTrustedHosts($trustedHosts);
+        }
     }
 
     /**

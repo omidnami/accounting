@@ -183,8 +183,13 @@ class Receipt extends Model
         }
 
         $this->statusTransitionAuthorized = true;
-        $this->status = $status;
-        $this->save();
+
+        try {
+            $this->status = $status;
+            $this->save();
+        } finally {
+            $this->statusTransitionAuthorized = false;
+        }
 
         return $this;
     }

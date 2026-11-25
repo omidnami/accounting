@@ -5,6 +5,7 @@ namespace App\Services\Accounting;
 use App\Enums\AccountingPeriodStatus;
 use App\Enums\AccountLevel;
 use App\Enums\AccountType;
+use App\Enums\DocumentType;
 use App\Enums\FiscalYearStatus;
 use App\Enums\JournalEntryKind;
 use App\Enums\JournalEntryStatus;
@@ -28,6 +29,7 @@ class ManualJournalService
     public function __construct(
         private readonly PostingService $posting,
         private readonly SettingService $settings,
+        private readonly DocumentNumberService $documentNumbers,
     ) {}
 
     /**
@@ -230,7 +232,20 @@ class ManualJournalService
                 $locked,
             );
 
+            $entryNumber = $locked->entry_number;
+
+            if ((int) $locked->branch_id !== (int) $context['branch']->id
+                || (int) $locked->fiscal_year_id !== (int) $context['fiscal_year']->id) {
+                $entryNumber = $this->documentNumbers->next(
+                    $store->id,
+                    $context['branch']->id,
+                    $context['fiscal_year']->id,
+                    DocumentType::JournalEntry,
+                );
+            }
+
             $locked->forceFill([
+                'entry_number' => $entryNumber,
                 'branch_id' => $context['branch']->id,
                 'fiscal_year_id' => $context['fiscal_year']->id,
                 'accounting_period_id' => $context['period']->id,

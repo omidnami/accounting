@@ -16,6 +16,10 @@ Schedule::command('outbox:process')
     ->onFailure(function (): void {
         Log::critical('Domain event outbox processing reported failures.');
     });
+Schedule::command('audit:archive', ['--force' => true])
+    ->monthlyOn(1, '04:00')
+    ->timezone(config('app.business_timezone', 'Asia/Tehran'))
+    ->withoutOverlapping();
 Schedule::command('backup:run')
     ->dailyAt('02:00')
     ->timezone(config('app.business_timezone', 'Asia/Tehran'))

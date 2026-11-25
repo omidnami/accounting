@@ -193,6 +193,14 @@ class SalesReturnService
                         $originalItem->quantity,
                         $isFinal,
                     );
+                    $itemCost = $this->returnableQuantities->allocateMoney(
+                        $originalItem->total_cost_snapshot,
+                        $state['returned_cost'],
+                        $quantity,
+                        $state['returned_quantity'],
+                        $originalItem->quantity,
+                        $isFinal,
+                    );
                     $lineTotal = Decimal::add($taxable, $taxAmount, 2);
 
                     $return->items()->create([
@@ -207,8 +215,8 @@ class SalesReturnService
                         'tax_rate' => $originalItem->tax_rate,
                         'tax_amount' => $taxAmount,
                         'line_total' => $lineTotal,
-                        'unit_cost_snapshot' => $originalItem->unit_cost_snapshot,
-                        'total_cost_snapshot' => $originalItem->total_cost_snapshot,
+                        'unit_cost_snapshot' => Decimal::divide($itemCost, $quantity, 4),
+                        'total_cost_snapshot' => $itemCost,
                         'sort_order' => $index + 1,
                     ]);
 
@@ -394,11 +402,6 @@ class SalesReturnService
                 'discount_total' => $discountTotal,
                 'tax_total' => $taxTotal,
                 'total' => $total,
-                'idempotency_request_hash' => hash('sha256', json_encode([
-                    'parent_invoice_id' => $original->id,
-                    'return_date' => $returnDate,
-                    'items' => $items,
-                ], JSON_THROW_ON_ERROR)),
             ])->save();
 
             return $return->refresh()->load('items');
@@ -483,7 +486,7 @@ class SalesReturnService
                 throw new DomainException('فقط برگشت فروش پیش‌نویس قابل تأیید است.');
             }
 
-            if (! $return->customer?->party?->is_active
+            if (! $return->customer?->party
                 || (int) $return->customer->party->store_id !== (int) $return->store_id) {
                 throw new DomainException('مشتری برگشت فروش معتبر نیست.');
             }

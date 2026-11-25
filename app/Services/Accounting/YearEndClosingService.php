@@ -45,10 +45,12 @@ class YearEndClosingService
                 ->lockForUpdate()
                 ->firstOrFail();
             $period = $this->lastPeriod($lockedYear);
-            $wasClosed = $period->status === AccountingPeriodStatus::Closed;
+            $originalStatus = $period->status;
+            $originalClosedBy = $period->closed_by;
+            $originalClosedAt = $period->closed_at;
             $entries = collect();
 
-            if ($wasClosed) {
+            if ($originalStatus !== AccountingPeriodStatus::Open) {
                 $period->transitionStatus(AccountingPeriodStatus::Open);
             }
 
@@ -98,8 +100,12 @@ class YearEndClosingService
                     );
                 }
             } finally {
-                if ($wasClosed) {
-                    $period->transitionStatus(AccountingPeriodStatus::Closed, $actor->id);
+                if ($originalStatus !== AccountingPeriodStatus::Open) {
+                    $period->transitionStatus(
+                        $originalStatus,
+                        $originalClosedBy,
+                        $originalClosedAt,
+                    );
                 }
             }
 
@@ -123,10 +129,12 @@ class YearEndClosingService
                 ->lockForUpdate()
                 ->firstOrFail();
             $period = $this->lastPeriod($lockedYear);
-            $wasClosed = $period->status !== AccountingPeriodStatus::Open;
+            $originalStatus = $period->status;
+            $originalClosedBy = $period->closed_by;
+            $originalClosedAt = $period->closed_at;
             $entries = collect();
 
-            if ($wasClosed) {
+            if ($originalStatus !== AccountingPeriodStatus::Open) {
                 $period->transitionStatus(AccountingPeriodStatus::Open);
             }
 
@@ -166,8 +174,12 @@ class YearEndClosingService
                     );
                 }
             } finally {
-                if ($wasClosed) {
-                    $period->transitionStatus(AccountingPeriodStatus::Closed, $actor->id);
+                if ($originalStatus !== AccountingPeriodStatus::Open) {
+                    $period->transitionStatus(
+                        $originalStatus,
+                        $originalClosedBy,
+                        $originalClosedAt,
+                    );
                 }
             }
 

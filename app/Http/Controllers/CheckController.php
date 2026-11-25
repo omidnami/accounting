@@ -16,6 +16,7 @@ use App\Models\JournalEntry;
 use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\TreasuryAccount;
+use App\Services\Audit\AuditLogService;
 use App\Services\Branches\BranchContextService;
 use App\Services\Treasury\CheckRegistrationService;
 use App\Services\Treasury\CheckSettlementService;
@@ -322,6 +323,32 @@ class CheckController extends Controller
                 'action_date' => $clock->today($check->store_id)->toDateString(),
             ],
         ]);
+    }
+
+    public function cancel(
+        Request $request,
+        Check $check,
+        AuditLogService $audit,
+    ): RedirectResponse {
+        abort_unless(
+            (int) $check->store_id === $this->mainStore()->id
+            && (int) $check->branch_id === $this->defaultBranch($this->mainStore())->id,
+            404,
+        );
+        $validated = $request->validate([
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+        $locked = Check::query()->whereKey($check->id)->lockForUpdate()->firstOrFail();
+
+        try {
+            $locked->markCancelled(trim($validated['reason']));
+        } catch (DomainException $exception) {
+            throw ValidationException::withMessages(['check' => $exception->getMessage()]);
+        }
+
+        $audit->record('check_cancelled', $locked, newValues: ['reason' => trim($validated['reason'])]);
+
+        return to_route('checks.show', $locked);
     }
 
     public function settle(

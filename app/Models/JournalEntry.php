@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\DB;
  * @property JournalEntryStatus $status
  * @property JournalEntryKind $entry_kind
  * @property CarbonImmutable $entry_date
+ * @property int|null $posted_by
  */
 class JournalEntry extends Model
 {
@@ -45,6 +46,7 @@ class JournalEntry extends Model
         'source_id',
         'reversal_of_id',
         'created_by',
+        'posted_by',
     ];
 
     private bool $postingTransitionAuthorized = false;
@@ -73,6 +75,12 @@ class JournalEntry extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    /** @return BelongsTo<User, $this> */
+    public function poster(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'posted_by');
     }
 
     /**
@@ -206,7 +214,7 @@ class JournalEntry extends Model
             throw new AuthorizationException('تأیید و ثبت سند فقط برای مدیر و حسابدار مجاز است.');
         }
 
-        return DB::transaction(function (): self {
+        return DB::transaction(function () use ($approver): self {
             $entry = self::query()
                 ->whereKey($this->getKey())
                 ->lockForUpdate()
@@ -222,6 +230,7 @@ class JournalEntry extends Model
             $entry->postingTransitionAuthorized = true;
             $entry->status = JournalEntryStatus::Posted;
             $entry->posted_at = now();
+            $entry->posted_by = $approver->id;
             $entry->save();
 
             return $entry->refresh()->load(['lines', 'creator']);
@@ -240,9 +249,14 @@ class JournalEntry extends Model
             throw new DomainException('فروشگاه، شعبه، سال مالی و دوره برای ثبت سند الزامی هستند.');
         }
 
+        $store = Store::query()->find($this->store_id);
         $branch = Branch::query()->find($this->branch_id);
         $fiscalYear = FiscalYear::query()->find($this->fiscal_year_id);
         $period = AccountingPeriod::query()->find($this->accounting_period_id);
+
+        if (! $store || ! $store->is_active) {
+            throw new DomainException('فروشگاه سند باید فعال باشد.');
+        }
 
         if (! $branch || (int) $branch->store_id !== (int) $this->store_id || ! $branch->is_active) {
             throw new DomainException('شعبه سند باید فعال و متعلق به فروشگاه سند باشد.');

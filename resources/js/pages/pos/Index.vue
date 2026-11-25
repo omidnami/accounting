@@ -647,11 +647,12 @@ onMounted(async () => {
     shiftOpen.value = !session.value;
     try {
         const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
-        if (saved)
+        if (saved && session.value && saved.session_id === session.value.id) {
             workspace.value = restorePosWorkspace(
                 saved,
                 props.submission_token,
             );
+        }
     } catch {
         /* Invalid or unavailable browser storage does not block POS. */
     }

@@ -97,7 +97,8 @@ it('confirms a sale with inventory issue, COGS, tax, and a balanced journal', fu
         ->and($balance->inventory_value)->toBe('600.00')
         ->and($invoice->items->first()->total_cost_snapshot)->toBe('400.00')
         ->and($journal->totalDebit())->toBe('1280.00')
-        ->and($journal->totalCredit())->toBe('1280.00');
+        ->and($journal->totalCredit())->toBe('1280.00')
+        ->and($journal->posted_by)->toBe($context['manager']->id);
 });
 
 it('allocates one customer receipt across multiple sales invoices', function () {

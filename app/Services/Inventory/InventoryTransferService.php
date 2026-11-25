@@ -75,7 +75,7 @@ class InventoryTransferService
                     'accounting_period_id' => $context['period']->id,
                     'transfer_number' => 'TRF-'.strtoupper((string) Str::ulid()),
                     'transfer_date' => (string) $data['transfer_date'],
-                    'quantity' => $this->totalQuantity($items),
+                    'quantity' => count($items) === 1 ? $items[0]['quantity'] : null,
                     'reference' => $data['reference'] ?? null,
                     'notes' => $data['notes'] ?? null,
                     'idempotency_key' => (string) $data['submission_token'],
@@ -113,14 +113,18 @@ class InventoryTransferService
                     );
                 }
 
-                $transfer->recordCostSnapshot(
-                    Decimal::divide(
+                if ($transfer->quantity !== null) {
+                    $transfer->recordCostSnapshot(
+                        Decimal::divide(
+                            $totalCost,
+                            $transfer->quantity,
+                            Decimal::UNIT_COST_SCALE,
+                        ),
                         $totalCost,
-                        $transfer->quantity,
-                        Decimal::UNIT_COST_SCALE,
-                    ),
-                    $totalCost,
-                );
+                    );
+                } else {
+                    $transfer->recordCostSnapshot(null, $totalCost);
+                }
 
                 return $transfer->refresh()->load([
                     'sourceWarehouse',
@@ -186,7 +190,9 @@ class InventoryTransferService
                     'id' => $transfer->id,
                     'transfer_number' => $transfer->transfer_number,
                     'transfer_date' => $transfer->transfer_date->toDateString(),
-                    'quantity' => Decimal::normalize($transfer->quantity, 3),
+                    'quantity' => $transfer->quantity === null
+                        ? null
+                        : Decimal::normalize($transfer->quantity, 3),
                     'item_count' => $transfer->items->count(),
                     'reference' => $transfer->reference,
                     'notes' => $transfer->notes,
@@ -301,12 +307,4 @@ class InventoryTransferService
     /**
      * @param  array<int, array{product_id: int, quantity: string}>  $items
      */
-    private function totalQuantity(array $items): string
-    {
-        return array_reduce(
-            $items,
-            fn (string $total, array $item): string => Decimal::add($total, $item['quantity'], 3),
-            '0.000',
-        );
-    }
 }

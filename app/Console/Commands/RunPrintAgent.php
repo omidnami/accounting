@@ -221,11 +221,7 @@ class RunPrintAgent extends Command
 
         try {
             if (PHP_OS_FAMILY === 'Windows') {
-                $command = sprintf(
-                    'powershell -NoProfile -Command "Get-Content -Raw -LiteralPath %s | Out-Printer -Name %s"',
-                    escapeshellarg($file.'.html'),
-                    escapeshellarg($this->stringOption('printer')),
-                );
+                throw new RuntimeException('Windows thermal printing requires a PDF-capable renderer; raw HTML printing is disabled.');
             } else {
                 $chrome = $this->findChrome();
                 Process::timeout(30)->run([

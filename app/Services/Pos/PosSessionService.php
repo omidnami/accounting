@@ -81,6 +81,11 @@ class PosSessionService
         return DB::transaction(function () use ($session, $countedCash, $notes): PosSession {
             $session = PosSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
             if ($session->closed_at !== null) {
+                if (Decimal::compare($session->counted_cash, $countedCash, 2) !== 0
+                    || trim((string) $session->closing_notes) !== trim((string) $notes)) {
+                    throw new DomainException('این شیفت قبلاً با اطلاعات متفاوتی بسته شده است.');
+                }
+
                 return $session;
             }
             $expected = $this->expectedCash($session, true);

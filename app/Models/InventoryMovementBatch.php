@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\Decimal;
+use DomainException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -41,5 +43,16 @@ class InventoryMovementBatch extends Model
     public function batch(): BelongsTo
     {
         return $this->belongsTo(ProductBatch::class, 'product_batch_id');
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (InventoryMovementBatch $assignment): void {
+            if (! Decimal::isPositive($assignment->quantity) || ! Decimal::isPositive($assignment->total_cost)) {
+                throw new DomainException('مقدار و هزینهٔ تخصیص سری ساخت باید مثبت باشند.');
+            }
+        });
+        static::updating(fn () => throw new DomainException('تخصیص سری ساخت append-only است.'));
+        static::deleting(fn () => throw new DomainException('تخصیص سری ساخت append-only است.'));
     }
 }

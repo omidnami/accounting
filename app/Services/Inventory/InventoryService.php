@@ -137,6 +137,12 @@ class InventoryService
             $description,
             $source,
         ): array {
+            Warehouse::query()
+                ->whereIn('id', [$sourceWarehouseId, $destinationWarehouseId])
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
             $out = $this->move(
                 warehouseId: $sourceWarehouseId,
                 productId: $productId,
@@ -234,7 +240,10 @@ class InventoryService
 
         $product = Product::query()->findOrFail($productId);
 
-        if (! $product->is_active) {
+        if (! $product->is_active && ! in_array($movementType, [
+            InventoryMovementType::SalesReturn,
+            InventoryMovementType::PurchaseReturn,
+        ], true)) {
             throw new DomainException('کالای انتخاب‌شده غیرفعال است.');
         }
 
@@ -265,6 +274,13 @@ class InventoryService
                 $direction,
                 $movementType,
                 $normalizedQuantity,
+                $normalizedMovementDate,
+                $source,
+                $productBatchId,
+                $serialNumbers,
+                $serialIds,
+                $batchAllocations,
+                $exactTotalCost,
             );
 
             return $existing;
@@ -393,6 +409,13 @@ class InventoryService
     ): void {
         $normalizedSerialNumbers = [];
         $seenSerialNumbers = [];
+
+        if ($serialIds !== [] && ! in_array($movementType, [
+            InventoryMovementType::Transfer,
+            InventoryMovementType::SalesReturn,
+        ], true)) {
+            throw new DomainException('ورود سریال با شناسه فقط برای انتقال یا برگشت فروش مجاز است.');
+        }
 
         foreach ($serialNumbers as $serialNumber) {
             $serialNumber = trim((string) $serialNumber);
@@ -964,6 +987,11 @@ class InventoryService
         ];
     }
 
+    /**
+     * @param  array<int, string>  $serialNumbers
+     * @param  array<int, int>  $serialIds
+     * @param  array<int, array{product_batch_id: int, quantity: string|int|float, unit_cost?: string|int|float, total_cost?: string|int|float}>  $batchAllocations
+     */
     private function assertIdempotentMatch(
         InventoryMovement $movement,
         Warehouse $warehouse,
@@ -971,6 +999,13 @@ class InventoryService
         InventoryDirection $direction,
         InventoryMovementType $movementType,
         string $quantity,
+        string $movementDate,
+        ?Model $source = null,
+        ?int $batchId = null,
+        array $serialNumbers = [],
+        array $serialIds = [],
+        array $batchAllocations = [],
+        string|int|float|null $exactTotalCost = null,
     ): void {
         $matches = (int) $movement->store_id === (int) $warehouse->store_id
             && (int) $movement->branch_id === (int) $warehouse->branch_id
@@ -978,7 +1013,70 @@ class InventoryService
             && (int) $movement->product_id === (int) $product->id
             && $movement->direction === $direction
             && $movement->movement_type === $movementType
-            && Decimal::compare($movement->quantity, $quantity, Decimal::QUANTITY_SCALE) === 0;
+            && $movement->movement_date->toDateString() === $movementDate
+            && Decimal::compare($movement->quantity, $quantity, Decimal::QUANTITY_SCALE) === 0
+            && $movement->source_type === $source?->getMorphClass()
+            && (int) $movement->source_id === (int) ($source?->getKey() ?? 0);
+
+        if ($exactTotalCost !== null) {
+            $matches = $matches && Decimal::compare(
+                $movement->total_cost,
+                $exactTotalCost,
+                Decimal::MONEY_SCALE,
+            ) === 0;
+        }
+
+        $normalizedSerialNumbers = array_map(
+            fn (mixed $serial): string => trim((string) $serial),
+            $serialNumbers,
+        );
+        sort($normalizedSerialNumbers);
+        $storedSerialNumbers = $movement->serialAssignments()
+            ->with('serial:id,serial_number')
+            ->get()
+            ->pluck('serial.serial_number')
+            ->map(fn (mixed $serial): string => (string) $serial)
+            ->sort()
+            ->values()
+            ->all();
+        $matches = $matches && ($normalizedSerialNumbers === [] || $normalizedSerialNumbers === $storedSerialNumbers);
+
+        if ($serialIds !== []) {
+            $storedSerialIds = $movement->serialAssignments()->pluck('product_serial_id')
+                ->map(fn ($id): int => (int) $id)->sort()->values()->all();
+            $normalizedSerialIds = array_map('intval', $serialIds);
+            sort($normalizedSerialIds);
+            $matches = $matches && $normalizedSerialIds === $storedSerialIds;
+        }
+
+        if ($batchId !== null) {
+            $matches = $matches && $movement->batchAssignments()->where('product_batch_id', $batchId)->exists();
+        }
+
+        if ($batchAllocations !== []) {
+            $storedAllocations = $movement->batchAssignments()
+                ->get(['product_batch_id', 'quantity', 'unit_cost', 'total_cost'])
+                ->map(fn ($allocation): array => [
+                    'product_batch_id' => (int) $allocation->product_batch_id,
+                    'quantity' => Decimal::normalize($allocation->quantity, 3),
+                    'unit_cost' => Decimal::normalize($allocation->unit_cost, 4),
+                    'total_cost' => Decimal::normalize($allocation->total_cost, 2),
+                ])
+                ->keyBy('product_batch_id')
+                ->sortKeys()
+                ->all();
+            $normalizedAllocations = collect($batchAllocations)
+                ->map(fn (array $allocation): array => [
+                    'product_batch_id' => (int) $allocation['product_batch_id'],
+                    'quantity' => Decimal::normalize($allocation['quantity'], 3),
+                    'unit_cost' => Decimal::normalize($allocation['unit_cost'] ?? 0, 4),
+                    'total_cost' => Decimal::normalize($allocation['total_cost'] ?? 0, 2),
+                ])
+                ->keyBy('product_batch_id')
+                ->sortKeys()
+                ->all();
+            $matches = $matches && $normalizedAllocations === $storedAllocations;
+        }
 
         if (! $matches) {
             throw new DomainException('کلید تکرارپذیری قبلاً برای حرکت متفاوتی استفاده شده است.');

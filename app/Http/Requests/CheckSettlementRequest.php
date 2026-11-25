@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Check;
 use Illuminate\Foundation\Http\FormRequest;
 
 class CheckSettlementRequest extends FormRequest
@@ -16,10 +17,18 @@ class CheckSettlementRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+        $check = $this->route('check');
+        $check = $check instanceof Check ? $check : null;
+        $rules = [
             'settlement_date' => ['required', 'date'],
             'treasury_account_id' => ['nullable', 'integer', 'exists:treasury_accounts,id'],
         ];
+
+        if ($check?->issue_date !== null) {
+            $rules['settlement_date'][] = 'after_or_equal:'.$check->issue_date->toDateString();
+        }
+
+        return $rules;
     }
 
     /**

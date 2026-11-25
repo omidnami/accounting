@@ -72,4 +72,16 @@ class Party extends Model
     {
         return $this->hasMany(JournalEntryLine::class);
     }
+
+    protected static function booted(): void
+    {
+        static::updating(function (Party $party): void {
+            if (array_intersect(
+                ['store_id', 'code', 'entity_type'],
+                array_keys($party->getDirty()),
+            ) !== []) {
+                throw new \DomainException('کد، نوع و فروشگاه طرف‌حساب پس از ایجاد قابل تغییر نیست.');
+            }
+        });
+    }
 }

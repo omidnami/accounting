@@ -106,7 +106,7 @@ class InventoryTransfer extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function recordCostSnapshot(string $unitCost, string $totalCost): self
+    public function recordCostSnapshot(?string $unitCost, string $totalCost): self
     {
         $this->completionAuthorized = true;
 

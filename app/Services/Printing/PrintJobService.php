@@ -27,11 +27,26 @@ class PrintJobService
             ->where('branch_id', $invoice->branch_id)
             ->where('status', 'active')
             ->whereNull('revoked_at')
+            ->where(function ($query): void {
+                $query->whereNull('last_seen_at')
+                    ->orWhere('last_seen_at', '>=', now()->subMinutes(5));
+            })
             ->latest('last_seen_at')
             ->first();
 
         if (! $station) {
             throw new DomainException('Print Agent فعالی برای این فروشگاه ثبت نشده است.');
+        }
+
+        $existing = PrintJob::query()
+            ->where('print_station_id', $station->id)
+            ->where('document_type', 'sales_invoice')
+            ->where('document_id', $invoice->id)
+            ->whereIn('status', ['queued', 'claimed'])
+            ->first();
+
+        if ($existing !== null) {
+            return $existing;
         }
 
         $invoice->load(['items', 'customer.party', 'branch', 'store']);
