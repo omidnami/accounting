@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\Audit\AuditLogService;
 use App\Services\Sales\CustomerReceiptService;
 use App\Services\Sales\SalesService;
+use App\Support\BusinessClock;
 use App\Support\Decimal;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -24,6 +25,7 @@ class PosCheckoutService
         private readonly SalesService $sales,
         private readonly CustomerReceiptService $receipts,
         private readonly AuditLogService $audit,
+        private readonly BusinessClock $clock,
     ) {}
 
     /** @param array<string, mixed> $data */
@@ -53,7 +55,7 @@ class PosCheckoutService
             if ($session->closed_at !== null) {
                 throw new DomainException('شیفت بسته شده است؛ شیفت جدید باز کنید.');
             }
-            $date = today()->toDateString();
+            $date = $this->clock->today($session->store_id)->toDateString();
             $fiscalYear = FiscalYear::query()->where('store_id', $session->store_id)
                 ->where('is_current', true)->firstOrFail();
             $pending = '0.00';
@@ -90,7 +92,7 @@ class PosCheckoutService
                 'due_date' => $data['due_date'] ?? null,
                 'notes' => $data['notes'] ?? null,
                 'created_by' => $user->id,
-            ], $data['items'], 'pos:'.$data['submission_token']);
+            ], $data['items'], 'pos:'.$data['submission_token'], forceProductTaxRate: true);
             $sale->update(['invoice_id' => $invoice->id]);
             $sum = '0.00';
             foreach ($data['tenders'] as $tender) {

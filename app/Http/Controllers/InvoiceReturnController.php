@@ -15,6 +15,7 @@ use App\Services\Branches\BranchContextService;
 use App\Services\Inventory\InventoryTraceabilityService;
 use App\Services\Purchasing\PurchaseReturnService;
 use App\Services\Sales\SalesReturnService;
+use App\Support\BusinessClock;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -323,7 +324,9 @@ class InvoiceReturnController extends Controller
             $invoice->invoice_date->toDateString(),
             min(
                 $fiscalYear->ends_on->toDateString(),
-                $return?->invoice_date->toDateString() ?? today()->toDateString(),
+                $return?->invoice_date->toDateString() ?? app(BusinessClock::class)
+                    ->today($invoice->store_id)
+                    ->toDateString(),
             ),
         );
         $return?->load('items');

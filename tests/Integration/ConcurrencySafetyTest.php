@@ -1,10 +1,12 @@
 <?php
 
+use App\Enums\CheckType;
 use App\Enums\InventoryMovementType;
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Enums\PaymentMethod;
 use App\Enums\UserRole;
+use App\Models\Check;
 use App\Models\Customer;
 use App\Models\InventoryBalance;
 use App\Models\Invoice;
@@ -27,6 +29,7 @@ use App\Services\Purchasing\SupplierPaymentService;
 use App\Services\Sales\CustomerReceiptService;
 use App\Services\Sales\SalesReturnService;
 use App\Services\Sales\SalesService;
+use App\Services\Treasury\CheckRegistrationService;
 use Database\Seeders\AccountingSetupSeeder;
 use Database\Seeders\AccountSeeder;
 use Illuminate\Support\Facades\Artisan;
@@ -37,7 +40,7 @@ beforeEach(function () {
         $this->markTestSkipped('pcntl is required for concurrency tests.');
     }
 
-    if (DB::getDriverName() !== 'mysql') {
+    if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
         $this->markTestSkipped('Concurrency tests require MySQL/MariaDB.');
     }
 
@@ -493,4 +496,29 @@ it('counts a just-committed POS sale when closing a shift from an older snapshot
     expect($results['a']['ok'])->toBeTrue()->and($results['b']['ok'])->toBeTrue()
         ->and($session->fresh()->expected_cash)->toBe('105.00')
         ->and($session->fresh()->cash_difference)->toBe('0.00');
+});
+
+it('allows only one concurrent registration of an external check identity', function () {
+    $context = concurrencyIntegrationContext();
+    $results = runConcurrentScenario(function (string $slot) use ($context): int {
+        return app(CheckRegistrationService::class)->register(
+            storeId: $context['store']->id,
+            branchId: $context['branch']->id,
+            fiscalYearId: $context['fiscalYear']->id,
+            type: CheckType::Receivable,
+            partyProfileId: $context['customer']->id,
+            checkNumber: 'CONCURRENT-CHECK',
+            bankName: 'بانک هم‌زمانی',
+            branchName: null,
+            amount: '100.00',
+            issueDate: $context['date'],
+            dueDate: $context['date'],
+            creator: $context['manager'],
+            idempotencyKey: 'concurrent-check-'.$slot,
+        )->id;
+    });
+
+    expect(collect($results)->where('ok', true)->count())->toBe(1)
+        ->and(collect($results)->where('ok', false)->count())->toBe(1)
+        ->and(Check::query()->where('check_number', 'CONCURRENT-CHECK')->count())->toBe(1);
 });

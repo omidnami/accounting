@@ -97,6 +97,18 @@ class CheckRegistrationService
                     throw new DomainException('شعبه چک باید فعال و متعلق به فروشگاه باشد.');
                 }
 
+                $externalDuplicate = Check::query()
+                    ->where('store_id', $storeId)
+                    ->where('bank_name', $bankName)
+                    ->where('check_number', $checkNumber)
+                    ->where('type', $type->value)
+                    ->lockForUpdate()
+                    ->exists();
+
+                if ($externalDuplicate) {
+                    throw new DomainException('این چک قبلاً با همان بانک و شماره ثبت شده است.');
+                }
+
                 if ($type === CheckType::Receivable) {
                     $customer = Customer::query()
                         ->whereKey($partyProfileId)
@@ -165,6 +177,17 @@ class CheckRegistrationService
                     }
 
                     return $existing;
+                }
+
+                $externalDuplicate = Check::query()
+                    ->where('store_id', $storeId)
+                    ->where('bank_name', $bankName)
+                    ->where('check_number', $checkNumber)
+                    ->where('type', $type->value)
+                    ->exists();
+
+                if ($externalDuplicate) {
+                    throw new DomainException('این چک قبلاً با همان بانک و شماره ثبت شده است.');
                 }
 
                 throw new DomainException('شماره داخلی چک تکراری است. دوباره تلاش کنید.');

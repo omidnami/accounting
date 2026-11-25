@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\CheckType;
 use App\Enums\InventoryMovementType;
 use App\Enums\UserRole;
 use App\Models\Check;
@@ -21,6 +22,8 @@ use App\Services\Inventory\InventoryService;
 use App\Services\Pos\PosPostingContext;
 use App\Services\Pos\PosSessionService;
 use App\Services\Sales\CustomerReceivableService;
+use App\Services\Treasury\CheckRegistrationService;
+use Carbon\CarbonImmutable;
 use Database\Seeders\AccountingSetupSeeder;
 use Database\Seeders\AccountSeeder;
 use Illuminate\Auth\Access\AuthorizationException;
@@ -101,6 +104,83 @@ it('posts a cashier sale and payment once without granting manual journal rights
     }
     $this->postJson(route('sales.confirm', Invoice::query()->first()), ['warehouse_id' => $context['warehouse']->id])->assertForbidden();
     $this->get(route('receipts.create'))->assertForbidden();
+});
+
+it('uses the Tehran business date across the UTC midnight boundary', function () {
+    $context = posContext();
+    $context['store']->forceFill(['timezone' => 'Asia/Tehran'])->save();
+    // 21:00 UTC is already 00:30 the next day in Tehran.
+    $this->travelTo(CarbonImmutable::parse('2026-11-24 21:00:00', 'UTC'));
+
+    $this->actingAs($context['user'])
+        ->postJson(route('pos.checkout'), posPayload($context))
+        ->assertOk();
+
+    expect(Invoice::query()->firstOrFail()->invoice_date->toDateString())
+        ->toBe('2026-11-25');
+});
+
+it('ignores a client-supplied VAT rate and uses the catalog rate', function () {
+    $context = posContext();
+    $payload = posPayload($context, [
+        'items' => [[
+            'product_id' => $context['product']->id,
+            'quantity' => '2',
+            'unit_price' => '200',
+            'discount_amount' => '0',
+            'tax_rate' => '0',
+        ]],
+        'tenders' => [['method' => 'cash', 'amount' => '440', 'confirmed' => true]],
+    ]);
+
+    $this->actingAs($context['user'])
+        ->postJson(route('pos.checkout'), $payload)
+        ->assertOk();
+
+    $invoice = Invoice::query()->firstOrFail();
+    expect($invoice->items()->firstOrFail()->tax_rate)->toEqual('10.00')
+        ->and($invoice->tax_total)->toBe('40.00')
+        ->and($invoice->total)->toBe('440.00');
+});
+
+it('rejects a second registration of the same external check identity', function () {
+    $context = posContext();
+    $fiscalYear = $context['store']->fiscalYears()->where('is_current', true)->firstOrFail();
+    $registration = app(CheckRegistrationService::class);
+
+    $registration->register(
+        storeId: $context['store']->id,
+        branchId: $context['branch']->id,
+        fiscalYearId: $fiscalYear->id,
+        type: CheckType::Receivable,
+        partyProfileId: $context['customer']->id,
+        checkNumber: 'DUP-100',
+        bankName: 'بانک ملت',
+        branchName: null,
+        amount: '100.00',
+        issueDate: '2026-05-02',
+        dueDate: '2026-06-02',
+        creator: $context['manager'],
+        idempotencyKey: 'external-check-first',
+    );
+
+    expect(fn () => $registration->register(
+        storeId: $context['store']->id,
+        branchId: $context['branch']->id,
+        fiscalYearId: $fiscalYear->id,
+        type: CheckType::Receivable,
+        partyProfileId: $context['customer']->id,
+        checkNumber: ' DUP-100 ',
+        bankName: ' بانک ملت ',
+        branchName: null,
+        amount: '100.00',
+        issueDate: '2026-05-02',
+        dueDate: '2026-06-02',
+        creator: $context['manager'],
+        idempotencyKey: 'external-check-second',
+    ))->toThrow(DomainException::class, 'قبلاً با همان بانک و شماره ثبت شده');
+
+    expect(Check::query()->count())->toBe(1);
 });
 
 it('keeps check declarations and credit outstanding until the accountant registers the check', function () {

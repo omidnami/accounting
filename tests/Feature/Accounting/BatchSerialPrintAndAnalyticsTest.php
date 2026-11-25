@@ -187,6 +187,94 @@ it('applies FEFO and records exact serials through sale and sales return', funct
         ->count())->toBe(2);
 });
 
+it('rejects duplicate serials after trimming and never creates duplicate assignments', function () {
+    $context = traceabilityContext();
+
+    expect(fn () => app(InventoryService::class)->receive(
+        warehouseId: $context['warehouse']->id,
+        productId: $context['product']->id,
+        quantity: 2,
+        unitCost: 100,
+        movementDate: $context['date'],
+        idempotencyKey: 'duplicate-serial-whitespace',
+        movementType: InventoryMovementType::Opening,
+        serialNumbers: ['DUP-SERIAL', ' DUP-SERIAL '],
+    ))->toThrow(DomainException::class, 'تکراری');
+
+    expect(ProductSerial::query()->where('serial_number', 'DUP-SERIAL')->exists())
+        ->toBeFalse()
+        ->and(InventoryMovement::query()->where('idempotency_key', 'duplicate-serial-whitespace')->exists())
+        ->toBeFalse();
+});
+
+it('rejects a blank purchase batch number', function () {
+    $context = traceabilityContext();
+    $purchase = app(PurchaseService::class)->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_date' => $context['date'],
+            'created_by' => $context['manager']->id,
+        ],
+        [[
+            'product_id' => $context['product']->id,
+            'quantity' => 2,
+            'unit_price' => 100,
+            'discount_amount' => 0,
+            'tax_rate' => 0,
+            'batch_number' => '   ',
+            'serial_numbers' => ['BLANK-1', 'BLANK-2'],
+        ]],
+        'blank-batch',
+    );
+
+    expect(fn () => app(PurchaseService::class)->confirm(
+        $purchase,
+        $context['warehouse']->id,
+        $context['manager'],
+    ))->toThrow(DomainException::class, 'شماره سری ساخت الزامی است');
+});
+
+it('requires batch expiry metadata to match exactly including null', function () {
+    $context = traceabilityContext();
+    $batch = ProductBatch::query()->create([
+        'product_id' => $context['product']->id,
+        'batch_number' => 'STRICT-BATCH',
+        'expiry_date' => null,
+    ]);
+    $purchase = app(PurchaseService::class)->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_date' => $context['date'],
+            'created_by' => $context['manager']->id,
+        ],
+        [[
+            'product_id' => $context['product']->id,
+            'quantity' => 2,
+            'unit_price' => 100,
+            'discount_amount' => 0,
+            'tax_rate' => 0,
+            'batch_number' => ' STRICT-BATCH ',
+            'expiry_date' => $context['fiscalYear']->starts_on->addDays(50)->toDateString(),
+            'serial_numbers' => ['STRICT-1', 'STRICT-2'],
+        ]],
+        'strict-batch-expiry',
+    );
+
+    expect(fn () => app(PurchaseService::class)->confirm(
+        $purchase,
+        $context['warehouse']->id,
+        $context['manager'],
+    ))->toThrow(DomainException::class, 'تاریخ انقضای سری ساخت');
+
+    expect($batch->refresh()->expiry_date)->toBeNull();
+});
+
 it('tracks purchased batch and serial and returns them to supplier', function () {
     $context = traceabilityContext();
     $purchase = app(PurchaseService::class)->createDraft(

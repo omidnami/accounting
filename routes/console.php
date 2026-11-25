@@ -8,4 +8,7 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::command('inventory:refresh-expiry-alerts')->dailyAt('07:00');
+Schedule::command('inventory:refresh-expiry-alerts')
+    ->dailyAt('07:00')
+    ->timezone(config('app.business_timezone', 'Asia/Tehran'))
+    ->withoutOverlapping();

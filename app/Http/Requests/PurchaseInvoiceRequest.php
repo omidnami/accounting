@@ -84,13 +84,39 @@ class PurchaseInvoiceRequest extends FormRequest
                     }
                 }
 
+                if (isset($item['batch_number']) && is_string($item['batch_number'])) {
+                    $item['batch_number'] = trim($item['batch_number']);
+                    if ($item['batch_number'] === '') {
+                        $item['batch_number'] = null;
+                    }
+                }
+
+                if (isset($item['serial_numbers']) && is_array($item['serial_numbers'])) {
+                    $serialNumbers = array_map(
+                        fn (mixed $serial): string => is_string($serial) ? trim($serial) : '',
+                        $item['serial_numbers'],
+                    );
+                    $item['serial_numbers'] = array_values(array_unique(array_filter(
+                        $serialNumbers,
+                        fn (string $serial): bool => $serial !== '',
+                    )));
+                }
+
                 if (isset($item['serial_numbers']) && is_string($item['serial_numbers'])) {
-                    $item['serial_numbers'] = preg_split(
+                    $serialNumbers = preg_split(
                         '/[\r\n,]+/',
                         trim($item['serial_numbers']),
                         -1,
                         PREG_SPLIT_NO_EMPTY,
+                    ) ?: [];
+                    $serialNumbers = array_map(
+                        fn (string $serial): string => trim($serial),
+                        $serialNumbers,
                     );
+                    $item['serial_numbers'] = array_values(array_unique(array_filter(
+                        $serialNumbers,
+                        fn (string $serial): bool => $serial !== '',
+                    )));
                 }
 
                 return $item;

@@ -16,7 +16,7 @@ const line = (values: Partial<PosLine>): PosLine => ({
     tax_rate: '10',
     ...values,
 });
-void test('POS totals truncate each step like the Decimal service', () => {
+void test('POS totals round each step exactly like the Decimal service', () => {
     const result = lineAmounts(
         line({
             quantity: '1.333',
@@ -26,12 +26,25 @@ void test('POS totals truncate each step like the Decimal service', () => {
         }),
     );
     assert.deepEqual(result, {
-        gross: 1644n,
+        gross: 1645n,
         discount: 3n,
-        tax: 155n,
-        total: 1796n,
+        tax: 156n,
+        total: 1798n,
     });
-    assert.equal(amountString(result.total), '17.96');
+    assert.equal(amountString(result.total), '17.98');
+});
+void test('POS half-cent boundaries round up, never down', () => {
+    // 1 x 0.005 has no cent representation in the price field, so use a
+    // quantity that produces exactly half a cent: 0.5 x 0.01 = 0.005.
+    const result = lineAmounts(
+        line({ quantity: '0.5', unit_price: '0.01', tax_rate: '0' }),
+    );
+    assert.equal(result.gross, 1n);
+    // 1 x 2.5% = 0.025 -> 0.03
+    const tax = lineAmounts(
+        line({ quantity: '1', unit_price: '1', tax_rate: '2.5' }),
+    );
+    assert.equal(tax.tax, 3n);
 });
 void test('Persian amounts and large money stay exact', () => {
     assert.equal(cents('۱٬۲۳۴٫۵۶'), 123456n);

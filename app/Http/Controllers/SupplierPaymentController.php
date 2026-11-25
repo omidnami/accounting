@@ -19,6 +19,7 @@ use App\Models\TreasuryAccount;
 use App\Services\Branches\BranchContextService;
 use App\Services\Purchasing\SupplierPayableService;
 use App\Services\Purchasing\SupplierPaymentService;
+use App\Support\BusinessClock;
 use App\Support\Digits;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
@@ -100,8 +101,11 @@ class SupplierPaymentController extends Controller
         ]);
     }
 
-    public function create(Request $request, SupplierPayableService $payables): Response
-    {
+    public function create(
+        Request $request,
+        SupplierPayableService $payables,
+        BusinessClock $clock,
+    ): Response {
         abort_unless($request->user()?->canManagePayments(), 403);
 
         $store = $this->mainStore();
@@ -109,7 +113,10 @@ class SupplierPaymentController extends Controller
         $fiscalYear = $this->currentFiscalYear($store);
         $paymentDate = max(
             $fiscalYear->starts_on->toDateString(),
-            min($fiscalYear->ends_on->toDateString(), now()->toImmutable()->toDateString()),
+            min(
+                $fiscalYear->ends_on->toDateString(),
+                $clock->today($store)->toDateString(),
+            ),
         );
         $validated = $request->validate([
             'supplier_id' => ['nullable', 'integer', 'exists:suppliers,id'],

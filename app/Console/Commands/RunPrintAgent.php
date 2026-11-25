@@ -3,9 +3,11 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Process;
 use RuntimeException;
+use Throwable;
 
 class RunPrintAgent extends Command
 {
@@ -18,6 +20,8 @@ class RunPrintAgent extends Command
 
     protected $description = 'Run the local outbound-only print agent';
 
+    private const TRANSPORT_ATTEMPTS = 4;
+
     public function handle(): int
     {
         $server = rtrim($this->stringOption('server'), '/');
@@ -29,11 +33,30 @@ class RunPrintAgent extends Command
             return self::FAILURE;
         }
 
+        if (! $this->isSafeServer($server)) {
+            $this->error('HTTPS is required; plain HTTP is allowed only for localhost development.');
+
+            return self::FAILURE;
+        }
+
+        $interval = max(1, (int) $this->option('interval'));
+        $consecutiveFailures = 0;
+
         do {
-            $response = Http::withToken($token)
-                ->acceptJson()
-                ->timeout(30)
-                ->post($server.'/api/print-agent/claim');
+            try {
+                $response = $this->client($server, $token)
+                    ->post($server.'/api/print-agent/claim');
+            } catch (Throwable $exception) {
+                $this->warn('Claim failed: '.$exception->getMessage());
+
+                if ($this->option('once')) {
+                    return self::FAILURE;
+                }
+
+                $this->backoff(++$consecutiveFailures, $interval);
+
+                continue;
+            }
 
             if ($response->unauthorized()) {
                 $this->error('Print station token was rejected.');
@@ -43,11 +66,17 @@ class RunPrintAgent extends Command
 
             if (! $response->successful()) {
                 $this->warn('Claim failed: HTTP '.$response->status());
-                sleep(max(1, (int) $this->option('interval')));
+
+                if ($this->option('once')) {
+                    return self::FAILURE;
+                }
+
+                $this->backoff(++$consecutiveFailures, $interval);
 
                 continue;
             }
 
+            $consecutiveFailures = 0;
             $job = $response->json('job');
 
             if (! is_array($job)) {
@@ -55,30 +84,120 @@ class RunPrintAgent extends Command
                     break;
                 }
 
-                sleep(max(1, (int) $this->option('interval')));
+                sleep($interval);
 
                 continue;
             }
 
+            $this->heartbeat($server, $token, $job);
+
             try {
                 $this->printJob($job);
                 $result = ['status' => 'printed'];
-            } catch (\Throwable $exception) {
+            } catch (Throwable $exception) {
                 $result = [
                     'status' => 'failed',
                     'message' => mb_substr($exception->getMessage(), 0, 2000),
                 ];
             }
 
-            Http::withToken($token)
-                ->acceptJson()
-                ->timeout(30)
-                ->post($server.'/api/print-agent/jobs/'.$job['id'].'/complete', $result)
-                ->throw();
+            $this->heartbeat($server, $token, $job);
+
+            if (! $this->reportCompletion($server, $token, $job, $result)) {
+                return self::FAILURE;
+            }
+
             $this->info("Job {$job['id']} reported as {$result['status']}.");
         } while (! $this->option('once'));
 
         return self::SUCCESS;
+    }
+
+    private function client(string $server, string $token): PendingRequest
+    {
+        return Http::withToken($token)
+            ->acceptJson()
+            ->connectTimeout(10)
+            ->timeout(30)
+            ->withOptions(['allow_redirects' => false]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $job
+     * @param  array<string, mixed>  $result
+     */
+    private function reportCompletion(
+        string $server,
+        string $token,
+        array $job,
+        array $result,
+    ): bool {
+        for ($attempt = 1; $attempt <= self::TRANSPORT_ATTEMPTS; $attempt++) {
+            try {
+                $response = $this->client($server, $token)
+                    ->post($server.'/api/print-agent/jobs/'.$job['id'].'/complete', $result);
+
+                if ($response->successful()) {
+                    return true;
+                }
+
+                // A reclaimed lease cannot be completed by the old agent.
+                if ($response->status() === 409 || $response->unauthorized()) {
+                    $this->warn('Completion rejected: HTTP '.$response->status());
+
+                    return false;
+                }
+
+                $this->warn("Completion attempt {$attempt} failed: HTTP ".$response->status());
+            } catch (Throwable $exception) {
+                $this->warn("Completion attempt {$attempt} failed: ".$exception->getMessage());
+            }
+
+            if ($attempt < self::TRANSPORT_ATTEMPTS) {
+                sleep(min(15, 2 ** ($attempt - 1)));
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $job
+     */
+    private function heartbeat(string $server, string $token, array $job): void
+    {
+        try {
+            $this->client($server, $token)
+                ->post($server.'/api/print-agent/jobs/'.$job['id'].'/heartbeat')
+                ->throw();
+        } catch (Throwable $exception) {
+            // Best effort: completion remains idempotent and the server will
+            // reclaim the job if this agent disappears.
+            $this->warn('Heartbeat failed: '.$exception->getMessage());
+        }
+    }
+
+    private function backoff(int $failures, int $interval): void
+    {
+        sleep(min(30, $interval * (2 ** min(5, max(0, $failures - 1)))));
+    }
+
+    private function isSafeServer(string $server): bool
+    {
+        $parts = parse_url($server);
+
+        if ($parts === false || empty($parts['host']) || isset($parts['user']) || isset($parts['pass'])) {
+            return false;
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        $host = strtolower($parts['host']);
+
+        return $scheme === 'https' || ($scheme === 'http' && in_array(
+            $host,
+            ['localhost', '127.0.0.1', '::1'],
+            true,
+        ));
     }
 
     /**

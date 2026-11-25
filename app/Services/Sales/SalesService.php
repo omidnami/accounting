@@ -42,9 +42,14 @@ class SalesService
         array $attributes,
         array $items,
         ?string $idempotencyKey = null,
+        bool $forceProductTaxRate = false,
     ): Invoice {
         if ($items === []) {
             throw new DomainException('فاکتور فروش باید حداقل یک قلم داشته باشد.');
+        }
+
+        if ($forceProductTaxRate) {
+            $items = $this->withProductTaxRates($items);
         }
 
         $requestHash = $idempotencyKey === null
@@ -363,6 +368,37 @@ class SalesService
             'created_by' => isset($attributes['created_by']) ? (int) $attributes['created_by'] : null,
             'items' => $canonicalItems,
         ], JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * Replace any client-supplied tax rate with the product's current rate.
+     *
+     * POS terminals must never be able to post a final invoice with an
+     * arbitrary VAT rate; the catalog remains the single source of truth.
+     *
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<int, array<string, mixed>>
+     */
+    private function withProductTaxRates(array $items): array
+    {
+        $products = Product::query()
+            ->whereIn('id', array_map(
+                fn (array $item): int => (int) $item['product_id'],
+                $items,
+            ))
+            ->pluck('tax_rate', 'id');
+
+        return array_map(function (array $item) use ($products): array {
+            $productId = (int) $item['product_id'];
+
+            if (! $products->has($productId)) {
+                throw new DomainException('کالای انتخاب‌شده پیدا نشد.');
+            }
+
+            $item['tax_rate'] = $products->get($productId);
+
+            return $item;
+        }, $items);
     }
 
     private function resolveIdempotentDraft(Invoice $invoice, string $requestHash): Invoice

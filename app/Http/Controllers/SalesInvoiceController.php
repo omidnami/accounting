@@ -18,6 +18,7 @@ use App\Services\Printing\PrintSettingsService;
 use App\Services\Sales\CustomerReceivableService;
 use App\Services\Sales\SalesReturnService;
 use App\Services\Sales\SalesService;
+use App\Support\BusinessClock;
 use App\Support\Digits;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
@@ -103,14 +104,14 @@ class SalesInvoiceController extends Controller
         ]);
     }
 
-    public function create(Request $request): Response
+    public function create(Request $request, BusinessClock $clock): Response
     {
         abort_unless($request->user()?->canManageSales(), 403);
 
         $store = $this->mainStore();
         $branch = $this->defaultBranch($store);
         $fiscalYear = $this->currentFiscalYear($store);
-        $invoiceDate = now()->toImmutable()->toDateString();
+        $invoiceDate = $clock->today($store)->toDateString();
         $invoiceDate = max(
             $fiscalYear->starts_on->toDateString(),
             min($fiscalYear->ends_on->toDateString(), $invoiceDate),

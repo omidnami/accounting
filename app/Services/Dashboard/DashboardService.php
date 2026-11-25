@@ -22,6 +22,7 @@ use App\Services\Accounting\JalaliDateService;
 use App\Services\Purchasing\SupplierPayableService;
 use App\Services\Reporting\FinancialStatementReportService;
 use App\Services\Sales\CustomerReceivableService;
+use App\Support\BusinessClock;
 use App\Support\Decimal;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -34,6 +35,7 @@ class DashboardService
         private readonly CustomerReceivableService $receivables,
         private readonly SupplierPayableService $payables,
         private readonly JalaliDateService $dates,
+        private readonly BusinessClock $clock,
     ) {}
 
     /**
@@ -66,7 +68,7 @@ class DashboardService
                 $branch->id,
                 $fiscalYear->id,
                 $user->role->value,
-                today()->toDateString(),
+                $this->clock->today($store)->toDateString(),
             ]),
             now()->addMinute(),
             $build,
@@ -100,7 +102,9 @@ class DashboardService
             'trend' => [],
             'monthly_trend' => [],
             'low_stock' => ['count' => 0, 'items' => []],
-            'expiry_alerts' => $this->expiryAlerts($store, $branch),
+            'expiry_alerts' => $user->canViewInventoryReports()
+                ? $this->expiryAlerts($store, $branch)
+                : ['count' => 0, 'items' => []],
             'recent_activity' => [],
             'setup_required' => false,
         ];
@@ -143,15 +147,16 @@ class DashboardService
             return $data;
         }
 
+        $today = $this->clock->today($store);
         $balanceSheet = $this->statements->balanceSheet(
             $store->id,
-            today()->toDateString(),
+            $today->toDateString(),
             $branch->id,
         );
         $incomeStatement = $this->statements->incomeStatement(
             $store->id,
             $fiscalYear->starts_on->toDateString(),
-            today()->toDateString(),
+            $today->toDateString(),
             $branch->id,
         );
         $assetAmount = fn (string $code): string => (string) (
@@ -174,11 +179,11 @@ class DashboardService
                 InvoiceType::Sales,
             ),
             'overdue_checks' => (clone $pendingChecks)
-                ->whereDate('due_date', '<', today())
+                ->whereDate('due_date', '<', $today)
                 ->count(),
             'due_soon_checks' => (clone $pendingChecks)
-                ->whereDate('due_date', '>=', today())
-                ->whereDate('due_date', '<=', today()->addDays(7))
+                ->whereDate('due_date', '>=', $today)
+                ->whereDate('due_date', '<=', $today->addDays(7))
                 ->count(),
             'pending_checks_amount' => Decimal::normalize(
                 (string) (clone $pendingChecks)->sum('amount'),
@@ -199,7 +204,7 @@ class DashboardService
         Branch $branch,
         bool $includePurchases,
     ): array {
-        $current = $this->dates->toJalali(today());
+        $current = $this->dates->toJalali($this->clock->today($store));
         $months = [];
         $currentSerial = $current->year * 12 + $current->month - 1;
 
@@ -216,7 +221,7 @@ class DashboardService
         }
 
         $from = $months[0]['starts_on']->toDateString();
-        $to = today()->toDateString();
+        $to = $this->clock->today($store)->toDateString();
         $sales = $this->invoiceTotalsByDate(
             $store,
             $branch,
@@ -305,8 +310,9 @@ class DashboardService
         Branch $branch,
         bool $includePurchases,
     ): array {
-        $from = today()->subDays(6)->toDateString();
-        $to = today()->toDateString();
+        $today = $this->clock->today($store);
+        $from = $today->subDays(6)->toDateString();
+        $to = $today->toDateString();
         $sales = $this->invoiceTotalsByDate(
             $store,
             $branch,
@@ -342,7 +348,7 @@ class DashboardService
         $trend = [];
 
         for ($offset = 6; $offset >= 0; $offset--) {
-            $date = today()->subDays($offset);
+            $date = $today->subDays($offset);
             $value = $date->toDateString();
             $trend[] = [
                 'date' => $value,

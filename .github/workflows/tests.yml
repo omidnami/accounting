@@ -48,7 +48,7 @@ jobs:
           php-version: '8.3'
           tools: composer:v2
           coverage: none
-          extensions: bcmath, mbstring, pdo_mysql, pdo_sqlite
+          extensions: bcmath, mbstring, pcntl, pdo_mysql, pdo_sqlite
 
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -58,8 +58,14 @@ jobs:
       - name: Setup Application
         run: composer setup
 
+      - name: Audit production dependencies
+        run: composer audit --locked
+
+      - name: Audit npm production dependencies
+        run: npm audit --omit=dev
+
       - name: Run CI Checks
         run: composer ci:check
 
       - name: Run MySQL concurrency tests
-        run: php artisan test tests/Integration/ConcurrencySafetyTest.php
+        run: php artisan test tests/Integration/ConcurrencySafetyTest.php --fail-on-skipped

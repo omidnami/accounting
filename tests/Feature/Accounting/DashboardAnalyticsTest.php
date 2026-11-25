@@ -7,8 +7,10 @@ use App\Models\Account;
 use App\Models\Check;
 use App\Models\Customer;
 use App\Models\FiscalYear;
+use App\Models\InventoryAlert;
 use App\Models\Party;
 use App\Models\Product;
+use App\Models\ProductBatch;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\Accounting\FiscalYearSetupService;
@@ -58,6 +60,19 @@ function dashboardAnalyticsContext(): array
         'is_active' => true,
     ]);
     $date = today()->toDateString();
+    $batch = ProductBatch::query()->create([
+        'product_id' => $product->id,
+        'batch_number' => 'DASHBOARD-BATCH',
+        'expiry_date' => today()->addDays(5)->toDateString(),
+    ]);
+    InventoryAlert::query()->create([
+        'store_id' => $store->id,
+        'branch_id' => $branch->id,
+        'product_batch_id' => $batch->id,
+        'type' => 'expiry',
+        'severity' => 'warning',
+        'message' => 'نزدیک به انقضا',
+    ]);
     app(InventoryService::class)->receive(
         warehouseId: $warehouse->id,
         productId: $product->id,
@@ -215,6 +230,7 @@ it('shows real financial metrics to managers and accountants', function (UserRol
             ->where('dashboard.metrics.pending_checks_amount', '300.00')
             ->where('dashboard.metrics.net_profit', $expectedProfit)
             ->where('dashboard.low_stock.count', 1)
+            ->where('dashboard.expiry_alerts.count', 1)
             ->has('dashboard.trend', 7)
             ->has('dashboard.monthly_trend', 6)
             ->where(
@@ -241,6 +257,8 @@ it('limits cashier dashboard data to sales', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->where('dashboard.mode', 'sales')
             ->where('dashboard.metrics.sales_today', $context['invoice']->total)
+            ->where('dashboard.expiry_alerts.count', 0)
+            ->where('dashboard.expiry_alerts.items', [])
             ->missing('dashboard.metrics.cash_balance')
             ->missing('dashboard.metrics.payables')
             ->missing('dashboard.metrics.receivables'));
@@ -257,6 +275,7 @@ it('shows only inventory signals to warehouse users', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->where('dashboard.mode', 'inventory')
             ->where('dashboard.low_stock.count', 1)
+            ->where('dashboard.expiry_alerts.count', 1)
             ->where('dashboard.metrics', [])
             ->where('dashboard.recent_activity', []));
 });
@@ -272,5 +291,7 @@ it('hides analytics from viewer accounts', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->where('dashboard.mode', 'limited')
             ->where('dashboard.metrics', [])
+            ->where('dashboard.expiry_alerts.count', 0)
+            ->where('dashboard.expiry_alerts.items', [])
             ->where('dashboard.low_stock.count', 0));
 });

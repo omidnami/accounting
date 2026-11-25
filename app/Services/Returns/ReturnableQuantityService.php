@@ -52,34 +52,79 @@ class ReturnableQuantityService
         return $this->stateFor($originalItem, $returnType)['remaining_quantity'];
     }
 
+    /**
+     * Allocate a rounded monetary amount against cumulative returned quantity.
+     *
+     * The target is rounded from the original amount and the cumulative
+     * quantity, then the amount already allocated is subtracted. This prevents
+     * repeated partial returns from each rounding the same residual upward.
+     */
     public function allocateMoney(
         string|int|float $originalAmount,
         string|int|float $alreadyAllocated,
         string|int|float $requestedQuantity,
+        string|int|float $alreadyReturnedQuantity,
         string|int|float $originalQuantity,
         bool $isFinal,
     ): string {
-        if ($isFinal) {
-            $remaining = Decimal::subtract(
-                $originalAmount,
-                $alreadyAllocated,
-                Decimal::MONEY_SCALE,
-            );
+        $originalAmount = Decimal::normalize($originalAmount, Decimal::MONEY_SCALE);
+        $alreadyAllocated = Decimal::normalize($alreadyAllocated, Decimal::MONEY_SCALE);
+        $remainingAmount = Decimal::subtract(
+            $originalAmount,
+            $alreadyAllocated,
+            Decimal::MONEY_SCALE,
+        );
 
-            return Decimal::compare($remaining, '0', Decimal::MONEY_SCALE) > 0
-                ? $remaining
-                : '0.00';
+        if (Decimal::compare($remainingAmount, '0', Decimal::MONEY_SCALE) < 0) {
+            throw new DomainException('مبلغ تخصیص‌یافتهٔ برگشت از مبلغ اصل بیشتر است.');
         }
 
-        return Decimal::divide(
+        if ($isFinal) {
+            return $remainingAmount;
+        }
+
+        if (Decimal::compare($originalQuantity, '0', Decimal::QUANTITY_SCALE) <= 0
+            || Decimal::compare($requestedQuantity, '0', Decimal::QUANTITY_SCALE) <= 0
+            || Decimal::compare($alreadyReturnedQuantity, '0', Decimal::QUANTITY_SCALE) < 0) {
+            throw new DomainException('مقدار تخصیص مالی برگشت نامعتبر است.');
+        }
+
+        $cumulativeQuantity = Decimal::add(
+            $alreadyReturnedQuantity,
+            $requestedQuantity,
+            Decimal::QUANTITY_SCALE,
+        );
+
+        if (Decimal::compare(
+            $cumulativeQuantity,
+            $originalQuantity,
+            Decimal::QUANTITY_SCALE,
+        ) > 0) {
+            throw new DomainException('مقدار تجمعی برگشت از مقدار اصل بیشتر است.');
+        }
+
+        $cumulativeTarget = Decimal::divide(
             Decimal::multiply(
                 $originalAmount,
-                $requestedQuantity,
+                $cumulativeQuantity,
                 Decimal::UNIT_COST_SCALE,
             ),
             $originalQuantity,
             Decimal::MONEY_SCALE,
         );
+        $allocation = Decimal::subtract(
+            $cumulativeTarget,
+            $alreadyAllocated,
+            Decimal::MONEY_SCALE,
+        );
+
+        if (Decimal::compare($allocation, '0', Decimal::MONEY_SCALE) < 0) {
+            throw new DomainException('تخصیص مالی برگشت با مقادیر قبلی سازگار نیست.');
+        }
+
+        return Decimal::compare($allocation, $remainingAmount, Decimal::MONEY_SCALE) > 0
+            ? $remainingAmount
+            : $allocation;
     }
 
     /**

@@ -387,6 +387,26 @@ class InventoryService
         array $batchAllocations,
         array $serialIds,
     ): void {
+        $normalizedSerialNumbers = [];
+        $seenSerialNumbers = [];
+
+        foreach ($serialNumbers as $serialNumber) {
+            $serialNumber = trim((string) $serialNumber);
+
+            if ($serialNumber === '') {
+                throw new DomainException('شماره سریال نمی‌تواند خالی باشد.');
+            }
+
+            if (isset($seenSerialNumbers[$serialNumber])) {
+                throw new DomainException("سریال {$serialNumber} تکراری است.");
+            }
+
+            $seenSerialNumbers[$serialNumber] = true;
+            $normalizedSerialNumbers[] = $serialNumber;
+        }
+
+        $serialNumbers = $normalizedSerialNumbers;
+
         if (! $product->track_batches && ! $product->track_serials) {
             if ($batchId !== null || $serialNumbers !== [] || $serialIds !== []) {
                 throw new DomainException('کالای بدون ردیابی سری ساخت یا سریال نمی‌پذیرد.');

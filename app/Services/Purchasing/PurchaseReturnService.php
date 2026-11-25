@@ -191,6 +191,7 @@ class PurchaseReturnService
                         $originalItem->discount_amount,
                         $state['returned_discount'],
                         $quantity,
+                        $state['returned_quantity'],
                         $originalItem->quantity,
                         $isFinal,
                     );
@@ -199,6 +200,7 @@ class PurchaseReturnService
                         $originalItem->tax_amount,
                         $state['returned_tax'],
                         $quantity,
+                        $state['returned_quantity'],
                         $originalItem->quantity,
                         $isFinal,
                     );
@@ -352,6 +354,7 @@ class PurchaseReturnService
                     $originalItem->discount_amount,
                     $state['returned_discount'],
                     $quantity,
+                    $state['returned_quantity'],
                     $originalItem->quantity,
                     $isFinal,
                 );
@@ -359,6 +362,7 @@ class PurchaseReturnService
                     $originalItem->tax_amount,
                     $state['returned_tax'],
                     $quantity,
+                    $state['returned_quantity'],
                     $originalItem->quantity,
                     $isFinal,
                 );
@@ -546,6 +550,7 @@ class PurchaseReturnService
                     $originalItem->discount_amount,
                     $state['returned_discount'],
                     $item->quantity,
+                    $state['returned_quantity'],
                     $originalItem->quantity,
                     $isFinal,
                 );
@@ -553,6 +558,7 @@ class PurchaseReturnService
                     $originalItem->tax_amount,
                     $state['returned_tax'],
                     $item->quantity,
+                    $state['returned_quantity'],
                     $originalItem->quantity,
                     $isFinal,
                 );

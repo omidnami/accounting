@@ -19,6 +19,7 @@ use App\Models\TreasuryAccount;
 use App\Services\Branches\BranchContextService;
 use App\Services\Sales\CustomerReceiptService;
 use App\Services\Sales\CustomerReceivableService;
+use App\Support\BusinessClock;
 use App\Support\Digits;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
@@ -100,8 +101,11 @@ class CustomerReceiptController extends Controller
         ]);
     }
 
-    public function create(Request $request, CustomerReceivableService $receivables): Response
-    {
+    public function create(
+        Request $request,
+        CustomerReceivableService $receivables,
+        BusinessClock $clock,
+    ): Response {
         abort_unless($request->user()?->canManageReceipts(), 403);
 
         $store = $this->mainStore();
@@ -109,7 +113,10 @@ class CustomerReceiptController extends Controller
         $fiscalYear = $this->currentFiscalYear($store);
         $receiptDate = max(
             $fiscalYear->starts_on->toDateString(),
-            min($fiscalYear->ends_on->toDateString(), now()->toImmutable()->toDateString()),
+            min(
+                $fiscalYear->ends_on->toDateString(),
+                $clock->today($store)->toDateString(),
+            ),
         );
         $validated = $request->validate([
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],

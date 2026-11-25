@@ -286,7 +286,7 @@ it('registers a check idempotently and rejects a reused token with changed data'
     expect(Check::query()->count())->toBe(1);
 });
 
-it('allows the same external check number for different parties', function () {
+it('rejects the same external check identity even for a different party', function () {
     $context = treasuryCheckUiContext();
     $secondParty = Party::query()->create([
         'store_id' => $context['store']->id,
@@ -314,11 +314,9 @@ it('allows the same external check number for different parties', function () {
             'submission_token' => fake()->uuid(),
             'customer_id' => $secondCustomer->id,
         ]))
-        ->assertRedirect()
-        ->assertSessionHasNoErrors();
+        ->assertSessionHasErrors('check');
 
-    expect(Check::query()->count())->toBe(2)
-        ->and(Check::query()->pluck('document_number')->unique())->toHaveCount(2);
+    expect(Check::query()->count())->toBe(1);
 });
 
 it('links a pending customer check to a receipt and collects it once', function () {

@@ -16,6 +16,7 @@ use App\Services\Pos\PosCheckResolutionService;
 use App\Services\Pos\PosSessionService;
 use App\Services\Sales\CustomerReceivableService;
 use App\Services\Sales\SalesCheckoutLookupService;
+use App\Support\BusinessClock;
 use DomainException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,8 +27,11 @@ use Inertia\Response;
 
 class PosController extends Controller
 {
-    public function index(Request $request, PosSessionService $sessions): Response
-    {
+    public function index(
+        Request $request,
+        PosSessionService $sessions,
+        BusinessClock $clock,
+    ): Response {
         abort_unless($request->user()?->canManageSales(), 403);
         $store = Store::query()->where('code', 'MAIN')->firstOrFail();
         $branch = app(BranchContextService::class)->active($request->user(), $store);
@@ -35,7 +39,7 @@ class PosController extends Controller
 
         return Inertia::render('pos/Index', [
             'store_name' => $store->name,
-            'today' => today()->toDateString(),
+            'today' => $clock->today($store)->toDateString(),
             'session' => $session ? $this->sessionData($session, $sessions) : null,
             'warehouses' => $branch->warehouses()->where('is_active', true)->orderByDesc('is_default')->get(['id', 'name']),
             'treasury_accounts' => TreasuryAccount::query()->where('branch_id', $branch->id)

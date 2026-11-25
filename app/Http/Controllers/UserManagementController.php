@@ -122,6 +122,7 @@ class UserManagementController extends Controller
                 $user,
                 $this->userData($request->validated()),
                 $request->user(),
+                $request->session()->getId(),
             );
         } catch (DomainException $exception) {
             throw ValidationException::withMessages([

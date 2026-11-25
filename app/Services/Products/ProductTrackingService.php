@@ -16,6 +16,7 @@ use App\Services\Accounting\AccountingPeriodLockService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
 use App\Services\Inventory\InventoryService;
+use App\Support\BusinessClock;
 use App\Support\Decimal;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +28,7 @@ class ProductTrackingService
         private readonly PostingService $posting,
         private readonly SettingService $settings,
         private readonly AccountingPeriodLockService $periods,
+        private readonly BusinessClock $clock,
     ) {}
 
     /**
@@ -155,16 +157,17 @@ class ProductTrackingService
             }
 
             $warehouse = Warehouse::query()->findOrFail($locked->warehouse_id);
+            $today = $this->clock->today($warehouse->store_id);
             $context = $this->periods->lockCurrentOpenPeriod(
                 (int) $warehouse->store_id,
                 (int) $warehouse->branch_id,
-                today()->toDateString(),
+                $today->toDateString(),
             );
             $movement = $this->inventory->issue(
                 warehouseId: $warehouse->id,
                 productId: (int) $locked->product_id,
                 quantity: 1,
-                movementDate: today()->toDateString(),
+                movementDate: $today->toDateString(),
                 idempotencyKey: "serial-void:{$locked->id}",
                 movementType: InventoryMovementType::Adjustment,
                 source: $locked,
@@ -182,7 +185,7 @@ class ProductTrackingService
                         'fiscal_year_id' => $context['fiscal_year']->id,
                         'accounting_period_id' => $context['period']->id,
                         'entry_kind' => JournalEntryKind::System,
-                        'entry_date' => today()->toDateString(),
+                        'entry_date' => $today->toDateString(),
                         'description' => "ابطال سریال {$locked->serial_number}",
                         'source_type' => $locked->getMorphClass(),
                         'source_id' => $locked->id,

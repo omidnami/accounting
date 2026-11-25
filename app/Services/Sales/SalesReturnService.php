@@ -180,6 +180,7 @@ class SalesReturnService
                         $originalItem->discount_amount,
                         $state['returned_discount'],
                         $quantity,
+                        $state['returned_quantity'],
                         $originalItem->quantity,
                         $isFinal,
                     );
@@ -188,6 +189,7 @@ class SalesReturnService
                         $originalItem->tax_amount,
                         $state['returned_tax'],
                         $quantity,
+                        $state['returned_quantity'],
                         $originalItem->quantity,
                         $isFinal,
                     );
@@ -337,6 +339,7 @@ class SalesReturnService
                     $originalItem->discount_amount,
                     $state['returned_discount'],
                     $quantity,
+                    $state['returned_quantity'],
                     $originalItem->quantity,
                     $isFinal,
                 );
@@ -344,6 +347,7 @@ class SalesReturnService
                     $originalItem->tax_amount,
                     $state['returned_tax'],
                     $quantity,
+                    $state['returned_quantity'],
                     $originalItem->quantity,
                     $isFinal,
                 );
@@ -356,6 +360,7 @@ class SalesReturnService
                     $originalItem->total_cost_snapshot,
                     $state['returned_cost'],
                     $quantity,
+                    $state['returned_quantity'],
                     $originalItem->quantity,
                     $isFinal,
                 );
@@ -533,6 +538,7 @@ class SalesReturnService
                     $originalItem->discount_amount,
                     $state['returned_discount'],
                     $item->quantity,
+                    $state['returned_quantity'],
                     $originalItem->quantity,
                     $isFinal,
                 );
@@ -540,6 +546,7 @@ class SalesReturnService
                     $originalItem->tax_amount,
                     $state['returned_tax'],
                     $item->quantity,
+                    $state['returned_quantity'],
                     $originalItem->quantity,
                     $isFinal,
                 );
@@ -552,6 +559,7 @@ class SalesReturnService
                     $originalItem->total_cost_snapshot,
                     $state['returned_cost'],
                     $item->quantity,
+                    $state['returned_quantity'],
                     $originalItem->quantity,
                     $isFinal,
                 );

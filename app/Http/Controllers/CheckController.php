@@ -19,6 +19,7 @@ use App\Models\TreasuryAccount;
 use App\Services\Branches\BranchContextService;
 use App\Services\Treasury\CheckRegistrationService;
 use App\Services\Treasury\CheckSettlementService;
+use App\Support\BusinessClock;
 use App\Support\Digits;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
@@ -32,12 +33,13 @@ use Inertia\Response;
 
 class CheckController extends Controller
 {
-    public function index(Request $request): Response
+    public function index(Request $request, BusinessClock $clock): Response
     {
         abort_unless($request->user()?->canManageChecks(), 403);
 
         $store = $this->mainStore();
         $branch = $this->defaultBranch($store);
+        $today = $clock->today($store);
         $validated = $request->validate([
             'search' => ['nullable', 'string', 'max:100'],
             'type' => ['nullable', Rule::enum(CheckType::class)],
@@ -77,11 +79,11 @@ class CheckController extends Controller
             ->when($status !== null, fn (Builder $query) => $query->where('status', $status))
             ->when($dueState === 'overdue', fn (Builder $query) => $query
                 ->where('status', CheckStatus::Pending)
-                ->whereDate('due_date', '<', today()))
+                ->whereDate('due_date', '<', $today))
             ->when($dueState === 'due_soon', fn (Builder $query) => $query
                 ->where('status', CheckStatus::Pending)
-                ->whereDate('due_date', '>=', today())
-                ->whereDate('due_date', '<=', today()->addDays(7)))
+                ->whereDate('due_date', '>=', $today)
+                ->whereDate('due_date', '<=', $today->addDays(7)))
             ->orderBy('due_date')
             ->orderBy('id')
             ->paginate(15)
@@ -104,13 +106,13 @@ class CheckController extends Controller
                     ->sum('amount'),
                 'overdue' => (clone $base)
                     ->where('status', CheckStatus::Pending)
-                    ->whereDate('due_date', '<', today())
+                    ->whereDate('due_date', '<', $today)
                     ->count(),
             ],
         ]);
     }
 
-    public function create(Request $request): Response
+    public function create(Request $request, BusinessClock $clock): Response
     {
         abort_unless($request->user()?->canManageChecks(), 403);
 
@@ -169,8 +171,8 @@ class CheckController extends Controller
         return Inertia::render('checks/Create', [
             'defaults' => [
                 'type' => $type->value,
-                'issue_date' => today()->toDateString(),
-                'due_date' => today()->addDays(30)->toDateString(),
+                'issue_date' => $clock->today($store)->toDateString(),
+                'due_date' => $clock->today($store)->addDays(30)->toDateString(),
                 'submission_token' => (string) Str::uuid(),
             ],
             'initial_party' => $initialParty,
@@ -245,7 +247,7 @@ class CheckController extends Controller
         return to_route('checks.show', $check);
     }
 
-    public function show(Request $request, Check $check): Response
+    public function show(Request $request, Check $check, BusinessClock $clock): Response
     {
         abort_unless($request->user()?->canManageChecks(), 403);
         abort_unless(
@@ -317,7 +319,7 @@ class CheckController extends Controller
             ],
             'bank_accounts' => $this->bankAccounts($check->store_id, $check->branch_id),
             'defaults' => [
-                'action_date' => today()->toDateString(),
+                'action_date' => $clock->today($check->store_id)->toDateString(),
             ],
         ]);
     }

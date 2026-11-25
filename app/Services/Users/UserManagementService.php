@@ -4,12 +4,17 @@ namespace App\Services\Users;
 
 use App\Enums\UserRole;
 use App\Models\User;
+use App\Services\Security\SessionSecurityService;
 use DomainException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 class UserManagementService
 {
+    public function __construct(
+        private readonly SessionSecurityService $sessions,
+    ) {}
+
     /**
      * @param  array{
      *     name: string, email: string, role: string,
@@ -43,10 +48,14 @@ class UserManagementService
      *     password?: string|null, version: int
      * }  $data
      */
-    public function update(User $target, array $data, User $actor): User
-    {
+    public function update(
+        User $target,
+        array $data,
+        User $actor,
+        ?string $keepSessionId = null,
+    ): User {
         try {
-            return DB::transaction(function () use ($target, $data, $actor): User {
+            return DB::transaction(function () use ($target, $data, $actor, $keepSessionId): User {
                 $managers = User::query()
                     ->where('role', UserRole::Manager)
                     ->orderBy('id')
@@ -76,12 +85,17 @@ class UserManagementService
                 $locked->email = strtolower(trim($data['email']));
                 $locked->role = $newRole;
                 $locked->branch_id = null;
+                $passwordChanged = isset($data['password']) && $data['password'] !== '';
 
-                if (isset($data['password']) && $data['password'] !== '') {
+                if ($passwordChanged) {
                     $locked->password = $data['password'];
                 }
 
                 $locked->save();
+
+                if ($passwordChanged) {
+                    $this->sessions->revokeOtherSessions($locked, $keepSessionId);
+                }
 
                 return $locked->refresh();
             }, attempts: 3);

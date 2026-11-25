@@ -98,6 +98,23 @@ class SecurityTest extends TestCase
         $this->assertTrue(Hash::check('new-password', $user->refresh()->password));
     }
 
+    public function test_password_update_revokes_other_sessions_and_remember_token()
+    {
+        $user = User::factory()->create(['remember_token' => 'stolen-remember-token']);
+
+        $this
+            ->actingAs($user)
+            ->from(route('security.edit'))
+            ->put(route('user-password.update'), [
+                'current_password' => 'password',
+                'password' => 'new-password',
+                'password_confirmation' => 'new-password',
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertNotSame('stolen-remember-token', $user->refresh()->remember_token);
+    }
+
     public function test_correct_password_must_be_provided_to_update_password()
     {
         $user = User::factory()->create();

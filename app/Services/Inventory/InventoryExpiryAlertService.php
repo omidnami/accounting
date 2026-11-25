@@ -4,18 +4,21 @@ namespace App\Services\Inventory;
 
 use App\Models\InventoryAlert;
 use App\Models\InventoryBatchBalance;
+use App\Support\BusinessClock;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 class InventoryExpiryAlertService
 {
+    public function __construct(
+        private readonly BusinessClock $clock,
+    ) {}
+
     public function refresh(?CarbonImmutable $today = null): int
     {
-        $today ??= CarbonImmutable::today();
-        $expiringUntil = $today->addDays(30);
         $activeBatchIds = [];
 
-        return DB::transaction(function () use ($today, $expiringUntil, &$activeBatchIds): int {
+        return DB::transaction(function () use ($today, &$activeBatchIds): int {
             $balances = InventoryBatchBalance::query()
                 ->with(['batch.product', 'warehouse.branch'])
                 ->where('quantity', '>', 0)
@@ -30,7 +33,9 @@ class InventoryExpiryAlertService
                     continue;
                 }
 
-                $type = $batch->expiry_date->lt($today) ? 'expired' : 'expiring';
+                $storeToday = $today ?? $this->clock->today($balance->warehouse?->store_id);
+                $expiringUntil = $storeToday->addDays(30);
+                $type = $batch->expiry_date->lt($storeToday) ? 'expired' : 'expiring';
 
                 if ($type === 'expiring' && $batch->expiry_date->gt($expiringUntil)) {
                     continue;

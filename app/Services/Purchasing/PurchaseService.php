@@ -353,14 +353,16 @@ class PurchaseService
                 $batch = null;
 
                 if ($product->track_batches) {
-                    if (! $item->purchase_batch_number) {
+                    $batchNumber = trim((string) $item->purchase_batch_number);
+
+                    if ($batchNumber === '') {
                         throw new DomainException("برای کالای {$product->name} شماره سری ساخت الزامی است.");
                     }
 
                     $batch = ProductBatch::query()->firstOrCreate(
                         [
                             'product_id' => $product->id,
-                            'batch_number' => trim((string) $item->purchase_batch_number),
+                            'batch_number' => $batchNumber,
                         ],
                         [
                             'production_date' => null,
@@ -368,9 +370,10 @@ class PurchaseService
                         ],
                     );
 
-                    if ($batch->expiry_date !== null
-                        && $item->purchase_expiry_date !== null
-                        && ! $batch->expiry_date->equalTo($item->purchase_expiry_date)) {
+                    $incomingExpiry = $item->purchase_expiry_date?->toDateString();
+                    $existingExpiry = $batch->expiry_date?->toDateString();
+
+                    if ($existingExpiry !== $incomingExpiry) {
                         throw new DomainException("تاریخ انقضای سری ساخت {$batch->batch_number} با فاکتور سازگار نیست.");
                     }
                 } elseif ($item->purchase_batch_number !== null) {

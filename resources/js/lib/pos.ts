@@ -112,7 +112,9 @@ export async function posRequest<T>(
     return response.json() as Promise<T>;
 }
 
-// Integer arithmetic mirrors the server's per-line truncation (money: 2, quantity: 3).
+// Integer arithmetic mirrors the server's Decimal service: money is stored in
+// cents (scale 2) and every step rounds half away from zero, exactly like
+// app/Support/Decimal.php. Truncation here would reject valid POS totals.
 const fixed = (value: string, scale: number) => {
     const normalized = normalizeNumber(value).trim();
     if (!/^\d*(\.\d*)?$/.test(normalized)) return 0n;
@@ -122,11 +124,20 @@ const fixed = (value: string, scale: number) => {
         BigInt((fraction + '0'.repeat(scale)).slice(0, scale))
     );
 };
+const roundDiv = (value: bigint, divisor: bigint): bigint => {
+    if (value < 0n) return -roundDiv(-value, divisor);
+    return (value + divisor / 2n) / divisor;
+};
 export function lineAmounts(line: PosLine) {
-    const gross = (fixed(line.quantity, 3) * fixed(line.unit_price, 2)) / 1000n;
+    // quantity (3) x unit price (2) = scale 5, rounded to cents.
+    const gross = roundDiv(
+        fixed(line.quantity, 3) * fixed(line.unit_price, 2),
+        1000n,
+    );
     const discount = fixed(line.discount_amount, 2);
     const taxable = gross - discount;
-    const tax = (taxable * fixed(line.tax_rate, 2)) / 10000n;
+    // taxable (2) x tax rate (2) = scale 4, divided by 100 and rounded to cents.
+    const tax = roundDiv(taxable * fixed(line.tax_rate, 2), 10000n);
     return { gross, discount, tax, total: taxable + tax };
 }
 export const cents = (value: string) => fixed(value, 2);

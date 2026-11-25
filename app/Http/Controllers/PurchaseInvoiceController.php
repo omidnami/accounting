@@ -16,6 +16,7 @@ use App\Services\Invoices\InvoiceDeletionService;
 use App\Services\Purchasing\PurchaseReturnService;
 use App\Services\Purchasing\PurchaseService;
 use App\Services\Purchasing\SupplierPayableService;
+use App\Support\BusinessClock;
 use App\Support\Digits;
 use DomainException;
 use Illuminate\Database\Eloquent\Builder;
@@ -101,7 +102,7 @@ class PurchaseInvoiceController extends Controller
         ]);
     }
 
-    public function create(Request $request): Response
+    public function create(Request $request, BusinessClock $clock): Response
     {
         abort_unless($request->user()?->canManagePurchases(), 403);
 
@@ -110,7 +111,10 @@ class PurchaseInvoiceController extends Controller
         $fiscalYear = $this->currentFiscalYear($store);
         $invoiceDate = max(
             $fiscalYear->starts_on->toDateString(),
-            min($fiscalYear->ends_on->toDateString(), now()->toImmutable()->toDateString()),
+            min(
+                $fiscalYear->ends_on->toDateString(),
+                $clock->today($store)->toDateString(),
+            ),
         );
 
         return Inertia::render('purchases/Create', [
