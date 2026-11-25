@@ -47,6 +47,10 @@ SETUP_TOKEN=...
 BACKUP_PASSPHRASE=...
 BACKUP_RETENTION_DAYS=30
 BACKUP_ALERT_EMAIL=ops@example.com
+AUDIT_RETENTION_DAYS=365
+APP_TRUSTED_HOSTS=accounting.example.com
+TENANCY_ENABLED=false
+TENANCY_CENTRAL_DOMAINS=localhost,127.0.0.1
 ```
 
 پیش از انتشار:
@@ -75,9 +79,18 @@ php artisan queue:work --tries=3 --timeout=120
 
 زمان‌بندی‌های داخلی با منطقهٔ زمانی کسب‌وکار اجرا می‌شوند:
 
+- هر دقیقه `outbox:process`
 - `02:00` backup رمزنگاری‌شده
 - `03:00` بررسی تازگی backup
+- `04:00` روز اول ماه archive و prune Audit Log
 - `07:00` تازه‌سازی هشدارهای انقضا
+
+برای پردازش دستی outbox و archive:
+
+```bash
+php artisan outbox:process
+php artisan audit:archive --force
+```
 
 ## Backup و Restore
 
@@ -117,6 +130,15 @@ php artisan test tests/Integration/ConcurrencySafetyTest.php --fail-on-skipped
 CI فعلی MySQL، `pcntl`، audit وابستگی‌ها، PHPStan، Pint، TypeScript، build و
 تست‌های هم‌زمانی را پوشش می‌دهد. تست هم‌زمانی روی SQLite skip می‌شود و در CI با
 `--fail-on-skipped` نباید skip شود.
+
+## Tenancy و Moduleها
+
+در حالت نصب جداگانه، `TENANCY_ENABLED=false` کافی است. برای راست‌چین، tenant در
+Central DB ثبت می‌شود و resolver پیش از auth/session، connection دیتابیس و
+پیشوند cache/session و مسیر file/log را به tenant فعال تغییر می‌دهد.
+
+فقط ماژول‌های موجود در `config/modules.php` مجازند؛ ZIP/PHP ارسالی tenant اجرا
+نمی‌شود. lifecycle ماژول per-store در `store_modules` ذخیره می‌شود.
 
 ## Rollback انتشار
 

@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { normalizeNumber, parseNumber } from '@/lib/number';
+import { amountNumber, cents, grossCents, taxCents } from '@/lib/decimal';
 import lookups from '@/routes/sales/lookups';
 import { index as salesIndex, store as storeSale } from '@/routes/sales';
 
@@ -120,31 +121,37 @@ const fieldError = (key: string) =>
     (form.errors as Record<string, string>)[key];
 const lineError = (index: number, field: string) =>
     (form.errors as Record<string, string>)[`items.${index}.${field}`];
-const lineGross = (line: SaleLine) =>
-    parseNumber(line.quantity) * parseNumber(line.unit_price);
-const lineTax = (line: SaleLine) =>
-    Math.max(
-        0,
-        ((lineGross(line) - parseNumber(line.discount_amount)) *
-            parseNumber(line.tax_rate)) /
-            100,
-    );
+const lineGrossCents = (line: SaleLine) =>
+    grossCents(line.quantity, line.unit_price);
+const lineTaxableCents = (line: SaleLine) =>
+    lineGrossCents(line) - cents(line.discount_amount || '0');
+const lineTaxCents = (line: SaleLine) =>
+    lineTaxableCents(line) > 0n
+        ? taxCents(lineTaxableCents(line), line.tax_rate || '0')
+        : 0n;
+const lineGross = (line: SaleLine) => amountNumber(lineGrossCents(line));
+const lineTax = (line: SaleLine) => amountNumber(lineTaxCents(line));
 const lineTotal = (line: SaleLine) =>
-    Math.max(0, lineGross(line) - parseNumber(line.discount_amount)) +
-    lineTax(line);
-const totals = computed(() => {
-    const subtotal = form.items.reduce((sum, line) => sum + lineGross(line), 0);
-    const discount = form.items.reduce(
-        (sum, line) => sum + parseNumber(line.discount_amount),
-        0,
+    amountNumber(
+        (lineTaxableCents(line) > 0n ? lineTaxableCents(line) : 0n) +
+            lineTaxCents(line),
     );
-    const tax = form.items.reduce((sum, line) => sum + lineTax(line), 0);
+const totals = computed(() => {
+    const subtotal = form.items.reduce(
+        (sum, line) => sum + lineGrossCents(line),
+        0n,
+    );
+    const discount = form.items.reduce(
+        (sum, line) => sum + cents(line.discount_amount || '0'),
+        0n,
+    );
+    const tax = form.items.reduce((sum, line) => sum + lineTaxCents(line), 0n);
 
     return {
-        subtotal,
-        discount,
-        tax,
-        total: subtotal - discount + tax,
+        subtotal: amountNumber(subtotal),
+        discount: amountNumber(discount),
+        tax: amountNumber(tax),
+        total: amountNumber(subtotal - discount + tax),
     };
 });
 const invalidStockLine = computed(() =>

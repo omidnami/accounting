@@ -20,6 +20,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { normalizeNumber, parseNumber } from '@/lib/number';
+import { amountNumber, cents, grossCents, taxCents } from '@/lib/decimal';
 import lookups from '@/routes/purchases/lookups';
 import {
     create as createPurchase,
@@ -114,32 +115,42 @@ const money = new Intl.NumberFormat('fa-IR');
 const quantity = new Intl.NumberFormat('fa-IR', {
     maximumFractionDigits: 3,
 });
-const gross = (line: Line) =>
-    parseNumber(line.quantity) * parseNumber(line.unit_price);
-const tax = (line: Line) =>
-    ((gross(line) - parseNumber(line.discount_amount)) *
-        parseNumber(line.tax_rate)) /
-    100;
+const grossCentsValue = (line: Line) =>
+    grossCents(line.quantity, line.unit_price);
+const taxableCents = (line: Line) =>
+    grossCentsValue(line) - cents(line.discount_amount || '0');
+const taxCentsValue = (line: Line) =>
+    taxableCents(line) > 0n
+        ? taxCents(taxableCents(line), line.tax_rate || '0')
+        : 0n;
+const gross = (line: Line) => amountNumber(grossCentsValue(line));
+const tax = (line: Line) => amountNumber(taxCentsValue(line));
 const lineTotal = (line: Line) =>
-    gross(line) - parseNumber(line.discount_amount) + tax(line);
+    amountNumber(taxableCents(line) + taxCentsValue(line));
 const totals = computed(() => {
-    const subtotal = form.items.reduce((sum, line) => sum + gross(line), 0);
-    const discount = form.items.reduce(
-        (sum, line) => sum + parseNumber(line.discount_amount),
-        0,
+    const subtotal = form.items.reduce(
+        (sum, line) => sum + grossCentsValue(line),
+        0n,
     );
-    const taxTotal = form.items.reduce((sum, line) => sum + tax(line), 0);
+    const discount = form.items.reduce(
+        (sum, line) => sum + cents(line.discount_amount || '0'),
+        0n,
+    );
+    const taxTotal = form.items.reduce(
+        (sum, line) => sum + taxCentsValue(line),
+        0n,
+    );
     const additional = form.additional_costs.reduce(
-        (sum, cost) => sum + parseNumber(cost.amount),
-        0,
+        (sum, cost) => sum + cents(cost.amount || '0'),
+        0n,
     );
 
     return {
-        subtotal,
-        discount,
-        tax: taxTotal,
-        additional,
-        total: subtotal - discount + taxTotal + additional,
+        subtotal: amountNumber(subtotal),
+        discount: amountNumber(discount),
+        tax: amountNumber(taxTotal),
+        additional: amountNumber(additional),
+        total: amountNumber(subtotal - discount + taxTotal + additional),
     };
 });
 const fieldError = (key: string) =>

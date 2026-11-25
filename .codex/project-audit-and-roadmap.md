@@ -23,6 +23,47 @@
 
 این سند مجوز پیاده‌سازی نیست؛ فقط فهرست اولویت‌بندی‌شده است.
 
+## وضعیت اجرای اصلاحات — ۲۰۲۶-۱۱-۲۵
+
+اجرای درخواست‌شده برای بخش ۱ در کامیت‌های `3ce7364` تا `8e90b9c` انجام شد.
+علائم: ✅ اصلاح‌شده، 🟡 پایه‌گذاری/اصلاح جزئی، ⬜ باقی‌مانده.
+
+### P1
+
+- ✅ A01–A16، A19–A31 از نظر مسیرهای اصلی اصلاح یا پیاده‌سازی شدند.
+- 🟡 A17: resolver و ایزolation DB/cache/session/file/log اضافه شد؛ provisioning و
+  آزمون production راست‌چین هنوز کامل نیست.
+- 🟡 A18: قرارداد عمومی posting و catalog/registry/lifecycle ماژول اضافه شد؛
+  boot کامل providerها و UI مدیریت ماژول هنوز باقی است.
+- 🟡 A19: preflight، README و runbook اضافه شد؛ drill واقعی استقرار/rollback انجام
+  نشده است.
+- 🟡 A20: `pcntl` و fail-on-skip در CI فعال است؛ اجرای محلی MySQL/MariaDB به‌دلیل
+  دسترسی دیتابیس انجام نشد و باید در CI تأیید شود.
+
+### P2
+
+- ✅ B01، B03–B05، B07–B08، B10–B22، B24–B26، B28–B29، B31–B37، B40–B45.
+- 🟡 B02: lock order یکدست شد؛ retry اختصاصی deadlock هنوز اضافه نشده است.
+- 🟡 B06: اصلاح تاریخی مرجوعی با کالا/طرف‌حساب غیرفعال باز شد؛ همهٔ مسیرهای
+  دریافت/پرداخت تاریخی پوشش داده نشدند.
+- 🟡 B09: barcode-first شدن lookup اصلاح شد؛ cross-column uniqueness دیتابیس ندارد.
+- 🟡 B23: ابطال چک پیش از اتصال اضافه شد؛ ویرایش چک pending هنوز باقی است.
+- 🟡 B27: threshold آنلاین و idempotency صف چاپ اضافه شد؛ rotation/revocation UI ندارد.
+- 🟡 B30: پوشش تست افزایش یافت؛ همهٔ سرویس‌های بی‌تست اولیه پوشش کامل ندارند.
+- 🟡 B33: hash مرجوعی‌ها اصلاح شد؛ canonical hash سراسری هنوز یکپارچه نشده است.
+- 🟡 B38: code/type/store طرف‌حساب قفل شد؛ snapshot کامل هویت حقوقی در همهٔ اسناد نه.
+- 🟡 B39: tracking rows append-only و مثبت شدند؛ کنترل جمع دقیق allocationها نه.
+- ⬜ B19: XLSX و چند گزارش همچنان داده را در RAM می‌خوانند.
+- ⬜ B46: گزارش دفتر کل و جریان نقد هنوز اضافه نشده است.
+
+### شواهد اجرایی جدید
+
+- `php artisan test --exclude-testsuite=Integration`: ۴۱۰ تست موفق، ۳۱۸۵ assertion.
+- Pint، PHPStan، TypeScript، POS/calendar tests و build موفق.
+- `composer audit --locked` و `npm audit --omit=dev`: بدون advisory.
+- `composer ci:check` سبز است.
+- تست‌های هم‌زمانی MySQL/MariaDB فقط در CI قابل تأیید نهایی هستند.
+
 ---
 
 ## خلاصهٔ اجرایی
