@@ -9,6 +9,13 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+Schedule::command('outbox:process')
+    ->everyMinute()
+    ->timezone(config('app.business_timezone', 'Asia/Tehran'))
+    ->withoutOverlapping()
+    ->onFailure(function (): void {
+        Log::critical('Domain event outbox processing reported failures.');
+    });
 Schedule::command('backup:run')
     ->dailyAt('02:00')
     ->timezone(config('app.business_timezone', 'Asia/Tehran'))

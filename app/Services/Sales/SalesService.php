@@ -13,11 +13,11 @@ use App\Models\Product;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\Accounting\AccountingPeriodLockService;
+use App\Services\Accounting\Contracts\PostingAuthorizationContext;
 use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
 use App\Services\Inventory\InventoryService;
-use App\Services\Pos\PosPostingContext;
 use App\Support\Decimal;
 use DomainException;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -198,7 +198,7 @@ class SalesService
         }
     }
 
-    public function confirm(Invoice $invoice, int $warehouseId, User $approver, ?PosPostingContext $posContext = null): Invoice
+    public function confirm(Invoice $invoice, int $warehouseId, User $approver, ?PostingAuthorizationContext $posContext = null): Invoice
     {
         return DB::transaction(function () use ($invoice, $warehouseId, $approver, $posContext): Invoice {
             $locked = Invoice::query()

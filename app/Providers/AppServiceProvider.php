@@ -4,6 +4,9 @@ namespace App\Providers;
 
 use App\Listeners\SecurityAuditListener;
 use App\Observers\AuditObserver;
+use App\Services\Accounting\CorePeriodCloseBlocker;
+use App\Services\Accounting\PeriodCloseBlockerRegistry;
+use App\Tenancy\TenantContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Auth\Events\Failed;
 use Illuminate\Auth\Events\Login;
@@ -44,6 +47,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
         $this->registerAuditObservers();
         $this->registerSecurityAuditListener();
+        $this->registerPeriodCloseBlockers();
     }
 
     /**
@@ -66,6 +70,13 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    private function registerPeriodCloseBlockers(): void
+    {
+        $this->app->singleton(TenantContext::class);
+        $this->app->singleton(PeriodCloseBlockerRegistry::class);
+        app(PeriodCloseBlockerRegistry::class)->register(app(CorePeriodCloseBlocker::class));
     }
 
     private function registerSecurityAuditListener(): void

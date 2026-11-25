@@ -16,15 +16,14 @@ use App\Models\Check;
 use App\Models\Customer;
 use App\Models\FiscalYear;
 use App\Models\Invoice;
-use App\Models\PosTender;
 use App\Models\Receipt;
 use App\Models\ReceiptAllocation;
 use App\Models\TreasuryAccount;
 use App\Models\User;
+use App\Services\Accounting\Contracts\PostingAuthorizationContext;
 use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
-use App\Services\Pos\PosPostingContext;
 use App\Support\Decimal;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -55,7 +54,7 @@ class CustomerReceiptService
         ?int $checkId = null,
         ?string $reference = null,
         ?string $description = null,
-        ?PosPostingContext $posContext = null,
+        ?PostingAuthorizationContext $posContext = null,
         ?int $posTenderId = null,
     ): Receipt {
         if ($allocations === []) {
@@ -256,16 +255,7 @@ class CustomerReceiptService
                 ]);
             }
 
-            if ($posContext !== null) {
-                $tender = PosTender::query()->whereKey($posTenderId)
-                    ->where('pos_sale_id', $posContext->saleId)->lockForUpdate()->firstOrFail();
-                if ($tender->method !== $paymentMethod->value
-                    || Decimal::compare($tender->amount, $amountTotal, 2) !== 0
-                    || $tender->receipt_id !== null) {
-                    throw new DomainException('پرداخت صندوق با دریافت سازگار نیست.');
-                }
-                $tender->update(['receipt_id' => $receipt->id]);
-            }
+            $posContext?->prepareTreasuryDocument($receipt, $approver, $posTenderId);
 
             $this->posting->post(
                 [

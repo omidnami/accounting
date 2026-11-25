@@ -11,7 +11,7 @@ use App\Models\AccountingPeriod;
 use App\Models\FiscalYear;
 use App\Models\JournalEntry;
 use App\Models\User;
-use App\Services\Pos\PosPostingContext;
+use App\Services\Accounting\Contracts\PostingAuthorizationContext;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
@@ -59,7 +59,7 @@ class PostingService
      * @param  array<string, mixed>  $attributes
      * @param  array<int, array<string, mixed>>  $lines
      */
-    public function post(array $attributes, array $lines, User $approver, ?PosPostingContext $posContext = null): JournalEntry
+    public function post(array $attributes, array $lines, User $approver, ?PostingAuthorizationContext $posContext = null): JournalEntry
     {
         return DB::transaction(function () use ($attributes, $lines, $approver, $posContext): JournalEntry {
             $entry = $this->createDraft($attributes, $lines);
@@ -68,7 +68,7 @@ class PostingService
         });
     }
 
-    public function approveAndPost(JournalEntry $entry, User $approver, ?PosPostingContext $posContext = null): JournalEntry
+    public function approveAndPost(JournalEntry $entry, User $approver, ?PostingAuthorizationContext $posContext = null): JournalEntry
     {
         if (! $approver->canApproveJournalEntries() && ! $posContext?->allows($entry, $approver)) {
             throw new AuthorizationException('تأیید و ثبت سند فقط برای مدیر و حسابدار مجاز است.');

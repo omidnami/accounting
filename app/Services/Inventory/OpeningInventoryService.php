@@ -19,6 +19,7 @@ use App\Services\Accounting\AccountingPeriodLockService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
 use App\Services\Audit\AuditLogService;
+use App\Services\Events\DomainEventService;
 use App\Support\Decimal;
 use Carbon\CarbonImmutable;
 use DomainException;
@@ -33,6 +34,7 @@ class OpeningInventoryService
         private readonly SettingService $settings,
         private readonly AccountingPeriodLockService $periods,
         private readonly AuditLogService $audit,
+        private readonly DomainEventService $events,
     ) {}
 
     /**
@@ -203,6 +205,10 @@ class OpeningInventoryService
                     'journal_entry_id' => $entry->id,
                 ])->save();
                 $this->audit->record('inventory_opening_posted', $opening);
+                $this->events->record('inventory.opened', $opening, [
+                    'opening_id' => $opening->id,
+                    'total_cost' => $opening->total_cost,
+                ]);
 
                 return $opening->refresh()->load(['items.product', 'journalEntry']);
             }, attempts: 3);

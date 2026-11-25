@@ -13,6 +13,7 @@ use App\Services\Accounting\AccountingPeriodLockService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
 use App\Services\Audit\AuditLogService;
+use App\Services\Events\DomainEventService;
 use App\Support\Decimal;
 use Carbon\CarbonImmutable;
 use DomainException;
@@ -26,6 +27,7 @@ class ReturnRefundService
         private readonly SettingService $settings,
         private readonly AccountingPeriodLockService $periods,
         private readonly AuditLogService $audit,
+        private readonly DomainEventService $events,
     ) {}
 
     public function refund(
@@ -185,6 +187,12 @@ class ReturnRefundService
                 );
                 $refund->forceFill(['status' => 'posted', 'journal_entry_id' => $entry->id])->save();
                 $this->audit->record('return_refund_posted', $refund);
+                $this->events->record('return.refunded', $refund, [
+                    'refund_id' => $refund->id,
+                    'source_invoice_id' => $refund->source_invoice_id,
+                    'amount' => $refund->amount,
+                    'direction' => $refund->direction,
+                ]);
 
                 return $refund->refresh()->load('journalEntry');
             }, attempts: 3);
