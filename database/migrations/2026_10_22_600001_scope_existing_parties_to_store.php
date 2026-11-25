@@ -43,6 +43,10 @@ return new class extends Migration
             return;
         }
 
+        if (DB::table('parties')->exists()) {
+            throw new RuntimeException('Rollback blocked: party store ownership cannot be removed while parties exist.');
+        }
+
         Schema::table('parties', function (Blueprint $table) {
             $table->dropUnique(['store_id', 'code']);
             $table->dropConstrainedForeignId('store_id');

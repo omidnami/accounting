@@ -140,6 +140,90 @@ it('updates user role and password with version protection and audit trail', fun
     expect($target->refresh()->role)->toBe(UserRole::Cashier);
 });
 
+it('deactivates a user, revokes credentials and blocks existing sessions', function () {
+    $manager = userManagementUser(UserRole::Manager);
+    $target = User::factory()->create([
+        'role' => UserRole::Viewer,
+        'remember_token' => 'stolen-token',
+    ]);
+
+    $this->actingAs($manager)
+        ->put(route('users.update', $target), userManagementPayload([
+            'name' => $target->name,
+            'email' => $target->email,
+            'role' => 'viewer',
+            'password' => '',
+            'password_confirmation' => '',
+            'is_active' => false,
+            'version' => $target->version,
+        ]))
+        ->assertRedirect(route('users.index'))
+        ->assertSessionHasNoErrors();
+
+    expect($target->refresh()->is_active)->toBeFalse()
+        ->and($target->remember_token)->not->toBe('stolen-token');
+
+    $this->post(route('logout'));
+    $this->post(route('login.store'), [
+        'email' => $target->email,
+        'password' => 'password',
+    ]);
+    $this->assertGuest();
+
+    $this->actingAs($target)->get(route('dashboard'))->assertRedirect(route('login'));
+    $this->assertGuest();
+});
+
+it('prevents managers from deactivating themselves', function () {
+    $manager = userManagementUser(UserRole::Manager);
+
+    $this->actingAs($manager)
+        ->put(route('users.update', $manager), userManagementPayload([
+            'name' => $manager->name,
+            'email' => $manager->email,
+            'role' => 'manager',
+            'password' => '',
+            'password_confirmation' => '',
+            'is_active' => false,
+            'version' => $manager->version,
+        ]))
+        ->assertSessionHasErrors('user');
+
+    expect($manager->refresh()->is_active)->toBeTrue();
+});
+
+it('allows an administrator to reset two-factor authentication with an audit event', function () {
+    $manager = userManagementUser(UserRole::Manager);
+    $target = userManagementUser(UserRole::Accountant);
+    $target->forceFill([
+        'two_factor_secret' => 'encrypted-secret',
+        'two_factor_recovery_codes' => 'encrypted-recovery-codes',
+        'two_factor_confirmed_at' => now(),
+    ])->save();
+
+    $this->actingAs($manager)
+        ->put(route('users.update', $target), userManagementPayload([
+            'name' => $target->name,
+            'email' => $target->email,
+            'role' => 'accountant',
+            'password' => '',
+            'password_confirmation' => '',
+            'reset_two_factor' => true,
+            'version' => $target->version,
+        ]))
+        ->assertRedirect(route('users.index'))
+        ->assertSessionHasNoErrors();
+
+    expect($target->refresh()->two_factor_secret)->toBeNull()
+        ->and($target->two_factor_recovery_codes)->toBeNull()
+        ->and($target->two_factor_confirmed_at)->toBeNull()
+        ->and(AuditLog::query()
+            ->where('auditable_type', User::class)
+            ->where('auditable_id', $target->id)
+            ->where('event', 'two_factor_reset')
+            ->exists())->toBeTrue();
+});
+
 it('prevents a manager from changing their own role', function () {
     $manager = userManagementUser(UserRole::Manager);
 

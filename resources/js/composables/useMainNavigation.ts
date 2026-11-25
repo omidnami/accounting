@@ -14,6 +14,7 @@ import {
 import { computed } from 'vue';
 import { dashboard } from '@/routes';
 import { index as auditLogs } from '@/routes/audit-logs';
+import { index as accounts } from '@/routes/accounts';
 import { index as checks } from '@/routes/checks';
 import { index as fiscalYears } from '@/routes/fiscal-years';
 import { cardex as inventoryCardex } from '@/routes/inventory';
@@ -155,6 +156,10 @@ export function useMainNavigation(
                     title: 'حسابداری',
                     icon: BookOpen,
                     children: [
+                        {
+                            title: 'درخت حساب',
+                            href: accounts(),
+                        },
                         {
                             title: 'اسناد دستی',
                             href: journals(),

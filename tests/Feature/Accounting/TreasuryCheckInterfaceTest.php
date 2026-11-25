@@ -19,6 +19,7 @@ use App\Services\Accounting\FiscalYearSetupService;
 use App\Services\Accounting\JalaliDateService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Purchasing\PurchaseService;
+use App\Services\Reporting\AgingReportService;
 use App\Services\Sales\SalesService;
 use Carbon\CarbonImmutable;
 use Database\Seeders\AccountSeeder;
@@ -477,6 +478,56 @@ it('rolls back a failed settlement and supports a controlled bounce', function (
                 ->toDateString(),
         ])
         ->assertSessionHasErrors('check');
+});
+
+it('reconstructs receivables and payables aging before and after a check bounce', function () {
+    $context = treasuryCheckUiContext();
+    $bounceDate = CarbonImmutable::parse($context['date'])->addDay()->toDateString();
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), treasuryCheckPayload($context))
+        ->assertRedirect();
+    $receivableCheck = Check::query()->where('type', CheckType::Receivable)->firstOrFail();
+    $this->actingAs($context['user'])
+        ->post(route('receipts.store'), treasuryCheckReceiptPayload($context, $receivableCheck))
+        ->assertRedirect();
+    $this->actingAs($context['user'])
+        ->post(route('checks.bounce', $receivableCheck), ['bounce_date' => $bounceDate])
+        ->assertRedirect();
+
+    $aging = app(AgingReportService::class);
+    expect($aging->receivables(
+        $context['store']->id,
+        $context['date'],
+        $context['branch']->id,
+    )['total'])->toBe('340.00')
+        ->and($aging->receivables(
+            $context['store']->id,
+            $bounceDate,
+            $context['branch']->id,
+        )['total'])->toBe('440.00');
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), treasuryCheckPayload($context, CheckType::Payable))
+        ->assertRedirect();
+    $payableCheck = Check::query()->where('type', CheckType::Payable)->firstOrFail();
+    $this->actingAs($context['user'])
+        ->post(route('payments.store'), treasuryCheckPaymentPayload($context, $payableCheck))
+        ->assertRedirect();
+    $this->actingAs($context['user'])
+        ->post(route('checks.bounce', $payableCheck), ['bounce_date' => $bounceDate])
+        ->assertRedirect();
+
+    expect($aging->payables(
+        $context['store']->id,
+        $context['date'],
+        $context['branch']->id,
+    )['total'])->toBe('340.00')
+        ->and($aging->payables(
+            $context['store']->id,
+            $bounceDate,
+            $context['branch']->id,
+        )['total'])->toBe('440.00');
 });
 
 it('returns a validation error when settlement date has no fiscal period', function () {

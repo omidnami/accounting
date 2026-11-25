@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\JournalEntryKind;
 use App\Enums\JournalEntryStatus;
 use App\Support\Decimal;
 use DomainException;
@@ -72,9 +73,10 @@ class JournalEntryLine extends Model
 
             $account = Account::query()->find($line->account_id);
             $historicalReversal = $entry?->isHistoricalReversal() ?? false;
+            $closingEntry = $entry?->entry_kind === JournalEntryKind::Closing;
 
-            if (! $account || (! $account->is_active && ! $historicalReversal)) {
-                throw new DomainException('ردیف سند باید به یک حساب فعال یا حساب سند معکوس تاریخی متصل باشد.');
+            if (! $account || (! $account->is_active && ! $historicalReversal && ! $closingEntry)) {
+                throw new DomainException('ردیف سند باید به یک حساب فعال یا حساب سند معکوس تاریخی یا اختتامیه متصل باشد.');
             }
 
             if ($account->isGeneral()) {

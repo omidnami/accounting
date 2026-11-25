@@ -10,6 +10,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response;
+use Laravel\Fortify\Events\PasswordUpdatedViaController;
 use Laravel\Fortify\Features;
 
 class SecurityController extends Controller
@@ -65,6 +66,7 @@ class SecurityController extends Controller
             $request->user(),
             $request->session()->getId(),
         );
+        PasswordUpdatedViaController::dispatch($request->user());
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Password updated.')]);
 

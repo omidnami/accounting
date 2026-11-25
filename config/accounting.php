@@ -31,6 +31,18 @@ return [
         'retained_earnings' => '3102',
     ],
 
+    'account_code_pattern' => '/^\d{4}$/',
+
+    'account_type_prefixes' => [
+        'asset' => '1',
+        'liability' => '2',
+        'equity' => '3',
+        'revenue' => '4',
+        'expense' => '5',
+    ],
+
+    'contra_account_codes' => ['4102', '4103'],
+
     'treasury_account_gl_codes' => [
         'cash' => '1101',
         'bank' => '1102',

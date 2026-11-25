@@ -226,6 +226,9 @@ it('closes temporary accounts to retained earnings and reverses the closing on r
         $manager,
     );
 
+    $sales->forceFill(['is_active' => false])->save();
+    $rent->forceFill(['is_active' => false])->save();
+
     $closingService = app(PeriodClosingService::class);
 
     foreach ($year->periods()->orderBy('period_number')->get() as $yearPeriod) {

@@ -103,6 +103,13 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::table('products')->exists()
+            || DB::table('product_serials')->exists()
+            || DB::table('product_batches')->exists()
+            || DB::table('product_price_histories')->exists()) {
+            throw new RuntimeException('Rollback blocked: catalog, batch, serial or price-history data would be lost.');
+        }
+
         Schema::dropIfExists('product_serials');
         Schema::dropIfExists('product_batches');
         Schema::dropIfExists('product_price_histories');

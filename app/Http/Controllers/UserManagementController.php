@@ -45,6 +45,7 @@ class UserManagementController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role->value,
+                'is_active' => $user->is_active,
                 'email_verified' => $user->email_verified_at !== null,
                 'created_at' => $user->created_at?->toDateTimeString(),
             ]);
@@ -106,6 +107,7 @@ class UserManagementController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'role' => $user->role->value,
+                'is_active' => $user->is_active,
                 'version' => $user->version,
                 'is_self' => (int) $user->id === (int) $request->user()->id,
             ],
@@ -142,17 +144,28 @@ class UserManagementController extends Controller
      * @param  array<string, mixed>  $data
      * @return array{
      *     name: string, email: string, role: string,
-     *     password: string, version: int
+     *     password: string, version: int,
+     *     is_active?: bool, reset_two_factor?: bool
      * }
      */
     private function userData(array $data): array
     {
-        return [
+        $user = [
             'name' => (string) $data['name'],
             'email' => (string) $data['email'],
             'role' => (string) $data['role'],
             'password' => (string) ($data['password'] ?? ''),
             'version' => (int) $data['version'],
         ];
+
+        if (array_key_exists('is_active', $data)) {
+            $user['is_active'] = (bool) $data['is_active'];
+        }
+
+        if (array_key_exists('reset_two_factor', $data)) {
+            $user['reset_two_factor'] = (bool) $data['reset_two_factor'];
+        }
+
+        return $user;
     }
 }

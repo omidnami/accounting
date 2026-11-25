@@ -77,6 +77,11 @@ class PasswordResetTest extends TestCase
 
             return true;
         });
+
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'auth.password_reset',
+            'auditable_id' => $user->id,
+        ]);
     }
 
     public function test_password_cannot_be_reset_with_invalid_token(): void

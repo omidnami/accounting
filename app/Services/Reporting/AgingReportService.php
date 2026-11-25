@@ -6,6 +6,8 @@ use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Enums\TreasuryDocumentStatus;
 use App\Models\Invoice;
+use App\Models\Payment;
+use App\Models\Receipt;
 use App\Support\Decimal;
 use App\Support\PaginationPayload;
 use App\Support\ReportDateRange;
@@ -31,7 +33,7 @@ class AgingReportService
             branchId: $branchId,
         )->with([
             'customer.party',
-            'receiptAllocations.receipt',
+            'receiptAllocations.receipt.check.bounceEntry',
             'childInvoices',
         ])->get();
 
@@ -42,8 +44,7 @@ class AgingReportService
                 $received = '0.00';
 
                 foreach ($invoice->receiptAllocations as $allocation) {
-                    if ($allocation->receipt?->status === TreasuryDocumentStatus::Confirmed
-                        && $allocation->receipt->receipt_date->toDateString() <= $asOf) {
+                    if ($this->wasConfirmedAt($allocation->receipt, $asOf)) {
                         $received = Decimal::add($received, $allocation->amount, 2);
                     }
                 }
@@ -85,7 +86,7 @@ class AgingReportService
             branchId: $branchId,
         )->with([
             'supplier.party',
-            'paymentAllocations.payment',
+            'paymentAllocations.payment.check.bounceEntry',
             'childInvoices',
         ])->get();
 
@@ -96,8 +97,7 @@ class AgingReportService
                 $paid = '0.00';
 
                 foreach ($invoice->paymentAllocations as $allocation) {
-                    if ($allocation->payment?->status === TreasuryDocumentStatus::Confirmed
-                        && $allocation->payment->payment_date->toDateString() <= $asOf) {
+                    if ($this->wasConfirmedAt($allocation->payment, $asOf)) {
                         $paid = Decimal::add($paid, $allocation->amount, 2);
                     }
                 }
@@ -194,6 +194,33 @@ class AgingReportService
             ->when($branchId !== null, fn ($query) => $query->where('branch_id', $branchId))
             ->orderBy('invoice_date')
             ->orderBy('id');
+    }
+
+    private function wasConfirmedAt(Receipt|Payment|null $document, string $asOf): bool
+    {
+        if ($document === null) {
+            return false;
+        }
+
+        $documentDate = $document instanceof Receipt
+            ? $document->receipt_date
+            : $document->payment_date;
+
+        if ($documentDate->toDateString() > $asOf) {
+            return false;
+        }
+
+        if ($document->status === TreasuryDocumentStatus::Confirmed) {
+            return true;
+        }
+
+        if ($document->status !== TreasuryDocumentStatus::Bounced) {
+            return false;
+        }
+
+        $bounceDate = $document->check?->bounceEntry?->entry_date?->toDateString();
+
+        return $bounceDate !== null && $bounceDate > $asOf;
     }
 
     /**

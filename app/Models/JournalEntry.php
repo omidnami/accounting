@@ -285,8 +285,10 @@ class JournalEntry extends Model
 
         foreach ($accounts as $account) {
             if ($account->isGeneral()
-                || (! $account->is_active && ! $this->isHistoricalReversal())) {
-                throw new DomainException('تمام حساب‌های سند باید معین باشند؛ حساب غیرفعال فقط در سند معکوس تاریخی مجاز است.');
+                || (! $account->is_active
+                    && ! $this->isHistoricalReversal()
+                    && $this->entry_kind !== JournalEntryKind::Closing)) {
+                throw new DomainException('تمام حساب‌های سند باید معین باشند؛ حساب غیرفعال فقط در سند معکوس تاریخی یا اختتامیه مجاز است.');
             }
 
             if ((int) $account->store_id !== (int) $this->store_id) {

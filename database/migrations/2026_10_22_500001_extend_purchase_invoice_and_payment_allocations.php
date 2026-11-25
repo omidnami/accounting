@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -71,6 +72,13 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::table('payment_allocations')->exists()
+            || DB::table('invoices')->where('type', 'purchase_return')->exists()
+            || DB::table('invoices')->whereIn('status', ['partially_paid', 'reversed'])->exists()
+            || DB::table('document_sequences')->where('document_type', 'purchase_return')->exists()) {
+            throw new RuntimeException('Rollback blocked: purchase returns, allocations or newer invoice statuses contain live data.');
+        }
+
         Schema::dropIfExists('payment_allocations');
 
         Schema::table('document_sequences', function (Blueprint $table) {

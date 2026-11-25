@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountController;
 use App\Http\Controllers\ActiveBranchController;
 use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\BranchManagementController;
@@ -138,6 +139,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('audit-logs/export', [AuditLogController::class, 'export'])
         ->name('audit-logs.export');
     Route::get('audit-logs', AuditLogController::class)->name('audit-logs.index');
+    Route::resource('accounts', AccountController::class)
+        ->parameters(['account' => 'account'])
+        ->except(['show', 'destroy']);
     Route::resource('users', UserManagementController::class)
         ->except(['show', 'destroy']);
     Route::resource('treasury-accounts', TreasuryAccountController::class)

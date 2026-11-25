@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -50,6 +51,13 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::table('treasury_accounts')->exists()
+            || DB::table('receipts')->where('status', 'bounced')->exists()
+            || DB::table('payments')->where('status', 'bounced')->exists()
+            || DB::table('checks')->whereIn('status', ['collected', 'spent', 'bounced'])->exists()) {
+            throw new RuntimeException('Rollback blocked: treasury accounts or settled/bounced checks contain live data.');
+        }
+
         Schema::table('checks', function (Blueprint $table) {
             $table->dropConstrainedForeignId('bounce_entry_id');
             $table->dropConstrainedForeignId('settlement_entry_id');

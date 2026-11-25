@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -55,6 +56,13 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::table('receipt_allocations')->exists()
+            || DB::table('invoices')->where('type', 'sales_return')->exists()
+            || DB::table('document_sequences')->where('document_type', 'sales_return')->exists()
+            || DB::table('invoice_items')->whereNotNull('total_cost_snapshot')->exists()) {
+            throw new RuntimeException('Rollback blocked: sales returns, receipt allocations or COGS snapshots contain live data.');
+        }
+
         Schema::dropIfExists('receipt_allocations');
 
         Schema::table('document_sequences', function (Blueprint $table) {

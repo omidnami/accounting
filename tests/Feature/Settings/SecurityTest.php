@@ -96,6 +96,10 @@ class SecurityTest extends TestCase
             ->assertRedirect(route('security.edit'));
 
         $this->assertTrue(Hash::check('new-password', $user->refresh()->password));
+        $this->assertDatabaseHas('audit_logs', [
+            'event' => 'auth.password_updated',
+            'auditable_id' => $user->id,
+        ]);
     }
 
     public function test_password_update_revokes_other_sessions_and_remember_token()

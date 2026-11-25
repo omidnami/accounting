@@ -38,6 +38,8 @@ class UserManagementRequest extends FormRequest
                 'confirmed',
                 $passwordRule,
             ],
+            'is_active' => ['sometimes', 'boolean'],
+            'reset_two_factor' => ['sometimes', 'boolean'],
             'version' => ['required', 'integer', 'min:0'],
         ];
     }

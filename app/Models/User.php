@@ -26,6 +26,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property string $password
  * @property UserRole $role
  * @property int|null $branch_id
+ * @property bool $is_active
  * @property int $version
  * @property string|null $two_factor_secret
  * @property string|null $two_factor_recovery_codes
@@ -34,7 +35,7 @@ use Laravel\Fortify\TwoFactorAuthenticatable;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'email', 'password', 'version', 'branch_id'])]
+#[Fillable(['name', 'email', 'password', 'version', 'branch_id', 'is_active'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
 {
@@ -44,7 +45,7 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
     protected static function booted(): void
     {
         static::updating(function (User $user): void {
-            $versioned = ['name', 'email', 'password', 'role', 'branch_id', 'email_verified_at'];
+            $versioned = ['name', 'email', 'password', 'role', 'branch_id', 'is_active', 'email_verified_at'];
 
             if (array_intersect($versioned, array_keys($user->getDirty())) !== []
                 && ! $user->isDirty('version')) {
@@ -64,6 +65,7 @@ class User extends Authenticatable implements MustVerifyEmail, PasskeyUser
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'role' => UserRole::class,
+            'is_active' => 'boolean',
             'version' => 'integer',
             'two_factor_confirmed_at' => 'datetime',
         ];

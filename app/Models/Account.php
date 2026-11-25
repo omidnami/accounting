@@ -116,6 +116,43 @@ class Account extends Model
     protected static function booted(): void
     {
         static::saving(function (Account $account): void {
+            $code = trim((string) $account->code);
+            $pattern = (string) config('accounting.account_code_pattern', '/^\d{4}$/');
+
+            if ($code === '' || preg_match($pattern, $code) !== 1) {
+                throw new DomainException('کد حساب باید طبق الگوی کدینگ تعریف‌شده باشد.');
+            }
+
+            $account->code = $code;
+            $prefix = config("accounting.account_type_prefixes.{$account->type->value}");
+
+            if (! is_string($prefix) || ! str_starts_with($code, $prefix)) {
+                throw new DomainException('پیشوند کد حساب با ماهیت حساب سازگار نیست.');
+            }
+
+            $expectedBalance = in_array($account->type, [
+                AccountType::Asset,
+                AccountType::Expense,
+            ], true) ? NormalBalance::Debit : NormalBalance::Credit;
+
+            if ($account->normal_balance !== $expectedBalance
+                && ! in_array($code, (array) config('accounting.contra_account_codes', []), true)) {
+                throw new DomainException('ماندهٔ طبیعی حساب با ماهیت آن سازگار نیست.');
+            }
+
+            if ($account->exists) {
+                if ($account->isDirty('store_id')) {
+                    throw new DomainException('فروشگاه حساب پس از ایجاد قابل تغییر نیست.');
+                }
+
+                $structuralChange = $account->isDirty(['code', 'type', 'parent_id', 'normal_balance']);
+
+                if ($structuralChange
+                    && ($account->journalEntryLines()->exists() || $account->children()->exists())) {
+                    throw new DomainException('ساختار حساب پس از استفاده یا داشتن زیرحساب قابل تغییر نیست.');
+                }
+            }
+
             if ($account->level === AccountLevel::General && $account->parent_id !== null) {
                 throw new DomainException('حساب کل نمی‌تواند حساب والد داشته باشد.');
             }

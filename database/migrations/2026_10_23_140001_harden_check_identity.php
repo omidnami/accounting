@@ -41,6 +41,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::table('checks')->exists()) {
+            throw new RuntimeException('Rollback blocked: internal check document numbers would be lost.');
+        }
+
         Schema::table('checks', function (Blueprint $table) {
             $table->dropUnique('checks_store_document_number_unique');
             $table->dropIndex('checks_external_number_index');

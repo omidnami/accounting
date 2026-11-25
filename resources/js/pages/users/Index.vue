@@ -26,6 +26,7 @@ type UserRow = {
     name: string;
     email: string;
     role: Role;
+    is_active: boolean;
     email_verified: boolean;
     created_at: string | null;
 };
@@ -244,13 +245,18 @@ defineOptions({
                                             {{ user.name }}
                                         </p>
                                         <p
-                                            class="mt-1 flex items-center gap-1 text-[9px] text-muted-foreground"
+                                            class="mt-1 flex items-center gap-1 text-[9px]"
+                                            :class="
+                                                user.is_active
+                                                    ? 'text-muted-foreground'
+                                                    : 'text-red-600 dark:text-red-400'
+                                            "
                                         >
                                             <ShieldCheck class="size-3" />
                                             {{
-                                                user.email_verified
-                                                    ? 'ایمیل تأییدشده'
-                                                    : 'ایمیل تأییدنشده'
+                                                user.is_active
+                                                    ? 'حساب فعال'
+                                                    : 'حساب غیرفعال'
                                             }}
                                         </p>
                                     </div>

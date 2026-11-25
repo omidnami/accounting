@@ -3,6 +3,7 @@ import { Head, Link, useForm } from '@inertiajs/vue3';
 import { ArrowRight, Mail, ShieldCheck, UserCog, UserPlus } from '@lucide/vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
@@ -20,6 +21,7 @@ const props = defineProps<{
         email: string;
         role: Role;
         version: number;
+        is_active: boolean;
         is_self: boolean;
     } | null;
 }>();
@@ -30,6 +32,8 @@ const form = useForm({
     role: props.user?.role ?? ('viewer' as Role),
     password: '',
     password_confirmation: '',
+    is_active: props.user?.is_active ?? true,
+    reset_two_factor: false,
     version: props.user?.version ?? 0,
 });
 const roles: Array<{
@@ -217,6 +221,48 @@ defineOptions({
                         نقش حساب کاربری خودتان قابل تغییر نیست.
                     </p>
                     <InputError :message="form.errors.role" />
+                </section>
+                <section class="rounded-2xl border bg-card p-5">
+                    <h2 class="mb-4 text-sm font-bold">وضعیت دسترسی</h2>
+                    <label class="flex items-start gap-3">
+                        <Checkbox
+                            v-model="form.is_active"
+                            class="mt-0.5"
+                            :disabled="user?.is_self"
+                        />
+                        <span>
+                            <span class="block text-xs font-bold">
+                                حساب کاربری فعال باشد
+                            </span>
+                            <span
+                                class="mt-1 block text-[10px] leading-5 text-muted-foreground"
+                            >
+                                غیرفعال‌کردن حساب، همه نشست‌ها و رمز مرا به خاطر
+                                بسپار را باطل می‌کند.
+                            </span>
+                        </span>
+                    </label>
+                    <label
+                        v-if="user"
+                        class="mt-4 flex items-start gap-3 border-t pt-4"
+                    >
+                        <Checkbox
+                            v-model="form.reset_two_factor"
+                            class="mt-0.5"
+                        />
+                        <span>
+                            <span class="block text-xs font-bold">
+                                بازنشانی ورود دو مرحله‌ای
+                            </span>
+                            <span
+                                class="mt-1 block text-[10px] leading-5 text-muted-foreground"
+                            >
+                                رمز و کدهای بازیابی فعلی حذف و نشست‌های دیگر
+                                باطل می‌شوند.
+                            </span>
+                        </span>
+                    </label>
+                    <InputError :message="fieldError('user')" />
                 </section>
             </div>
 
