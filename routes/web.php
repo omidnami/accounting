@@ -8,6 +8,7 @@ use App\Http\Controllers\CheckController;
 use App\Http\Controllers\CustomerReceiptController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FinancialReportsController;
+use App\Http\Controllers\FirstRunSetupController;
 use App\Http\Controllers\FiscalYearController;
 use App\Http\Controllers\InventoryAlertController;
 use App\Http\Controllers\InventoryCardexController;
@@ -33,9 +34,16 @@ use App\Http\Controllers\StockCountController;
 use App\Http\Controllers\SupplierPaymentController;
 use App\Http\Controllers\TreasuryAccountController;
 use App\Http\Controllers\UserManagementController;
+use App\Http\Middleware\EnsureFirstRunSetup;
 use Illuminate\Support\Facades\Route;
 
 Route::inertia('/', 'Welcome')->name('home');
+Route::get('setup', [FirstRunSetupController::class, 'index'])
+    ->middleware(EnsureFirstRunSetup::class)
+    ->name('setup.index');
+Route::post('setup', [FirstRunSetupController::class, 'store'])
+    ->middleware(['throttle:6,1', EnsureFirstRunSetup::class])
+    ->name('setup.store');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('pos', [PosController::class, 'index'])->name('pos.index');

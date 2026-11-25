@@ -80,6 +80,8 @@ return [
 
     'business_timezone' => env('BUSINESS_TIMEZONE', 'Asia/Tehran'),
 
+    'setup_token' => env('SETUP_TOKEN'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration
