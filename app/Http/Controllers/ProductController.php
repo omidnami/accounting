@@ -164,6 +164,7 @@ class ProductController extends Controller
                 'barcode' => $product->barcode,
                 'image_url' => $product->imageUrl(),
                 'name' => $product->name,
+                'item_type' => $product->item_type,
                 'category_id' => $product->category_id,
                 'parent_product_id' => $product->parent_product_id,
                 'variant_color' => $product->variant_color,

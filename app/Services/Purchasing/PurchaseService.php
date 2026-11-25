@@ -310,6 +310,7 @@ class PurchaseService
             }
 
             $inventoryTotal = '0.00';
+            $serviceTotal = '0.00';
             $taxTotal = '0.00';
             $additionalCostTotal = Decimal::normalize(
                 $lockedInvoice->additional_cost_total,
@@ -350,64 +351,77 @@ class PurchaseService
                     Decimal::UNIT_COST_SCALE,
                 );
 
-                $batch = null;
+                if ($product->isStockItem()) {
+                    $batch = null;
 
-                if ($product->track_batches) {
-                    $batchNumber = trim((string) $item->purchase_batch_number);
+                    if ($product->track_batches) {
+                        $batchNumber = trim((string) $item->purchase_batch_number);
 
-                    if ($batchNumber === '') {
-                        throw new DomainException("برای کالای {$product->name} شماره سری ساخت الزامی است.");
+                        if ($batchNumber === '') {
+                            throw new DomainException("برای کالای {$product->name} شماره سری ساخت الزامی است.");
+                        }
+
+                        $batch = ProductBatch::query()->firstOrCreate(
+                            [
+                                'product_id' => $product->id,
+                                'batch_number' => $batchNumber,
+                            ],
+                            [
+                                'production_date' => null,
+                                'expiry_date' => $item->purchase_expiry_date,
+                            ],
+                        );
+
+                        $incomingExpiry = $item->purchase_expiry_date?->toDateString();
+                        $existingExpiry = $batch->expiry_date?->toDateString();
+
+                        if ($existingExpiry !== $incomingExpiry) {
+                            throw new DomainException("تاریخ انقضای سری ساخت {$batch->batch_number} با فاکتور سازگار نیست.");
+                        }
+                    } elseif ($item->purchase_batch_number !== null) {
+                        throw new DomainException("برای کالای {$product->name} کنترل سری ساخت فعال نیست.");
                     }
 
-                    $batch = ProductBatch::query()->firstOrCreate(
-                        [
-                            'product_id' => $product->id,
-                            'batch_number' => $batchNumber,
-                        ],
-                        [
-                            'production_date' => null,
-                            'expiry_date' => $item->purchase_expiry_date,
-                        ],
+                    $serialNumbers = $item->purchase_serial_numbers ?? [];
+
+                    if ($product->track_serials) {
+                        if (count($serialNumbers) !== (int) round((float) $item->quantity)) {
+                            throw new DomainException("تعداد سریال‌های {$product->name} با مقدار خرید برابر نیست.");
+                        }
+                    } elseif ($serialNumbers !== []) {
+                        throw new DomainException("برای کالای {$product->name} کنترل سریال فعال نیست.");
+                    }
+
+                    $this->inventory->receive(
+                        warehouseId: $warehouseId,
+                        productId: $item->product_id,
+                        quantity: $item->quantity,
+                        unitCost: $unitCost,
+                        movementDate: $lockedInvoice->invoice_date->toDateString(),
+                        idempotencyKey: "purchase:{$lockedInvoice->id}:item:{$item->id}:warehouse:{$warehouseId}",
+                        movementType: InventoryMovementType::Purchase,
+                        source: $lockedInvoice,
+                        createdBy: $approver->id,
+                        reference: $lockedInvoice->invoice_number,
+                        description: 'ورود انبار از فاکتور خرید',
+                        exactTotalCost: $itemCost,
+                        productBatchId: $batch?->id,
+                        serialNumbers: $serialNumbers,
                     );
 
-                    $incomingExpiry = $item->purchase_expiry_date?->toDateString();
-                    $existingExpiry = $batch->expiry_date?->toDateString();
-
-                    if ($existingExpiry !== $incomingExpiry) {
-                        throw new DomainException("تاریخ انقضای سری ساخت {$batch->batch_number} با فاکتور سازگار نیست.");
+                    $inventoryTotal = Decimal::add($inventoryTotal, $itemCost, Decimal::MONEY_SCALE);
+                } else {
+                    if ($item->purchase_batch_number !== null || ($item->purchase_serial_numbers ?? []) !== []) {
+                        throw new DomainException('کالای غیرانباری و خدمت اطلاعات ردیابی انبار نمی‌پذیرند.');
                     }
-                } elseif ($item->purchase_batch_number !== null) {
-                    throw new DomainException("برای کالای {$product->name} کنترل سری ساخت فعال نیست.");
+
+                    $serviceTotal = Decimal::add($serviceTotal, $itemCost, Decimal::MONEY_SCALE);
                 }
 
-                $serialNumbers = $item->purchase_serial_numbers ?? [];
-
-                if ($product->track_serials) {
-                    if (count($serialNumbers) !== (int) round((float) $item->quantity)) {
-                        throw new DomainException("تعداد سریال‌های {$product->name} با مقدار خرید برابر نیست.");
-                    }
-                } elseif ($serialNumbers !== []) {
-                    throw new DomainException("برای کالای {$product->name} کنترل سریال فعال نیست.");
-                }
-
-                $this->inventory->receive(
-                    warehouseId: $warehouseId,
-                    productId: $item->product_id,
-                    quantity: $item->quantity,
-                    unitCost: $unitCost,
-                    movementDate: $lockedInvoice->invoice_date->toDateString(),
-                    idempotencyKey: "purchase:{$lockedInvoice->id}:item:{$item->id}:warehouse:{$warehouseId}",
-                    movementType: InventoryMovementType::Purchase,
-                    source: $lockedInvoice,
-                    createdBy: $approver->id,
-                    reference: $lockedInvoice->invoice_number,
-                    description: 'ورود انبار از فاکتور خرید',
-                    exactTotalCost: $itemCost,
-                    productBatchId: $batch?->id,
-                    serialNumbers: $serialNumbers,
-                );
-
-                $inventoryTotal = Decimal::add($inventoryTotal, $itemCost, Decimal::MONEY_SCALE);
+                $item->forceFill([
+                    'unit_cost_snapshot' => $unitCost,
+                    'total_cost_snapshot' => $itemCost,
+                ])->save();
                 $taxTotal = Decimal::add($taxTotal, $item->tax_amount, Decimal::MONEY_SCALE);
             }
 
@@ -415,14 +429,25 @@ class PurchaseService
                 $lockedInvoice->additional_cost_total,
                 Decimal::MONEY_SCALE,
             );
-            $lines = [
-                [
+            $lines = [];
+
+            if (Decimal::isPositive($inventoryTotal)) {
+                $lines[] = [
                     'account_id' => $this->settings->defaultAccountId('inventory', $lockedInvoice->store_id),
                     'debit' => $inventoryTotal,
                     'credit' => '0.00',
                     'description' => 'افزایش موجودی کالا و هزینه‌های خرید',
-                ],
-            ];
+                ];
+            }
+
+            if (Decimal::isPositive($serviceTotal)) {
+                $lines[] = [
+                    'account_id' => $this->settings->defaultAccountId('services_expense', $lockedInvoice->store_id),
+                    'debit' => $serviceTotal,
+                    'credit' => '0.00',
+                    'description' => 'هزینه خدمات و کالای غیرانباری',
+                ];
+            }
 
             if (Decimal::isPositive($taxTotal)) {
                 $lines[] = [

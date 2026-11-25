@@ -48,6 +48,7 @@ class ProductRequest extends FormRequest
                 Rule::unique('products', 'barcode')->ignore($product?->id),
             ],
             'name' => ['required', 'string', 'max:180'],
+            'item_type' => ['required', 'in:stock,non_stock,service'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048', 'dimensions:max_width=4096,max_height=4096'],
             'remove_image' => ['sometimes', 'boolean'],
             'unit' => ['required', 'string', 'max:30'],
@@ -78,6 +79,7 @@ class ProductRequest extends FormRequest
             'reorder_quantity' => '0',
             'max_stock' => null,
             'stock_policy' => 'simple',
+            'item_type' => 'stock',
             'track_batches' => false,
             'track_serials' => false,
         ]);

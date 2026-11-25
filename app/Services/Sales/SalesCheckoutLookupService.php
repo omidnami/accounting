@@ -99,6 +99,7 @@ class SalesCheckoutLookupService
                 'unit' => $product->unit,
                 'sale_price' => $product->sale_price,
                 'tax_rate' => $product->tax_rate,
+                'item_type' => $product->item_type,
                 'stock_quantity' => Decimal::normalize(
                     $product->getAttribute('stock_quantity') ?? 0,
                     Decimal::QUANTITY_SCALE,

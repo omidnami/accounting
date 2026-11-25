@@ -258,6 +258,14 @@ class AccountSeeder extends Seeder
                 'level' => AccountLevel::Subsidiary,
                 'normal_balance' => NormalBalance::Debit,
             ],
+            [
+                'code' => '5108',
+                'name' => 'هزینه خدمات و کالای غیرانباری',
+                'parent_code' => '5000',
+                'type' => AccountType::Expense,
+                'level' => AccountLevel::Subsidiary,
+                'normal_balance' => NormalBalance::Debit,
+            ],
         ];
 
         DB::transaction(function () use ($accounts, $store): void {

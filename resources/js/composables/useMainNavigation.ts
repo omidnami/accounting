@@ -19,6 +19,7 @@ import { index as checks } from '@/routes/checks';
 import { index as fiscalYears } from '@/routes/fiscal-years';
 import { cardex as inventoryCardex } from '@/routes/inventory';
 import { index as inventoryTransfers } from '@/routes/inventory-transfers';
+import { index as inventoryOpenings } from '@/routes/inventory-openings';
 import { index as journals } from '@/routes/journals';
 import { index as parties } from '@/routes/parties';
 import { index as payments } from '@/routes/payments';
@@ -93,6 +94,10 @@ export function useMainNavigation(
                 {
                     title: 'شمارش و تعدیل',
                     href: stockCounts(),
+                },
+                {
+                    title: 'موجودی افتتاحیه',
+                    href: inventoryOpenings(),
                 },
                 {
                     title: 'انتقال انبار',

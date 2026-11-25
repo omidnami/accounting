@@ -28,6 +28,7 @@ return [
         'cogs' => '5101',
         'purchase_return_difference' => '5106',
         'inventory_adjustment_loss' => '5107',
+        'services_expense' => '5108',
         'retained_earnings' => '3102',
     ],
 

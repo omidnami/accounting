@@ -238,6 +238,10 @@ class InventoryService
             throw new DomainException('کالای انتخاب‌شده غیرفعال است.');
         }
 
+        if (! $product->isStockItem()) {
+            throw new DomainException('کالای غیرانباری و خدمت حرکت انبار ندارند.');
+        }
+
         if ($product->variants()->exists()) {
             throw new DomainException('کالای والد تنوع موجودی مستقل ندارد؛ یکی از تنوع‌ها را انتخاب کنید.');
         }

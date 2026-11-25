@@ -256,24 +256,33 @@ class SalesService
             $cogs = '0.00';
 
             foreach ($locked->items as $item) {
-                $movement = $this->inventory->issue(
-                    warehouseId: $warehouseId,
-                    productId: $item->product_id,
-                    quantity: $item->quantity,
-                    movementDate: $locked->invoice_date->toDateString(),
-                    idempotencyKey: "sale:{$locked->id}:item:{$item->id}:warehouse:{$warehouseId}",
-                    movementType: InventoryMovementType::Sale,
-                    source: $locked,
-                    createdBy: $approver->id,
-                    reference: $locked->invoice_number,
-                    description: 'خروج انبار برای فروش',
-                );
+                $product = Product::query()->findOrFail($item->product_id);
 
-                $item->forceFill([
-                    'unit_cost_snapshot' => $movement->unit_cost,
-                    'total_cost_snapshot' => $movement->total_cost,
-                ])->save();
-                $cogs = Decimal::add($cogs, $movement->total_cost, Decimal::MONEY_SCALE);
+                if ($product->isStockItem()) {
+                    $movement = $this->inventory->issue(
+                        warehouseId: $warehouseId,
+                        productId: $item->product_id,
+                        quantity: $item->quantity,
+                        movementDate: $locked->invoice_date->toDateString(),
+                        idempotencyKey: "sale:{$locked->id}:item:{$item->id}:warehouse:{$warehouseId}",
+                        movementType: InventoryMovementType::Sale,
+                        source: $locked,
+                        createdBy: $approver->id,
+                        reference: $locked->invoice_number,
+                        description: 'خروج انبار برای فروش',
+                    );
+
+                    $item->forceFill([
+                        'unit_cost_snapshot' => $movement->unit_cost,
+                        'total_cost_snapshot' => $movement->total_cost,
+                    ])->save();
+                    $cogs = Decimal::add($cogs, $movement->total_cost, Decimal::MONEY_SCALE);
+                } else {
+                    $item->forceFill([
+                        'unit_cost_snapshot' => '0.0000',
+                        'total_cost_snapshot' => '0.00',
+                    ])->save();
+                }
             }
 
             $taxTotal = Decimal::normalize($locked->tax_total, Decimal::MONEY_SCALE);
@@ -292,19 +301,22 @@ class SalesService
                     'credit' => $salesRevenue,
                     'description' => 'درآمد فروش',
                 ],
-                [
+            ];
+
+            if (Decimal::isPositive($cogs)) {
+                $lines[] = [
                     'account_id' => $this->settings->defaultAccountId('cogs', $locked->store_id),
                     'debit' => $cogs,
                     'credit' => '0.00',
                     'description' => 'بهای تمام‌شده فروش',
-                ],
-                [
+                ];
+                $lines[] = [
                     'account_id' => $this->settings->defaultAccountId('inventory', $locked->store_id),
                     'debit' => '0.00',
                     'credit' => $cogs,
                     'description' => 'کاهش موجودی کالا',
-                ],
-            ];
+                ];
+            }
 
             if (Decimal::isPositive($taxTotal)) {
                 $lines[] = [

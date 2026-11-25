@@ -10,6 +10,7 @@ export type PosProduct = {
     sale_price: string;
     tax_rate: string;
     stock_quantity: string;
+    item_type?: 'stock' | 'non_stock' | 'service';
     variant_color?: string | null;
     variant_size?: string | null;
 };

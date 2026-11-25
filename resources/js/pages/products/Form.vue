@@ -37,6 +37,7 @@ type ProductDetail = {
     barcode: string | null;
     image_url: string | null;
     name: string;
+    item_type: 'stock' | 'non_stock' | 'service';
     variant_color: string | null;
     variant_size: string | null;
     unit: string;
@@ -110,6 +111,7 @@ const form = useForm({
     code: props.product?.code ?? '',
     barcode: props.product?.barcode ?? '',
     name: props.product?.name ?? props.parent_product?.name ?? '',
+    item_type: props.product?.item_type ?? ('stock' as const),
     variant_color: props.product?.variant_color ?? '',
     variant_size: props.product?.variant_size ?? '',
     unit: props.product?.unit ?? props.parent_product?.unit ?? 'عدد',
@@ -369,6 +371,21 @@ defineOptions({
                             <InputError :message="form.errors.variant_size" />
                         </div>
                         <div class="grid gap-2">
+                            <Label for="item_type">نوع قلم *</Label>
+                            <select
+                                id="item_type"
+                                v-model="form.item_type"
+                                class="h-11 rounded-xl border bg-background px-3 text-sm"
+                            >
+                                <option value="stock">کالای انباری</option>
+                                <option value="non_stock">
+                                    کالای غیرانباری
+                                </option>
+                                <option value="service">خدمت</option>
+                            </select>
+                            <InputError :message="fieldError('item_type')" />
+                        </div>
+                        <div class="grid gap-2">
                             <Label for="unit">واحد فروش *</Label>
                             <Input
                                 id="unit"
@@ -534,13 +551,19 @@ defineOptions({
                         <label
                             class="flex items-center gap-2 rounded-xl border p-3 text-xs"
                         >
-                            <Checkbox v-model="form.track_batches" />
+                            <Checkbox
+                                v-model="form.track_batches"
+                                :disabled="form.item_type !== 'stock'"
+                            />
                             کنترل موجودی بر اساس سری ساخت
                         </label>
                         <label
                             class="flex items-center gap-2 rounded-xl border p-3 text-xs"
                         >
-                            <Checkbox v-model="form.track_serials" />
+                            <Checkbox
+                                v-model="form.track_serials"
+                                :disabled="form.item_type !== 'stock'"
+                            />
                             کنترل موجودی و فروش بر اساس شماره سریال
                         </label>
                         <div class="grid gap-2 sm:col-span-2">

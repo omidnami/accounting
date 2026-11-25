@@ -16,6 +16,7 @@ use App\Http\Controllers\InventorySalesAnalyticsController;
 use App\Http\Controllers\InventoryTransferController;
 use App\Http\Controllers\InvoiceReturnController;
 use App\Http\Controllers\ManualJournalController;
+use App\Http\Controllers\OpeningInventoryController;
 use App\Http\Controllers\OperationalReportsController;
 use App\Http\Controllers\PartyController;
 use App\Http\Controllers\PosController;
@@ -142,6 +143,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('accounts', AccountController::class)
         ->parameters(['account' => 'account'])
         ->except(['show', 'destroy']);
+    Route::get('inventory-openings', [OpeningInventoryController::class, 'index'])
+        ->name('inventory-openings.index');
+    Route::post('inventory-openings', [OpeningInventoryController::class, 'store'])
+        ->name('inventory-openings.store');
     Route::resource('users', UserManagementController::class)
         ->except(['show', 'destroy']);
     Route::resource('treasury-accounts', TreasuryAccountController::class)

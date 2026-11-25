@@ -572,30 +572,33 @@ class SalesReturnService
                     'total_cost_snapshot' => $itemCost,
                 ])->save();
                 $product = Product::query()->findOrFail($item->product_id);
-                $trace = $this->traceForSalesReturn(
-                    $original,
-                    $product,
-                    Decimal::normalize($item->quantity, Decimal::QUANTITY_SCALE),
-                );
 
-                $this->inventory->receive(
-                    warehouseId: $warehouseId,
-                    productId: $item->product_id,
-                    quantity: $item->quantity,
-                    unitCost: $unitCost,
-                    movementDate: $return->invoice_date->toDateString(),
-                    idempotencyKey: "sales-return:{$return->id}:item:{$item->id}:warehouse:{$warehouseId}",
-                    movementType: InventoryMovementType::SalesReturn,
-                    source: $return,
-                    createdBy: $approver->id,
-                    reference: $return->invoice_number,
-                    description: 'ورود انبار از برگشت فروش',
-                    exactTotalCost: $itemCost,
-                    serialIds: $trace['serial_ids'],
-                    batchAllocations: $trace['batch_allocations'],
-                );
+                if ($product->isStockItem()) {
+                    $trace = $this->traceForSalesReturn(
+                        $original,
+                        $product,
+                        Decimal::normalize($item->quantity, Decimal::QUANTITY_SCALE),
+                    );
 
-                $costTotal = Decimal::add($costTotal, $itemCost, 2);
+                    $this->inventory->receive(
+                        warehouseId: $warehouseId,
+                        productId: $item->product_id,
+                        quantity: $item->quantity,
+                        unitCost: $unitCost,
+                        movementDate: $return->invoice_date->toDateString(),
+                        idempotencyKey: "sales-return:{$return->id}:item:{$item->id}:warehouse:{$warehouseId}",
+                        movementType: InventoryMovementType::SalesReturn,
+                        source: $return,
+                        createdBy: $approver->id,
+                        reference: $return->invoice_number,
+                        description: 'ورود انبار از برگشت فروش',
+                        exactTotalCost: $itemCost,
+                        serialIds: $trace['serial_ids'],
+                        batchAllocations: $trace['batch_allocations'],
+                    );
+
+                    $costTotal = Decimal::add($costTotal, $itemCost, 2);
+                }
                 $taxTotal = Decimal::add($taxTotal, $taxAmount, 2);
                 $subtotal = Decimal::add($subtotal, $gross, 2);
                 $discountTotal = Decimal::add($discountTotal, $discount, 2);
@@ -623,19 +626,22 @@ class SalesReturnService
                     'credit' => $total,
                     'description' => 'کاهش مطالبات مشتری',
                 ],
-                [
+            ];
+
+            if (Decimal::isPositive($costTotal)) {
+                $lines[] = [
                     'account_id' => $this->settings->defaultAccountId('inventory', $return->store_id),
                     'debit' => $costTotal,
                     'credit' => '0.00',
                     'description' => 'افزایش موجودی از برگشت فروش',
-                ],
-                [
+                ];
+                $lines[] = [
                     'account_id' => $this->settings->defaultAccountId('cogs', $return->store_id),
                     'debit' => '0.00',
                     'credit' => $costTotal,
                     'description' => 'برگشت بهای تمام‌شده',
-                ],
-            ];
+                ];
+            }
 
             if (Decimal::isPositive($taxTotal)) {
                 $lines[] = [

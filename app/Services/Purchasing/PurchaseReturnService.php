@@ -512,6 +512,7 @@ class PurchaseReturnService
             }
 
             $inventoryCost = '0.00';
+            $serviceCost = '0.00';
             $taxTotal = '0.00';
             $subtotal = '0.00';
             $discountTotal = '0.00';
@@ -574,27 +575,44 @@ class PurchaseReturnService
                 ])->save();
 
                 $product = Product::query()->findOrFail($item->product_id);
-                $trace = $this->traceForPurchaseReturn(
-                    $original,
-                    $product,
-                    Decimal::normalize($item->quantity, Decimal::QUANTITY_SCALE),
-                );
-                $movement = $this->inventory->issue(
-                    warehouseId: $warehouseId,
-                    productId: $item->product_id,
-                    quantity: $item->quantity,
-                    movementDate: $return->invoice_date->toDateString(),
-                    idempotencyKey: "purchase-return:{$return->id}:item:{$item->id}:warehouse:{$warehouseId}",
-                    movementType: InventoryMovementType::PurchaseReturn,
-                    source: $return,
-                    createdBy: $approver->id,
-                    reference: $return->invoice_number,
-                    description: 'خروج انبار برای برگشت خرید',
-                    serialIds: $trace['serial_ids'],
-                    batchAllocations: $trace['batch_allocations'],
-                );
 
-                $inventoryCost = Decimal::add($inventoryCost, $movement->total_cost, Decimal::MONEY_SCALE);
+                if ($product->isStockItem()) {
+                    $trace = $this->traceForPurchaseReturn(
+                        $original,
+                        $product,
+                        Decimal::normalize($item->quantity, Decimal::QUANTITY_SCALE),
+                    );
+                    $movement = $this->inventory->issue(
+                        warehouseId: $warehouseId,
+                        productId: $item->product_id,
+                        quantity: $item->quantity,
+                        movementDate: $return->invoice_date->toDateString(),
+                        idempotencyKey: "purchase-return:{$return->id}:item:{$item->id}:warehouse:{$warehouseId}",
+                        movementType: InventoryMovementType::PurchaseReturn,
+                        source: $return,
+                        createdBy: $approver->id,
+                        reference: $return->invoice_number,
+                        description: 'خروج انبار برای برگشت خرید',
+                        serialIds: $trace['serial_ids'],
+                        batchAllocations: $trace['batch_allocations'],
+                    );
+
+                    $inventoryCost = Decimal::add($inventoryCost, $movement->total_cost, Decimal::MONEY_SCALE);
+                } else {
+                    $itemCost = $this->returnableQuantities->allocateMoney(
+                        $originalItem->total_cost_snapshot ?? '0.00',
+                        $state['returned_cost'],
+                        $item->quantity,
+                        $state['returned_quantity'],
+                        $originalItem->quantity,
+                        $isFinal,
+                    );
+                    $serviceCost = Decimal::add($serviceCost, $itemCost, Decimal::MONEY_SCALE);
+                    $item->forceFill([
+                        'unit_cost_snapshot' => Decimal::divide($itemCost, $item->quantity, 4),
+                        'total_cost_snapshot' => $itemCost,
+                    ])->save();
+                }
                 $taxTotal = Decimal::add($taxTotal, $taxAmount, Decimal::MONEY_SCALE);
                 $subtotal = Decimal::add($subtotal, $gross, Decimal::MONEY_SCALE);
                 $discountTotal = Decimal::add($discountTotal, $discount, Decimal::MONEY_SCALE);
@@ -608,7 +626,11 @@ class PurchaseReturnService
                 'total' => $total,
             ])->save();
             $difference = Decimal::subtract(
-                Decimal::subtract($total, $inventoryCost, Decimal::MONEY_SCALE),
+                Decimal::subtract(
+                    Decimal::subtract($total, $inventoryCost, Decimal::MONEY_SCALE),
+                    $serviceCost,
+                    Decimal::MONEY_SCALE,
+                ),
                 $taxTotal,
                 Decimal::MONEY_SCALE,
             );
@@ -620,13 +642,25 @@ class PurchaseReturnService
                     'credit' => '0.00',
                     'description' => 'کاهش بدهی تأمین‌کننده',
                 ],
-                [
+            ];
+
+            if (Decimal::isPositive($inventoryCost)) {
+                $lines[] = [
                     'account_id' => $this->settings->defaultAccountId('inventory', $return->store_id),
                     'debit' => '0.00',
                     'credit' => $inventoryCost,
                     'description' => 'کاهش موجودی انبار',
-                ],
-            ];
+                ];
+            }
+
+            if (Decimal::isPositive($serviceCost)) {
+                $lines[] = [
+                    'account_id' => $this->settings->defaultAccountId('services_expense', $return->store_id),
+                    'debit' => '0.00',
+                    'credit' => $serviceCost,
+                    'description' => 'برگشت هزینه خدمات و کالای غیرانباری',
+                ];
+            }
 
             if (Decimal::isPositive($taxTotal)) {
                 $lines[] = [

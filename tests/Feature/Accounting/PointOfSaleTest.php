@@ -6,6 +6,7 @@ use App\Enums\UserRole;
 use App\Models\Check;
 use App\Models\Customer;
 use App\Models\InventoryBalance;
+use App\Models\InventoryMovement;
 use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\Party;
@@ -118,6 +119,39 @@ it('uses the Tehran business date across the UTC midnight boundary', function ()
 
     expect(Invoice::query()->firstOrFail()->invoice_date->toDateString())
         ->toBe('2026-11-25');
+});
+
+it('checks out service items without creating inventory movements or COGS', function () {
+    $context = posContext();
+    $service = Product::query()->create([
+        'code' => 'POS-SERVICE',
+        'name' => 'خدمت صندوق',
+        'unit' => 'پروژه',
+        'purchase_price' => 100,
+        'sale_price' => 500,
+        'tax_rate' => 10,
+        'item_type' => 'service',
+    ]);
+    $movementsBefore = InventoryMovement::query()->count();
+    $payload = posPayload($context, [
+        'items' => [[
+            'product_id' => $service->id,
+            'quantity' => '2',
+            'unit_price' => '500',
+            'discount_amount' => '0',
+            'tax_rate' => '10',
+        ]],
+        'tenders' => [['method' => 'cash', 'amount' => '1100', 'confirmed' => true]],
+    ]);
+
+    $this->actingAs($context['user'])
+        ->postJson(route('pos.checkout'), $payload)
+        ->assertOk();
+
+    $invoice = Invoice::query()->firstOrFail();
+    expect(InventoryMovement::query()->count())->toBe($movementsBefore)
+        ->and($invoice->items()->firstOrFail()->total_cost_snapshot)->toBe('0.00')
+        ->and($invoice->total)->toBe('1100.00');
 });
 
 it('ignores a client-supplied VAT rate and uses the catalog rate', function () {

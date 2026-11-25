@@ -238,12 +238,16 @@ const invalidLines = computed(() =>
     lines.value.some(
         (line) =>
             parseNumber(line.quantity) <= 0 ||
-            parseNumber(line.quantity) > parseNumber(line.stock_quantity) ||
+            (isStockItem(line) &&
+                parseNumber(line.quantity) >
+                    parseNumber(line.stock_quantity)) ||
             parseNumber(line.unit_price) <= 0 ||
             parseNumber(line.discount_amount) < 0 ||
             lineAmounts(line).total < 0n,
     ),
 );
+const isStockItem = (item: { item_type?: string }) =>
+    (item.item_type ?? 'stock') === 'stock';
 const difference = computed(
     () =>
         parseNumber(countedCash.value) -
@@ -319,7 +323,7 @@ function addProduct(product: PosProduct) {
     if (tabsLocked.value || !session.value) return;
     const existing = lines.value.find((line) => line.id === product.id);
     const next = existing ? parseNumber(existing.quantity) + 1 : 1;
-    if (next > parseNumber(product.stock_quantity)) {
+    if (isStockItem(product) && next > parseNumber(product.stock_quantity)) {
         error.value = 'موجودی این کالا برای مقدار انتخابی کافی نیست.';
         return;
     }
@@ -339,7 +343,7 @@ function addProduct(product: PosProduct) {
 function changeQuantity(line: PosLine, delta: number) {
     const next = Math.round((parseNumber(line.quantity) + delta) * 1000) / 1000;
     if (next <= 0) return;
-    if (next > parseNumber(line.stock_quantity)) {
+    if (isStockItem(line) && next > parseNumber(line.stock_quantity)) {
         error.value = 'موجودی کالا کافی نیست.';
         return;
     }
@@ -845,7 +849,9 @@ onBeforeUnmount(() => {
                         class="pos-product"
                         :class="`tone-${index % 5}`"
                         :disabled="
-                            parseNumber(product.stock_quantity) <= 0 || busy
+                            (isStockItem(product) &&
+                                parseNumber(product.stock_quantity) <= 0) ||
+                            busy
                         "
                         @click="addProduct(product)"
                     >
@@ -882,9 +888,11 @@ onBeforeUnmount(() => {
                                 >{{ money(product.sale_price)
                                 }}<small>ریال</small></span
                             ><span class="pos-product-stock">{{
-                                parseNumber(product.stock_quantity) > 0
-                                    ? `${qty(product.stock_quantity)} ${product.unit}`
-                                    : 'ناموجود'
+                                !isStockItem(product)
+                                    ? 'بدون محدودیت انبار'
+                                    : parseNumber(product.stock_quantity) > 0
+                                      ? `${qty(product.stock_quantity)} ${product.unit}`
+                                      : 'ناموجود'
                             }}</span>
                         </div>
                     </button>
@@ -1108,8 +1116,11 @@ onBeforeUnmount(() => {
                                         </div>
                                         <span
                                             v-if="
+                                                isStockItem(line) &&
                                                 parseNumber(line.quantity) >
-                                                parseNumber(line.stock_quantity)
+                                                    parseNumber(
+                                                        line.stock_quantity,
+                                                    )
                                             "
                                             class="text-xs text-rose-600"
                                             >کسری موجودی</span

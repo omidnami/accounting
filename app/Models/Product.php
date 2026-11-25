@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ProductStockPolicy;
+use DomainException;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -13,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $purchase_price
  * @property string $sale_price
  * @property string $tax_rate
+ * @property string $item_type
  * @property string $reorder_level
  * @property string $safety_stock
  * @property string $reorder_quantity
@@ -38,6 +40,7 @@ class Product extends Model
         'category_id',
         'parent_product_id',
         'name',
+        'item_type',
         'barcode',
         'image_path',
         'variant_color',
@@ -74,6 +77,11 @@ class Product extends Model
             'is_active' => 'boolean',
             'version' => 'integer',
         ];
+    }
+
+    public function isStockItem(): bool
+    {
+        return $this->item_type === 'stock';
     }
 
     public function imageUrl(): ?string
@@ -142,5 +150,28 @@ class Product extends Model
     public function inventoryBalances(): HasMany
     {
         return $this->hasMany(InventoryBalance::class);
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (Product $product): void {
+            $itemType = $product->item_type ?? 'stock';
+            $product->item_type = $itemType;
+
+            if (! in_array($itemType, ['stock', 'non_stock', 'service'], true)) {
+                throw new DomainException('نوع کالا یا خدمت معتبر نیست.');
+            }
+
+            if ($itemType !== 'stock'
+                && ($product->track_batches || $product->track_serials || $product->parent_product_id !== null)) {
+                throw new DomainException('کالای غیرانباری و خدمت نمی‌توانند سری ساخت، سریال یا تنوع داشته باشند.');
+            }
+
+            if ($product->exists
+                && $product->isDirty('item_type')
+                && $product->inventoryMovements()->exists()) {
+                throw new DomainException('نوع کالای دارای گردش انبار قابل تغییر نیست.');
+            }
+        });
     }
 }
