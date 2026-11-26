@@ -10,7 +10,7 @@
 ### وضعیت تحویل
 
 - مخزن: `omidnami/accounting`، شاخهٔ `main`.
-- آخرین تغییر کد: بستن کامل B02، B06، B09، B23، B27، B30، B33، B38 و B39.
+- آخرین کامیت کد/تست: `c026f7b` — بستن کامل B02، B06، B09، B23، B27، B30، B33، B38 و B39.
 - ممیزی عمیق بخش ۱ در `.codex/project-audit-and-roadmap.md` با وضعیت اجرا به‌روز شد.
 - P1 اصلی، First-run، backup/restore، خدمت/غیرانباری، موجودی افتتاحیه، refund،
   tenant resolver، module registry و outbox پیاده‌سازی شدند.
@@ -21,8 +21,8 @@
 - SQLite: ۵۸۲ تست موفق و ۵۰۶۵ assertion. MariaDB 10.11: ۵۸۱ موفق،
   ۵۰۵۸ assertion و یک skip مخصوص SQLite. ۹ تست هم‌زمانی با ۳۵ assertion سبز است.
 - Pint، PHPStan، TypeScript، `npm run check` و build سبزند.
-- CI پایهٔ قبلی روی MySQL 8.4 و MariaDB 11.4 سبز بود؛ CI تغییرات جدید پس از
-  push نهایی بررسی می‌شود.
+- CI نهایی روی MySQL 8.4 و MariaDB 11.4 با migrations و ۹ تست هم‌زمانی سبز است:
+  [Run 45814039151](https://github.com/omidnami/accounting/actions/runs/45814039151).
 - backup/restore واقعی روی MariaDB با marker داده تأیید شد.
 - MVP هنوز برای تگ نسخهٔ ۱ تأیید نشده است؛ بدون درخواست صریح کاربر تگ نزن.
 - آزمون production راست‌چین و چاپگر واقعی هنوز انجام نشده است؛ تست دستی
@@ -392,12 +392,13 @@ Business logic باید در Service بماند. برای تغییرات درخ�
 ## وضعیت Git و کیفیت
 
 - شاخهٔ مرجع: `main` در `omidnami/accounting`.
-- آخرین تغییر کد: بستن کامل B02/B06/B09/B23/B27/B30/B33/B38/B39.
+- آخرین کامیت کد/تست: `c026f7b` — بستن کامل B02/B06/B09/B23/B27/B30/B33/B38/B39.
 - commit و push این تغییرات با مجوز کاربر انجام شده‌اند؛ مجوز برای تغییرات
   درخواستی برقرار است. برای کار خارج از دامنه، از روی نقشهٔ راه اقدام نکن.
-- CI پایهٔ `a6236b1` موفق بود:
-  [Run 45787454869](https://github.com/omidnami/accounting/actions/runs/45787454869).
-  CI commit نهایی این مرحله پس از push بررسی می‌شود.
+- CI نهایی برای `c026f7b` موفق است:
+  [Run 45814039151](https://github.com/omidnami/accounting/actions/runs/45814039151).
+  هر دو job مربوط به MySQL و MariaDB، migrations، `composer ci:check` و
+  ۹ تست هم‌زمانی را موفق اجرا کردند.
 
 آخرین اجرای محلی تأییدشده:
 
