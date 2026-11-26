@@ -40,6 +40,7 @@ class InventoryMovement extends Model
         'source_type',
         'source_id',
         'idempotency_key',
+        'idempotency_request_hash',
         'created_by',
         'reference',
         'description',

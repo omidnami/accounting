@@ -4,8 +4,10 @@ namespace App\Models;
 
 use App\Enums\AccountingPeriodStatus;
 use App\Enums\FiscalYearStatus;
+use App\Enums\InvoiceType;
 use App\Enums\JournalEntryKind;
 use App\Enums\JournalEntryStatus;
+use App\Enums\TreasuryDocumentStatus;
 use App\Services\Accounting\Contracts\PostingAuthorizationContext;
 use App\Support\Decimal;
 use Carbon\CarbonImmutable;
@@ -198,6 +200,42 @@ class JournalEntry extends Model
             && $this->reversal_of_id !== null;
     }
 
+    public function allowsInactiveParty(): bool
+    {
+        if ($this->isHistoricalReversal()) {
+            return true;
+        }
+
+        if ($this->entry_kind !== JournalEntryKind::System
+            || $this->source_type === null
+            || $this->source_id === null) {
+            return false;
+        }
+
+        $source = $this->source;
+
+        if (! $source) {
+            return false;
+        }
+
+        if ($source instanceof Invoice) {
+            return in_array($source->type, [InvoiceType::SalesReturn, InvoiceType::PurchaseReturn], true);
+        }
+
+        if ($source instanceof Receipt
+            || $source instanceof Payment
+            || $source instanceof ReturnRefund) {
+            return true;
+        }
+
+        if ($source instanceof Check) {
+            return $source->receipt()->where('status', TreasuryDocumentStatus::Confirmed)->exists()
+                || $source->payment()->where('status', TreasuryDocumentStatus::Confirmed)->exists();
+        }
+
+        return false;
+    }
+
     /**
      * @param  Collection<int, JournalEntryLine>|null  $lines
      */
@@ -225,6 +263,13 @@ class JournalEntry extends Model
             }
 
             $lines = $entry->lines()->lockForUpdate()->get();
+
+            if ($lines->contains(
+                fn (JournalEntryLine $line): bool => $line->party_id !== null && $line->party_snapshot === null,
+            )) {
+                throw new DomainException('پیش از ثبت نهایی، هویت طرف‌حساب همهٔ ردیف‌های سند باید snapshot شود.');
+            }
+
             $entry->validatePostingScope($lines);
             $entry->assertBalanced($lines);
             $entry->postingTransitionAuthorized = true;
@@ -322,18 +367,18 @@ class JournalEntry extends Model
             return;
         }
 
-        $activeParties = Party::query()
+        $parties = Party::query()
             ->whereIn('id', $partyIds)
             ->where('store_id', $this->store_id)
             ->when(
-                ! $this->isHistoricalReversal(),
+                ! $this->allowsInactiveParty(),
                 fn ($query) => $query->where('is_active', true),
             )
             ->lockForUpdate()
             ->pluck('id');
 
-        if ($activeParties->count() !== $partyIds->count()) {
-            throw new DomainException('همه طرف‌حساب‌های ردیف سند باید وجود داشته و فعال باشند.');
+        if ($parties->count() !== $partyIds->count()) {
+            throw new DomainException('همه طرف‌حساب‌های ردیف سند باید وجود داشته و متعلق به فروشگاه باشند؛ طرف‌حساب غیرفعال فقط در اصلاح تاریخی مجاز است.');
         }
     }
 

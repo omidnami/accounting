@@ -12,6 +12,7 @@ use App\Models\InvoiceItem;
 use App\Models\Party;
 use App\Models\Product;
 use App\Models\ProductBatch;
+use App\Models\PurchaseAdditionalCost;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Models\Warehouse;
@@ -20,7 +21,10 @@ use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
 use App\Services\Inventory\InventoryService;
+use App\Services\Parties\PartySnapshotService;
 use App\Support\Decimal;
+use App\Support\IdempotencyHasher;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
@@ -34,6 +38,7 @@ class PurchaseService
         private readonly PostingService $posting,
         private readonly SettingService $settings,
         private readonly AccountingPeriodLockService $periods,
+        private readonly PartySnapshotService $partySnapshots,
     ) {}
 
     /**
@@ -47,13 +52,8 @@ class PurchaseService
         ?string $idempotencyKey = null,
         array $additionalCosts = [],
     ): Invoice {
-        if ($items === []) {
-            throw new DomainException('فاکتور خرید باید حداقل یک قلم داشته باشد.');
-        }
-
-        $requestHash = $idempotencyKey === null
-            ? null
-            : $this->draftRequestHash($attributes, $items, $additionalCosts);
+        $requestPayload = $this->draftRequestPayload($attributes, $items, $additionalCosts);
+        $requestHash = IdempotencyHasher::hash('purchase.draft', $requestPayload);
 
         try {
             return DB::transaction(function () use (
@@ -61,6 +61,7 @@ class PurchaseService
                 $items,
                 $idempotencyKey,
                 $requestHash,
+                $requestPayload,
                 $additionalCosts,
             ): Invoice {
                 unset($attributes['status']);
@@ -72,8 +73,12 @@ class PurchaseService
                         ->first();
 
                     if ($existing) {
-                        return $this->resolveIdempotentDraft($existing, $requestHash);
+                        return $this->resolveIdempotentDraft($existing, $requestHash, $requestPayload);
                     }
+                }
+
+                if ($items === []) {
+                    throw new DomainException('فاکتور خرید باید حداقل یک قلم داشته باشد.');
                 }
 
                 $supplier = Supplier::query()
@@ -239,7 +244,7 @@ class PurchaseService
                 ])->save();
 
                 return $invoice->refresh()->load(['items', 'additionalCosts']);
-            });
+            }, attempts: 3);
         } catch (UniqueConstraintViolationException $exception) {
             if ($idempotencyKey !== null) {
                 $existing = Invoice::query()
@@ -247,7 +252,7 @@ class PurchaseService
                     ->first();
 
                 if ($existing) {
-                    return $this->resolveIdempotentDraft($existing, $requestHash);
+                    return $this->resolveIdempotentDraft($existing, $requestHash, $requestPayload);
                 }
             }
 
@@ -294,6 +299,10 @@ class PurchaseService
             if ((int) $party->store_id !== (int) $lockedInvoice->store_id) {
                 throw new DomainException('تأمین‌کننده باید متعلق به فروشگاه فاکتور باشد.');
             }
+
+            $lockedInvoice->forceFill([
+                'party_snapshot' => $this->partySnapshots->capture($party),
+            ])->save();
 
             $period = AccountingPeriod::query()
                 ->where('store_id', $lockedInvoice->store_id)
@@ -500,12 +509,13 @@ class PurchaseService
      * @param  array<string, mixed>  $attributes
      * @param  array<int, array<string, mixed>>  $items
      * @param  array<int, mixed>  $additionalCosts
+     * @return array<string, mixed>
      */
-    private function draftRequestHash(
+    private function draftRequestPayload(
         array $attributes,
         array $items,
-        array $additionalCosts = [],
-    ): string {
+        array $additionalCosts,
+    ): array {
         $canonicalItems = collect($items)
             ->map(fn (array $item): array => [
                 'product_id' => (int) $item['product_id'],
@@ -516,32 +526,111 @@ class PurchaseService
                     ? Decimal::normalize($item['tax_rate'], Decimal::MONEY_SCALE)
                     : null,
                 'batch_number' => $item['batch_number'] ?? null,
-                'expiry_date' => $item['expiry_date'] ?? null,
-                'serial_numbers' => $item['serial_numbers'] ?? [],
+                'expiry_date' => isset($item['expiry_date'])
+                    ? CarbonImmutable::parse($item['expiry_date'])->toDateString()
+                    : null,
+                'serial_numbers' => array_values((array) ($item['serial_numbers'] ?? [])),
             ])
             ->values()
             ->all();
 
-        return hash('sha256', json_encode([
+        $invoiceNumber = empty($attributes['invoice_number'])
+            ? null
+            : (string) $attributes['invoice_number'];
+
+        return [
             'store_id' => (int) $attributes['store_id'],
             'branch_id' => (int) $attributes['branch_id'],
             'fiscal_year_id' => (int) $attributes['fiscal_year_id'],
             'supplier_id' => (int) $attributes['supplier_id'],
-            'invoice_date' => (string) $attributes['invoice_date'],
-            'due_date' => $attributes['due_date'] ?? null,
+            'invoice_number' => $invoiceNumber,
+            'parent_invoice_id' => isset($attributes['parent_invoice_id'])
+                ? (int) $attributes['parent_invoice_id']
+                : null,
+            'invoice_date' => CarbonImmutable::parse($attributes['invoice_date'])->toDateString(),
+            'due_date' => isset($attributes['due_date'])
+                ? CarbonImmutable::parse($attributes['due_date'])->toDateString()
+                : null,
             'notes' => $attributes['notes'] ?? null,
             'created_by' => isset($attributes['created_by']) ? (int) $attributes['created_by'] : null,
             'items' => $canonicalItems,
             'additional_costs' => $this->normalizedAdditionalCosts($additionalCosts),
-        ], JSON_THROW_ON_ERROR));
+        ];
     }
 
-    private function resolveIdempotentDraft(Invoice $invoice, string $requestHash): Invoice
+    /**
+     * @return array<string, mixed>
+     */
+    private function persistedDraftPayload(Invoice $invoice): array
     {
-        if ($invoice->type !== InvoiceType::Purchase
-            || $invoice->idempotency_request_hash === null
-            || ! hash_equals($invoice->idempotency_request_hash, $requestHash)) {
+        $items = $invoice->items()->get()->map(fn (InvoiceItem $item): array => [
+            'product_id' => (int) $item->product_id,
+            'quantity' => Decimal::normalize($item->quantity, Decimal::QUANTITY_SCALE),
+            'unit_price' => Decimal::normalize($item->unit_price, Decimal::MONEY_SCALE),
+            'discount_amount' => Decimal::normalize($item->discount_amount, Decimal::MONEY_SCALE),
+            'tax_rate' => Decimal::normalize($item->tax_rate, Decimal::MONEY_SCALE),
+            'batch_number' => $item->purchase_batch_number,
+            'expiry_date' => $item->purchase_expiry_date?->toDateString(),
+            'serial_numbers' => $item->purchase_serial_numbers ?? [],
+        ])->values()->all();
+
+        $additionalCosts = $invoice->additionalCosts()->get()
+            ->map(fn (PurchaseAdditionalCost $cost): array => [
+                'description' => $cost->description,
+                'amount' => Decimal::normalize($cost->amount, Decimal::MONEY_SCALE),
+            ])->values()->all();
+
+        return [
+            'store_id' => (int) $invoice->store_id,
+            'branch_id' => (int) $invoice->branch_id,
+            'fiscal_year_id' => (int) $invoice->fiscal_year_id,
+            'supplier_id' => (int) $invoice->supplier_id,
+            'invoice_number' => $invoice->invoice_number,
+            'parent_invoice_id' => $invoice->parent_invoice_id === null ? null : (int) $invoice->parent_invoice_id,
+            'invoice_date' => $invoice->invoice_date->toDateString(),
+            'due_date' => $invoice->due_date?->toDateString(),
+            'notes' => $invoice->notes,
+            'created_by' => $invoice->created_by === null ? null : (int) $invoice->created_by,
+            'items' => $items,
+            'additional_costs' => $additionalCosts,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $requestPayload
+     */
+    private function resolveIdempotentDraft(
+        Invoice $invoice,
+        string $requestHash,
+        array $requestPayload,
+    ): Invoice {
+        if ($invoice->type !== InvoiceType::Purchase) {
             throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+        }
+
+        if ($invoice->idempotency_request_hash !== null) {
+            if (! hash_equals($invoice->idempotency_request_hash, $requestHash)) {
+                throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+            }
+        } else {
+            $persistedPayload = $this->persistedDraftPayload($invoice);
+
+            if ($requestPayload['invoice_number'] === null) {
+                $persistedPayload['invoice_number'] = null;
+            }
+
+            foreach ($requestPayload['items'] as $index => $item) {
+                if ($item['tax_rate'] === null) {
+                    $persistedPayload['items'][$index]['tax_rate'] = null;
+                }
+            }
+
+            if (! hash_equals(
+                IdempotencyHasher::hash('purchase.draft', $persistedPayload),
+                $requestHash,
+            )) {
+                throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+            }
         }
 
         return $invoice->load(['items', 'additionalCosts']);

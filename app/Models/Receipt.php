@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\JournalEntryStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\TreasuryDocumentStatus;
+use App\Services\Parties\PartySnapshotService;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -18,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property TreasuryDocumentStatus $status
  * @property numeric-string $amount
  * @property CarbonImmutable $receipt_date
+ * @property array<string, mixed>|null $party_snapshot
  */
 class Receipt extends Model
 {
@@ -37,6 +39,7 @@ class Receipt extends Model
         'receipt_number',
         'idempotency_key',
         'idempotency_request_hash',
+        'party_snapshot',
         'receipt_date',
         'amount',
         'payment_method',
@@ -51,6 +54,7 @@ class Receipt extends Model
     protected function casts(): array
     {
         return [
+            'party_snapshot' => 'array',
             'receipt_date' => 'immutable_date',
             'amount' => 'decimal:2',
             'payment_method' => PaymentMethod::class,
@@ -120,9 +124,24 @@ class Receipt extends Model
         return $this->hasMany(ReceiptAllocation::class);
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public function partyIdentity(): array
+    {
+        return app(PartySnapshotService::class)->resolve($this->party_snapshot, $this->customer?->party);
+    }
+
     protected static function booted(): void
     {
         static::saving(function (Receipt $receipt): void {
+            if (in_array($receipt->status, [
+                TreasuryDocumentStatus::Confirmed,
+                TreasuryDocumentStatus::Bounced,
+            ], true) && $receipt->party_snapshot === null) {
+                throw new DomainException('پیش از نهایی‌شدن دریافت، هویت طرف‌حساب باید snapshot شود.');
+            }
+
             if (($receipt->payment_method === PaymentMethod::Check) !== ($receipt->check_id !== null)) {
                 throw new DomainException('دریافت چکی باید به یک چک متصل باشد؛ سایر روش‌ها نباید چک داشته باشند.');
             }
@@ -146,6 +165,10 @@ class Receipt extends Model
 
     public function markConfirmed(): self
     {
+        if ($this->party_snapshot === null) {
+            throw new DomainException('پیش از تأیید نهایی، هویت طرف‌حساب دریافت باید snapshot شود.');
+        }
+
         $hasEntry = JournalEntry::query()
             ->where('source_type', $this->getMorphClass())
             ->where('source_id', $this->getKey())

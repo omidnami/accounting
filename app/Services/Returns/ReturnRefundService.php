@@ -14,6 +14,7 @@ use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
 use App\Services\Audit\AuditLogService;
 use App\Services\Events\DomainEventService;
+use App\Services\Parties\PartySnapshotService;
 use App\Support\Decimal;
 use Carbon\CarbonImmutable;
 use DomainException;
@@ -28,6 +29,7 @@ class ReturnRefundService
         private readonly AccountingPeriodLockService $periods,
         private readonly AuditLogService $audit,
         private readonly DomainEventService $events,
+        private readonly PartySnapshotService $partySnapshots,
     ) {}
 
     public function refund(
@@ -88,8 +90,8 @@ class ReturnRefundService
                 $direction = $return->type === InvoiceType::SalesReturn ? 'customer' : 'supplier';
                 $party = $direction === 'customer' ? $return->customer?->party : $return->supplier?->party;
 
-                if (! $party || ! $party->is_active || (int) $party->store_id !== (int) $return->store_id) {
-                    throw new DomainException('طرف‌حساب مرجوعی معتبر و فعال نیست.');
+                if (! $party || (int) $party->store_id !== (int) $return->store_id) {
+                    throw new DomainException('طرف‌حساب مرجوعی معتبر نیست.');
                 }
 
                 $refunded = (string) ReturnRefund::query()
@@ -136,6 +138,7 @@ class ReturnRefundService
                     'status' => 'pending',
                     'idempotency_key' => $idempotencyKey,
                     'request_hash' => $requestHash,
+                    'party_snapshot' => $this->partySnapshots->capture($party),
                     'created_by' => $actor->id,
                 ]);
                 $lines = $direction === 'customer'

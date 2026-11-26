@@ -25,4 +25,16 @@ return [
     */
 
     'max_attempts' => (int) env('PRINT_AGENT_MAX_ATTEMPTS', 3),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Print Agent Online Threshold
+    |--------------------------------------------------------------------------
+    |
+    | A station is online only when it has checked in within this many seconds.
+    | Stations that have never checked in are always considered offline.
+    |
+    */
+
+    'online_threshold_seconds' => (int) env('PRINT_AGENT_ONLINE_THRESHOLD_SECONDS', 300),
 ];

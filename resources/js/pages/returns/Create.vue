@@ -50,6 +50,7 @@ const props = defineProps<{
             name: string | null;
             code: string | null;
             phone: string | null;
+            legacy_current: boolean;
         };
     };
     items: ReturnItem[];
@@ -262,6 +263,12 @@ defineOptions({
                             <p class="mt-1 text-[10px] text-muted-foreground">
                                 {{ original.party.code ?? 'بدون کد' }} ·
                                 {{ original.party.phone ?? 'بدون تلفن' }}
+                            </p>
+                            <p
+                                v-if="original.party.legacy_current"
+                                class="mt-1 text-[9px] text-amber-700 dark:text-amber-300"
+                            >
+                                هویت جاری (سند قدیمی)
                             </p>
                         </div>
                     </div>

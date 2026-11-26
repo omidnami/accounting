@@ -20,20 +20,21 @@ class SalesCheckoutLookupService
     /**
      * @return array<int, array{
      *     id: int, code: string, name: string, phone: string|null,
-     *     credit_limit: string, payment_terms: string|null
+     *     credit_limit: string, payment_terms: string|null,
+     *     is_active: bool, status_label: string
      * }>
      */
-    public function customers(int $storeId, string $search): array
+    public function customers(int $storeId, string $search, bool $includeInactive = false): array
     {
         $search = trim(Digits::toLatin($search));
 
         return Customer::query()
             ->with('party:id,code,name,phone,is_active')
-            ->where('is_active', true)
-            ->whereHas('party', function (Builder $query) use ($storeId, $search): void {
+            ->when(! $includeInactive, fn (Builder $query) => $query->where('is_active', true))
+            ->whereHas('party', function (Builder $query) use ($storeId, $search, $includeInactive): void {
                 $query
                     ->where('store_id', $storeId)
-                    ->where('is_active', true)
+                    ->when(! $includeInactive, fn (Builder $query) => $query->where('is_active', true))
                     ->when($search !== '', function (Builder $query) use ($search): void {
                         $term = $this->likeTerm($search);
                         $query->where(function (Builder $query) use ($term): void {
@@ -55,6 +56,8 @@ class SalesCheckoutLookupService
                 'phone' => $customer->party->phone,
                 'credit_limit' => $customer->credit_limit,
                 'payment_terms' => $customer->payment_terms,
+                'is_active' => $customer->is_active && $customer->party->is_active,
+                'status_label' => $customer->is_active && $customer->party->is_active ? 'فعال' : 'غیرفعال',
             ])
             ->all();
     }
@@ -69,6 +72,12 @@ class SalesCheckoutLookupService
     public function products(int $storeId, int $warehouseId, string $search, ?int $categoryId = null, int $limit = 20): array
     {
         $search = trim(Digits::toLatin($search));
+
+        // A legacy cross-column collision must not let POS scanning add the first match.
+        if ($search !== '' && $this->hasAmbiguousIdentifier($search, $categoryId)) {
+            return [];
+        }
+
         $stock = InventoryBalance::query()
             ->selectRaw('COALESCE(SUM(inventory_balances.quantity), 0)')
             ->whereColumn('inventory_balances.product_id', 'products.id')
@@ -127,6 +136,19 @@ class SalesCheckoutLookupService
                 'track_serials' => $product->track_serials,
             ])
             ->all();
+    }
+
+    private function hasAmbiguousIdentifier(string $identifier, ?int $categoryId): bool
+    {
+        return Product::query()
+            ->where('is_active', true)
+            ->whereDoesntHave('variants')
+            ->when($categoryId !== null, fn (Builder $query) => $query->where('category_id', $categoryId))
+            ->where(fn (Builder $query) => $query
+                ->where('code', $identifier)
+                ->orWhere('barcode', $identifier))
+            ->limit(2)
+            ->count() > 1;
     }
 
     private function likeTerm(string $search): string

@@ -5,9 +5,11 @@ namespace App\Services\Pos;
 use App\Enums\PaymentMethod;
 use App\Models\Customer;
 use App\Models\FiscalYear;
+use App\Models\InvoiceItem;
 use App\Models\Party;
 use App\Models\PosSale;
 use App\Models\PosSession;
+use App\Models\PosTender;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\Audit\AuditLogService;
@@ -15,6 +17,8 @@ use App\Services\Sales\CustomerReceiptService;
 use App\Services\Sales\SalesService;
 use App\Support\BusinessClock;
 use App\Support\Decimal;
+use App\Support\IdempotencyHasher;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
@@ -35,22 +39,13 @@ class PosCheckoutService
             throw new AuthorizationException;
         }
 
-        $hash = hash('sha256', json_encode($data, JSON_THROW_ON_ERROR));
-
-        return DB::transaction(function () use ($session, $user, $data, $hash): PosSale {
+        return DB::transaction(function () use ($session, $user, $data): PosSale {
             $session = PosSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
+            $requestPayload = $this->requestPayload($session, $user, $data);
+            $hash = IdempotencyHasher::hash('pos.checkout', $requestPayload);
             $existing = PosSale::query()->where('submission_token', $data['submission_token'])->lockForUpdate()->first();
             if ($existing) {
-                if ((int) $existing->pos_session_id !== (int) $session->id || ! hash_equals($existing->request_hash, $hash)) {
-                    throw new DomainException('این درخواست قبلاً با اطلاعات دیگری ثبت شده است.');
-                }
-
-                return $existing->load([
-                    'invoice' => fn ($query) => $query->lockForUpdate(),
-                    'invoice.items' => fn ($query) => $query->lockForUpdate(),
-                    'invoice.customer.party',
-                    'tenders' => fn ($query) => $query->lockForUpdate(),
-                ]);
+                return $this->resolveIdempotentSale($existing, $session, $hash, $requestPayload);
             }
             if ($session->closed_at !== null) {
                 throw new DomainException('شیفت بسته شده است؛ شیفت جدید باز کنید.');
@@ -150,5 +145,154 @@ class PosCheckoutService
 
             return $sale->load(['invoice.items', 'invoice.customer.party', 'tenders']);
         }, attempts: 3);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function requestPayload(PosSession $session, User $user, array $data): array
+    {
+        $items = array_map(fn (array $item): array => [
+            'product_id' => (int) $item['product_id'],
+            'quantity' => Decimal::normalize($item['quantity'], Decimal::QUANTITY_SCALE),
+            'unit_price' => Decimal::normalize($item['unit_price'], Decimal::MONEY_SCALE),
+            'discount_amount' => Decimal::normalize($item['discount_amount'] ?? 0, Decimal::MONEY_SCALE),
+        ], array_values($data['items']));
+
+        return [
+            'session_id' => (int) ($data['session_id'] ?? $session->id),
+            'pos_session_id' => (int) $session->id,
+            'store_id' => (int) $session->store_id,
+            'branch_id' => (int) $session->branch_id,
+            'warehouse_id' => (int) $session->warehouse_id,
+            'cash_account_id' => (int) $session->cash_account_id,
+            'card_account_id' => $session->card_account_id === null ? null : (int) $session->card_account_id,
+            'session_user_id' => (int) $session->user_id,
+            'actor_id' => (int) $user->id,
+            'customer_id' => empty($data['customer_id']) ? null : (int) $data['customer_id'],
+            'due_date' => isset($data['due_date'])
+                ? CarbonImmutable::parse($data['due_date'])->toDateString()
+                : null,
+            'notes' => $data['notes'] ?? null,
+            'items' => $items,
+            'tenders' => array_map(
+                fn (array $tender): array => $this->canonicalTender($tender),
+                array_values($data['tenders']),
+            ),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function persistedPayload(PosSale $sale, PosSession $session): array
+    {
+        $invoice = $sale->invoice;
+        $tenders = $sale->tenders()->orderBy('id')->get();
+
+        return [
+            'session_id' => (int) $session->id,
+            'pos_session_id' => (int) $session->id,
+            'store_id' => (int) $session->store_id,
+            'branch_id' => (int) $session->branch_id,
+            'warehouse_id' => (int) $session->warehouse_id,
+            'cash_account_id' => (int) $session->cash_account_id,
+            'card_account_id' => $session->card_account_id === null ? null : (int) $session->card_account_id,
+            'session_user_id' => (int) $session->user_id,
+            'actor_id' => (int) $session->user_id,
+            'customer_id' => (int) $invoice->customer_id,
+            'due_date' => $invoice->due_date?->toDateString(),
+            'notes' => $invoice->notes,
+            'items' => $invoice->items()->get()->map(fn (InvoiceItem $item): array => [
+                'product_id' => (int) $item->product_id,
+                'quantity' => Decimal::normalize($item->quantity, Decimal::QUANTITY_SCALE),
+                'unit_price' => Decimal::normalize($item->unit_price, Decimal::MONEY_SCALE),
+                'discount_amount' => Decimal::normalize($item->discount_amount, Decimal::MONEY_SCALE),
+            ])->values()->all(),
+            'tenders' => $tenders->map(fn (PosTender $tender): array => $this->canonicalTender([
+                'method' => $tender->method,
+                'amount' => $tender->amount,
+                'reference' => $tender->reference,
+                'confirmed' => in_array($tender->method, ['cash', 'card'], true)
+                    && $sale->completed_at !== null
+                    && ($tender->resolved_at !== null || $tender->receipt_id !== null),
+                'check_received' => $tender->check_received,
+                'check_number' => $tender->check_number,
+                'bank_name' => $tender->bank_name,
+                'due_date' => $tender->due_date?->toDateString(),
+                'notes' => $tender->notes,
+            ]))->values()->all(),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $tender
+     * @return array<string, mixed>
+     */
+    private function canonicalTender(array $tender): array
+    {
+        $method = (string) $tender['method'];
+        $isCheck = $method === 'check';
+        $isImmediate = in_array($method, ['cash', 'card'], true);
+
+        return [
+            'method' => $method,
+            'amount' => Decimal::normalize($tender['amount'], Decimal::MONEY_SCALE),
+            'reference' => $tender['reference'] ?? null,
+            'confirmed' => $isImmediate ? (bool) ($tender['confirmed'] ?? false) : null,
+            'check_received' => $isCheck ? (bool) ($tender['check_received'] ?? false) : null,
+            'check_number' => $isCheck ? ($tender['check_number'] ?? null) : null,
+            'bank_name' => $isCheck ? ($tender['bank_name'] ?? null) : null,
+            'due_date' => $isCheck && isset($tender['due_date'])
+                ? CarbonImmutable::parse($tender['due_date'])->toDateString()
+                : null,
+            'notes' => $tender['notes'] ?? null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $requestPayload
+     */
+    private function resolveIdempotentSale(
+        PosSale $sale,
+        PosSession $session,
+        string $requestHash,
+        array $requestPayload,
+    ): PosSale {
+        if ((int) $sale->pos_session_id !== (int) $session->id) {
+            throw new DomainException('این درخواست قبلاً با اطلاعات دیگری ثبت شده است.');
+        }
+
+        if ($sale->request_hash !== null) {
+            if (! hash_equals($sale->request_hash, $requestHash)) {
+                throw new DomainException('این درخواست قبلاً با اطلاعات دیگری ثبت شده است.');
+            }
+        } else {
+            $sale->loadMissing('invoice');
+            $invoice = $sale->invoice;
+
+            if (! $invoice) {
+                throw new DomainException('این درخواست قبلاً با اطلاعات دیگری ثبت شده است.');
+            }
+
+            $persistedPayload = $this->persistedPayload($sale, $session);
+
+            if ($requestPayload['customer_id'] === null) {
+                $persistedPayload['customer_id'] = null;
+            }
+
+            if (! hash_equals(
+                IdempotencyHasher::hash('pos.checkout', $persistedPayload),
+                $requestHash,
+            )) {
+                throw new DomainException('این درخواست قبلاً با اطلاعات دیگری ثبت شده است.');
+            }
+        }
+
+        return $sale->load([
+            'invoice' => fn ($query) => $query->lockForUpdate(),
+            'invoice.items' => fn ($query) => $query->lockForUpdate(),
+            'invoice.customer.party',
+            'tenders' => fn ($query) => $query->lockForUpdate(),
+        ]);
     }
 }

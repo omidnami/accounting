@@ -10,10 +10,14 @@ use App\Enums\TreasuryDocumentStatus;
 use App\Models\AccountingPeriod;
 use App\Models\Check;
 use App\Models\Invoice;
+use App\Models\Payment;
+use App\Models\Receipt;
 use App\Models\TreasuryAccount;
 use App\Models\User;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
+use App\Support\Decimal;
+use App\Support\IdempotencyHasher;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Support\Facades\DB;
@@ -50,40 +54,32 @@ class CheckSettlementService
     ): Check {
         return DB::transaction(function () use ($check, $bounceDate, $approver): Check {
             $locked = Check::query()->lockForUpdate()->findOrFail($check->id);
+            $treasuryDocument = $this->treasuryDocumentFor($locked);
+            $requestPayload = $this->actionPayload(
+                $locked,
+                $treasuryDocument,
+                'check.bounce',
+                $bounceDate,
+                $approver->id,
+            );
+            $requestHash = IdempotencyHasher::hash('check.bounce', $requestPayload);
 
             if ($locked->status === CheckStatus::Bounced) {
-                $this->assertBounceRequestMatches($locked, $bounceDate);
-
-                return $locked;
+                return $this->resolveBounceRetry($locked, $requestHash);
             }
 
             if ($locked->status !== CheckStatus::Pending) {
                 throw new DomainException('فقط چک در انتظار وصول یا خرج قابل برگشت است.');
             }
 
-            $isReceivable = $locked->type === CheckType::Receivable;
-            $treasuryDocument = null;
-
-            if ($isReceivable) {
-                $receipt = $locked->receipt()->with('allocations.invoice')->first();
-
-                if (! $receipt || $receipt->status !== TreasuryDocumentStatus::Confirmed) {
-                    throw new DomainException('سند خزانه تأییدشده برای این چک پیدا نشد.');
-                }
-
-                $treasuryDocument = $receipt;
-                $partyId = $receipt->customer->party_id;
-            } else {
-                $payment = $locked->payment()->with('allocations.invoice')->first();
-
-                if (! $payment || $payment->status !== TreasuryDocumentStatus::Confirmed) {
-                    throw new DomainException('سند خزانه تأییدشده برای این چک پیدا نشد.');
-                }
-
-                $treasuryDocument = $payment;
-                $partyId = $payment->supplier->party_id;
+            if (! $treasuryDocument || $treasuryDocument->status !== TreasuryDocumentStatus::Confirmed) {
+                throw new DomainException('سند خزانه تأییدشده برای این چک پیدا نشد.');
             }
 
+            $isReceivable = $locked->type === CheckType::Receivable;
+            $partyId = $treasuryDocument instanceof Receipt
+                ? $treasuryDocument->customer->party_id
+                : $treasuryDocument->supplier->party_id;
             $period = $this->periodFor($treasuryDocument->store_id, $bounceDate);
             $lines = $isReceivable
                 ? [
@@ -132,7 +128,7 @@ class CheckSettlementService
                 $approver,
             );
 
-            $locked->markBounced($entry);
+            $locked->markBounced($entry, $requestHash);
             $treasuryDocument->markBounced();
 
             foreach ($treasuryDocument->allocations as $allocation) {
@@ -140,7 +136,7 @@ class CheckSettlementService
             }
 
             return $locked->refresh();
-        });
+        }, attempts: 3);
     }
 
     private function settle(
@@ -163,23 +159,24 @@ class CheckSettlementService
                 throw new DomainException('نوع چک با عملیات درخواستی سازگار نیست.');
             }
 
-            if ($locked->status === CheckStatus::Collected || $locked->status === CheckStatus::Spent) {
-                $this->assertSettlementRequestMatches(
-                    $locked,
-                    $settlementDate,
-                    $treasuryAccountId,
-                );
+            $treasuryDocument = $this->treasuryDocumentFor($locked);
+            $requestPayload = $this->actionPayload(
+                $locked,
+                $treasuryDocument,
+                'check.settlement',
+                $settlementDate,
+                $approver->id,
+                $treasuryAccountId,
+            );
+            $requestHash = IdempotencyHasher::hash('check.settlement', $requestPayload);
 
-                return $locked;
+            if ($locked->status === CheckStatus::Collected || $locked->status === CheckStatus::Spent) {
+                return $this->resolveSettlementRetry($locked, $requestHash, $requestPayload);
             }
 
             if ($locked->status !== CheckStatus::Pending) {
                 throw new DomainException('فقط چک در انتظار قابل وصول یا خرج است.');
             }
-
-            $treasuryDocument = $expectedType === CheckType::Receivable
-                ? $locked->receipt()->first()
-                : $locked->payment()->first();
 
             if (! $treasuryDocument || $treasuryDocument->status !== TreasuryDocumentStatus::Confirmed) {
                 throw new DomainException('سند خزانه تأییدشده برای این چک پیدا نشد.');
@@ -246,10 +243,178 @@ class CheckSettlementService
                 $approver,
             );
 
-            $locked->markSettled($entry, $treasuryAccount);
+            $locked->markSettled($entry, $treasuryAccount, $requestHash);
 
             return $locked->refresh();
-        });
+        }, attempts: 3);
+    }
+
+    private function treasuryDocumentFor(Check $check): Receipt|Payment|null
+    {
+        return $check->type === CheckType::Receivable
+            ? $check->receipt()->first()
+            : $check->payment()->first();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function actionPayload(
+        Check $check,
+        Receipt|Payment|null $treasuryDocument,
+        string $operation,
+        string $actionDate,
+        int $actorId,
+        ?int $treasuryAccountId = null,
+    ): array {
+        $allocations = $treasuryDocument
+            ? $treasuryDocument->allocations()
+                ->orderBy('invoice_id')
+                ->get()
+                ->map(fn ($allocation): array => [
+                    'invoice_id' => (int) $allocation->invoice_id,
+                    'amount' => Decimal::normalize($allocation->amount, Decimal::MONEY_SCALE),
+                ])
+                ->values()
+                ->all()
+            : [];
+        $sourceInvoiceIds = collect($allocations)
+            ->pluck('invoice_id')
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        return [
+            'operation' => $operation,
+            'check_id' => (int) $check->id,
+            'check_document_number' => $check->document_number,
+            'check_description' => $check->description,
+            'store_id' => (int) $check->store_id,
+            'branch_id' => (int) $check->branch_id,
+            'fiscal_year_id' => $check->fiscal_year_id === null ? null : (int) $check->fiscal_year_id,
+            'check_type' => $check->type->value,
+            'customer_id' => $check->customer_id === null ? null : (int) $check->customer_id,
+            'supplier_id' => $check->supplier_id === null ? null : (int) $check->supplier_id,
+            'check_number' => $check->check_number,
+            'bank_name' => $check->bank_name,
+            'branch_name' => $check->branch_name,
+            'amount' => Decimal::normalize($check->amount, Decimal::MONEY_SCALE),
+            'issue_date' => $check->issue_date?->toDateString(),
+            'due_date' => $check->due_date->toDateString(),
+            'treasury_document_type' => $treasuryDocument === null
+                ? null
+                : ($treasuryDocument instanceof Receipt ? 'receipt' : 'payment'),
+            'treasury_document_id' => $treasuryDocument?->id,
+            'treasury_document_number' => $treasuryDocument instanceof Receipt
+                ? $treasuryDocument->receipt_number
+                : ($treasuryDocument?->payment_number),
+            'treasury_document_fiscal_year_id' => $treasuryDocument?->fiscal_year_id,
+            'treasury_document_payment_method' => $treasuryDocument?->payment_method->value,
+            'treasury_document_reference' => $treasuryDocument?->reference,
+            'treasury_document_description' => $treasuryDocument?->description,
+            'allocations' => $allocations,
+            'source_invoice_ids' => $sourceInvoiceIds,
+            'action_date' => CarbonImmutable::parse($actionDate)->toDateString(),
+            'actor_id' => $actorId,
+            'treasury_account_id' => $treasuryAccountId,
+            'entry_description' => $operation === 'check.settlement'
+                ? "تسویه چک {$check->check_number}"
+                : "برگشت چک {$check->check_number}",
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $requestPayload
+     */
+    private function resolveSettlementRetry(
+        Check $check,
+        string $requestHash,
+        array $requestPayload,
+    ): Check {
+        if ($check->settlement_request_hash !== null) {
+            if (! hash_equals($check->settlement_request_hash, $requestHash)) {
+                throw new DomainException('این چک قبلاً با اطلاعات دیگری وصول یا خرج شده است.');
+            }
+
+            return $check->refresh();
+        }
+
+        $entry = $check->settlementEntry;
+        $treasuryDocument = $this->treasuryDocumentFor($check);
+
+        if (! $entry
+            || $entry->source_type !== $check->getMorphClass()
+            || (int) $entry->source_id !== (int) $check->id) {
+            throw new DomainException('این چک قبلاً با اطلاعات دیگری وصول یا خرج شده است.');
+        }
+
+        $persistedPayload = $this->actionPayload(
+            $check,
+            $treasuryDocument,
+            'check.settlement',
+            $entry->entry_date->toDateString(),
+            (int) ($entry->posted_by ?? $entry->created_by),
+            $check->settlement_treasury_account_id === null
+                ? null
+                : (int) $check->settlement_treasury_account_id,
+        );
+
+        if ($requestPayload['treasury_account_id'] === null) {
+            $persistedPayload['treasury_account_id'] = null;
+        }
+
+        $persistedPayload['entry_description'] = $entry->description;
+
+        if (! hash_equals(
+            IdempotencyHasher::hash('check.settlement', $persistedPayload),
+            $requestHash,
+        )) {
+            throw new DomainException('این چک قبلاً با اطلاعات دیگری وصول یا خرج شده است.');
+        }
+
+        return $check->refresh();
+    }
+
+    private function resolveBounceRetry(
+        Check $check,
+        string $requestHash,
+    ): Check {
+        if ($check->bounce_request_hash !== null) {
+            if (! hash_equals($check->bounce_request_hash, $requestHash)) {
+                throw new DomainException('این چک قبلاً با اطلاعات دیگری برگشت خورده است.');
+            }
+
+            return $check->refresh();
+        }
+
+        $entry = $check->bounceEntry;
+        $treasuryDocument = $this->treasuryDocumentFor($check);
+
+        if (! $entry
+            || $entry->source_type !== $check->getMorphClass()
+            || (int) $entry->source_id !== (int) $check->id) {
+            throw new DomainException('این چک قبلاً با اطلاعات دیگری برگشت خورده است.');
+        }
+
+        $persistedPayload = $this->actionPayload(
+            $check,
+            $treasuryDocument,
+            'check.bounce',
+            $entry->entry_date->toDateString(),
+            (int) ($entry->posted_by ?? $entry->created_by),
+        );
+
+        $persistedPayload['entry_description'] = $entry->description;
+
+        if (! hash_equals(
+            IdempotencyHasher::hash('check.bounce', $persistedPayload),
+            $requestHash,
+        )) {
+            throw new DomainException('این چک قبلاً با اطلاعات دیگری برگشت خورده است.');
+        }
+
+        return $check->refresh();
     }
 
     private function periodFor(int $storeId, string $date): AccountingPeriod
@@ -274,36 +439,5 @@ class CheckSettlementService
         }
 
         $invoice->syncSettlementStatus();
-    }
-
-    private function assertSettlementRequestMatches(
-        Check $check,
-        string $settlementDate,
-        ?int $treasuryAccountId,
-    ): void {
-        $entry = $check->settlementEntry()->first();
-        $requestedDate = CarbonImmutable::parse($settlementDate)->toDateString();
-
-        if (! $entry || $entry->entry_date->toDateString() !== $requestedDate) {
-            throw new DomainException('این چک قبلاً با تاریخ دیگری وصول یا خرج شده است.');
-        }
-
-        if ($treasuryAccountId === null) {
-            return;
-        }
-
-        if ($treasuryAccountId !== $check->settlement_treasury_account_id) {
-            throw new DomainException('این چک قبلاً با حساب بانکی دیگری وصول یا خرج شده است.');
-        }
-    }
-
-    private function assertBounceRequestMatches(Check $check, string $bounceDate): void
-    {
-        $entry = $check->bounceEntry()->first();
-        $requestedDate = CarbonImmutable::parse($bounceDate)->toDateString();
-
-        if (! $entry || $entry->entry_date->toDateString() !== $requestedDate) {
-            throw new DomainException('این چک قبلاً با تاریخ دیگری برگشت خورده است.');
-        }
     }
 }

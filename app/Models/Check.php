@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\CheckStatus;
 use App\Enums\CheckType;
 use App\Enums\JournalEntryStatus;
+use App\Services\Parties\PartySnapshotService;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -23,6 +24,8 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
  * @property CarbonImmutable|null $created_at
  * @property CarbonImmutable|null $settled_at
  * @property CarbonImmutable|null $bounced_at
+ * @property array<string, mixed>|null $party_snapshot
+ * @property array<int, int>|null $source_invoice_ids
  */
 class Check extends Model
 {
@@ -38,6 +41,7 @@ class Check extends Model
     protected $fillable = [
         'store_id',
         'branch_id',
+        'fiscal_year_id',
         'check_number',
         'document_number',
         'bank_name',
@@ -51,17 +55,23 @@ class Check extends Model
         'created_by',
         'idempotency_key',
         'idempotency_request_hash',
+        'source_invoice_ids',
+        'party_snapshot',
         'description',
         'settled_at',
         'bounced_at',
         'settlement_entry_id',
         'settlement_treasury_account_id',
+        'settlement_request_hash',
         'bounce_entry_id',
+        'bounce_request_hash',
     ];
 
     protected function casts(): array
     {
         return [
+            'source_invoice_ids' => 'array',
+            'party_snapshot' => 'array',
             'amount' => 'decimal:2',
             'issue_date' => 'immutable_date',
             'due_date' => 'immutable_date',
@@ -146,9 +156,33 @@ class Check extends Model
         return $this->belongsTo(JournalEntry::class, 'bounce_entry_id');
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public function partyIdentity(): array
+    {
+        $party = $this->type === CheckType::Receivable
+            ? $this->customer?->party
+            : $this->supplier?->party;
+
+        return app(PartySnapshotService::class)->resolve($this->party_snapshot, $party);
+    }
+
     protected static function booted(): void
     {
         static::saving(function (Check $check): void {
+            if (in_array($check->status, [
+                CheckStatus::Collected,
+                CheckStatus::Spent,
+                CheckStatus::Bounced,
+            ], true) && $check->party_snapshot === null) {
+                throw new DomainException('پیش از نهایی‌شدن چک، هویت طرف‌حساب باید snapshot شود.');
+            }
+
+            if ($check->exists && $check->isDirty(['type', 'store_id', 'branch_id', 'fiscal_year_id', 'document_number'])) {
+                throw new DomainException('نوع، فروشگاه، شعبه، سال مالی و شماره سند چک قابل ویرایش نیست.');
+            }
+
             if ($check->type === CheckType::Receivable) {
                 if ($check->customer_id === null || $check->supplier_id !== null) {
                     throw new DomainException('چک دریافتی باید فقط به مشتری متصل باشد.');
@@ -175,7 +209,9 @@ class Check extends Model
     public function markSettled(
         JournalEntry $entry,
         TreasuryAccount $treasuryAccount,
+        ?string $requestHash = null,
     ): self {
+        $this->assertPartySnapshot();
         $this->assertSettlementEntry($entry);
 
         if ((int) $treasuryAccount->store_id !== (int) $this->store_id
@@ -194,6 +230,7 @@ class Check extends Model
             $this->settled_at = now();
             $this->settlement_entry_id = $entry->id;
             $this->settlement_treasury_account_id = $treasuryAccount->id;
+            $this->settlement_request_hash = $requestHash;
             $this->save();
         } finally {
             $this->statusTransitionAuthorized = false;
@@ -202,8 +239,9 @@ class Check extends Model
         return $this;
     }
 
-    public function markBounced(JournalEntry $entry): self
+    public function markBounced(JournalEntry $entry, ?string $requestHash = null): self
     {
+        $this->assertPartySnapshot();
         $this->assertSettlementEntry($entry);
         $this->statusTransitionAuthorized = true;
 
@@ -211,6 +249,7 @@ class Check extends Model
             $this->status = CheckStatus::Bounced;
             $this->bounced_at = now();
             $this->bounce_entry_id = $entry->id;
+            $this->bounce_request_hash = $requestHash;
             $this->save();
         } finally {
             $this->statusTransitionAuthorized = false;
@@ -236,6 +275,13 @@ class Check extends Model
         }
 
         return $this;
+    }
+
+    private function assertPartySnapshot(): void
+    {
+        if ($this->party_snapshot === null) {
+            throw new DomainException('پیش از نهایی‌شدن چک، هویت طرف‌حساب باید snapshot شود.');
+        }
     }
 
     private function assertSettlementEntry(JournalEntry $entry): void

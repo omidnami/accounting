@@ -17,6 +17,7 @@ use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\TreasuryAccount;
 use App\Services\Branches\BranchContextService;
+use App\Services\Purchasing\PurchaseLookupService;
 use App\Services\Purchasing\SupplierPayableService;
 use App\Services\Purchasing\SupplierPaymentService;
 use App\Support\BusinessClock;
@@ -51,7 +52,7 @@ class SupplierPaymentController extends Controller
             ->where('store_id', $store->id)
             ->where('branch_id', $branch->id);
         $payments = (clone $base)
-            ->with(['supplier.party:id,code,name,phone', 'allocations'])
+            ->with(['supplier.party', 'allocations'])
             ->when($search !== '', function (Builder $query) use ($search): void {
                 $term = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
                 $query->where(function (Builder $query) use ($term): void {
@@ -71,20 +72,25 @@ class SupplierPaymentController extends Controller
             ->orderByDesc('id')
             ->paginate(15)
             ->withQueryString()
-            ->through(fn (Payment $payment): array => [
-                'id' => $payment->id,
-                'payment_number' => $payment->payment_number,
-                'payment_date' => $payment->payment_date->toDateString(),
-                'amount' => $payment->amount,
-                'payment_method' => $payment->payment_method->value,
-                'status' => $payment->status->value,
-                'allocations_count' => $payment->allocations->count(),
-                'supplier' => [
-                    'name' => $payment->supplier->party->name,
-                    'code' => $payment->supplier->party->code,
-                    'phone' => $payment->supplier->party->phone,
-                ],
-            ]);
+            ->through(function (Payment $payment): array {
+                $party = $payment->partyIdentity();
+
+                return [
+                    'id' => $payment->id,
+                    'payment_number' => $payment->payment_number,
+                    'payment_date' => $payment->payment_date->toDateString(),
+                    'amount' => $payment->amount,
+                    'payment_method' => $payment->payment_method->value,
+                    'status' => $payment->status->value,
+                    'allocations_count' => $payment->allocations->count(),
+                    'supplier' => [
+                        'name' => $party['name'],
+                        'code' => $party['code'],
+                        'phone' => $party['phone'],
+                        'legacy_current' => $party['legacy_current'] ?? false,
+                    ],
+                ];
+            });
 
         return Inertia::render('payments/Index', [
             'payments' => $payments,
@@ -140,10 +146,8 @@ class SupplierPaymentController extends Controller
             $supplier = Supplier::query()
                 ->with('party')
                 ->whereKey($supplierId)
-                ->where('is_active', true)
                 ->whereHas('party', fn (Builder $query) => $query
-                    ->where('store_id', $store->id)
-                    ->where('is_active', true))
+                    ->where('store_id', $store->id))
                 ->firstOrFail();
             $focusInvoiceId = isset($validated['invoice_id']) ? (int) $validated['invoice_id'] : null;
             $initialInvoiceIds = array_values(array_unique(array_map(
@@ -192,6 +196,23 @@ class SupplierPaymentController extends Controller
         ]);
     }
 
+    public function suppliers(Request $request, PurchaseLookupService $lookup): JsonResponse
+    {
+        abort_unless($request->user()?->canManagePayments(), 403);
+
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        return response()->json([
+            'data' => $lookup->suppliers(
+                $this->mainStore()->id,
+                (string) ($validated['search'] ?? ''),
+                includeInactive: true,
+            ),
+        ]);
+    }
+
     public function openInvoices(
         Request $request,
         SupplierPayableService $payables,
@@ -207,10 +228,8 @@ class SupplierPaymentController extends Controller
         $supplier = Supplier::query()
             ->with('party')
             ->whereKey((int) $validated['supplier_id'])
-            ->where('is_active', true)
             ->whereHas('party', fn (Builder $query) => $query
-                ->where('store_id', $store->id)
-                ->where('is_active', true))
+                ->where('store_id', $store->id))
             ->firstOrFail();
         $focusInvoiceId = isset($validated['invoice_id']) ? (int) $validated['invoice_id'] : null;
 
@@ -290,6 +309,7 @@ class SupplierPaymentController extends Controller
             'treasuryAccount',
             'check',
         ]);
+        $party = $payment->partyIdentity();
 
         return Inertia::render('payments/Show', [
             'payment' => [
@@ -312,9 +332,10 @@ class SupplierPaymentController extends Controller
                     : null,
                 'supplier' => [
                     'id' => $payment->supplier->id,
-                    'name' => $payment->supplier->party->name,
-                    'code' => $payment->supplier->party->code,
-                    'phone' => $payment->supplier->party->phone,
+                    'name' => $party['name'],
+                    'code' => $party['code'],
+                    'phone' => $party['phone'],
+                    'legacy_current' => $party['legacy_current'] ?? false,
                 ],
                 'allocations' => $payment->allocations->map(fn ($allocation): array => [
                     'id' => $allocation->id,
@@ -334,7 +355,7 @@ class SupplierPaymentController extends Controller
     /**
      * @return array{
      *     id: int, code: string, name: string, phone: string|null,
-     *     payment_terms: string|null
+     *     payment_terms: string|null, is_active: bool, status_label: string
      * }
      */
     private function mapSupplier(Supplier $supplier): array
@@ -345,6 +366,8 @@ class SupplierPaymentController extends Controller
             'name' => $supplier->party->name,
             'phone' => $supplier->party->phone,
             'payment_terms' => $supplier->payment_terms,
+            'is_active' => $supplier->is_active && $supplier->party->is_active,
+            'status_label' => $supplier->is_active && $supplier->party->is_active ? 'فعال' : 'غیرفعال',
         ];
     }
 

@@ -29,6 +29,7 @@ class ReturnRefundController extends Controller
             ->where('source_invoice_id', $invoice->id)
             ->where('status', 'posted')
             ->sum('amount');
+        $party = $invoice->partyIdentity();
 
         return Inertia::render('returns/Refund', [
             'invoice' => [
@@ -37,6 +38,12 @@ class ReturnRefundController extends Controller
                 'type' => $invoice->type->value,
                 'total' => $invoice->total,
                 'remaining' => Decimal::subtract($invoice->total, $refunded, Decimal::MONEY_SCALE),
+                'party' => [
+                    'name' => $party['name'],
+                    'code' => $party['code'],
+                    'phone' => $party['phone'],
+                    'legacy_current' => $party['legacy_current'] ?? false,
+                ],
             ],
             'treasury_accounts' => TreasuryAccount::query()
                 ->where('store_id', $invoice->store_id)

@@ -2,9 +2,14 @@
 
 namespace App\Models;
 
+use App\Services\Parties\PartySnapshotService;
+use DomainException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * @property array<string, mixed>|null $party_snapshot
+ */
 class ReturnRefund extends Model
 {
     protected $fillable = [
@@ -22,15 +27,40 @@ class ReturnRefund extends Model
         'journal_entry_id',
         'idempotency_key',
         'request_hash',
+        'party_snapshot',
         'created_by',
     ];
 
     protected function casts(): array
     {
         return [
+            'party_snapshot' => 'array',
             'amount' => 'decimal:2',
             'refund_date' => 'immutable_date',
         ];
+    }
+
+    /** @return BelongsTo<Party, $this> */
+    public function party(): BelongsTo
+    {
+        return $this->belongsTo(Party::class);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function partyIdentity(): array
+    {
+        return app(PartySnapshotService::class)->resolve($this->party_snapshot, $this->party);
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (ReturnRefund $refund): void {
+            if ($refund->status === 'posted' && $refund->party_snapshot === null) {
+                throw new DomainException('پیش از ثبت نهایی refund، هویت طرف‌حساب باید snapshot شود.');
+            }
+        });
     }
 
     /** @return BelongsTo<Invoice, $this> */

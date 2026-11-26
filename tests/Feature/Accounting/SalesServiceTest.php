@@ -3,6 +3,7 @@
 use App\Enums\InventoryMovementType;
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
+use App\Enums\JournalEntryStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\UserRole;
 use App\Models\Customer;
@@ -168,6 +169,64 @@ it('confirms a sales return, restores inventory, and reverses revenue and COGS',
         ->and($journal->totalDebit())->toBe('320.00')
         ->and($journal->totalCredit())->toBe('320.00');
 });
+
+it('allows a historical sales return after the customer, party, and product are deactivated', function () {
+    $context = createSalesContext();
+    $invoice = createSalesInvoice($context, 2);
+    $context['customer']->update(['is_active' => false]);
+    $context['party']->update(['is_active' => false]);
+    $context['product']->update(['is_active' => false]);
+    $items = [['invoice_item_id' => $invoice->items->first()->id, 'quantity' => 1]];
+
+    $return = app(SalesReturnService::class)->createDraft(
+        $invoice,
+        $items,
+        '2026-05-04',
+        $context['manager']->id,
+        'inactive-sales-return',
+    );
+    $retry = app(SalesReturnService::class)->createDraft(
+        $invoice,
+        $items,
+        '2026-05-04',
+        $context['manager']->id,
+        'inactive-sales-return',
+    );
+    $confirmed = app(SalesReturnService::class)->confirm(
+        $return,
+        $context['warehouse']->id,
+        $context['manager'],
+    );
+
+    expect($retry->getKey())->toBe($return->getKey())
+        ->and($confirmed->status)->toBe(InvoiceStatus::Confirmed)
+        ->and(JournalEntry::query()
+            ->where('source_type', Invoice::class)
+            ->where('source_id', $confirmed->id)
+            ->firstOrFail()->status)->toBe(JournalEntryStatus::Posted);
+});
+
+it('still rejects a new sale for a deactivated customer or party', function () {
+    $context = createSalesContext();
+    $context['customer']->update(['is_active' => false]);
+    $context['party']->update(['is_active' => false]);
+
+    app(SalesService::class)->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'customer_id' => $context['customer']->id,
+            'invoice_date' => '2026-05-03',
+        ],
+        [[
+            'product_id' => $context['product']->id,
+            'quantity' => 1,
+            'unit_price' => 200,
+            'tax_rate' => 10,
+        ]],
+    );
+})->throws(DomainException::class);
 
 it('blocks editing or deleting finalized sales documents', function () {
     $context = createSalesContext();

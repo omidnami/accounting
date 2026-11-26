@@ -14,20 +14,21 @@ class PurchaseLookupService
     /**
      * @return array<int, array{
      *     id: int, code: string, name: string, phone: string|null,
-     *     payment_terms: string|null, lead_time_days: int|null
+     *     payment_terms: string|null, lead_time_days: int|null,
+     *     is_active: bool, status_label: string
      * }>
      */
-    public function suppliers(int $storeId, string $search): array
+    public function suppliers(int $storeId, string $search, bool $includeInactive = false): array
     {
         $search = trim(Digits::toLatin($search));
 
         return Supplier::query()
             ->with('party:id,code,name,phone,is_active')
-            ->where('is_active', true)
-            ->whereHas('party', function (Builder $query) use ($storeId, $search): void {
+            ->when(! $includeInactive, fn (Builder $query) => $query->where('is_active', true))
+            ->whereHas('party', function (Builder $query) use ($storeId, $search, $includeInactive): void {
                 $query
                     ->where('store_id', $storeId)
-                    ->where('is_active', true)
+                    ->when(! $includeInactive, fn (Builder $query) => $query->where('is_active', true))
                     ->when($search !== '', function (Builder $query) use ($search): void {
                         $term = $this->likeTerm($search);
                         $query->where(function (Builder $query) use ($term): void {
@@ -49,6 +50,8 @@ class PurchaseLookupService
                 'phone' => $supplier->party->phone,
                 'payment_terms' => $supplier->payment_terms,
                 'lead_time_days' => $supplier->lead_time_days,
+                'is_active' => $supplier->is_active && $supplier->party->is_active,
+                'status_label' => $supplier->is_active && $supplier->party->is_active ? 'فعال' : 'غیرفعال',
             ])
             ->all();
     }

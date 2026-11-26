@@ -9,6 +9,7 @@ use App\Enums\InvoiceType;
 use App\Models\AccountingPeriod;
 use App\Models\Customer;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Product;
 use App\Models\User;
 use App\Models\Warehouse;
@@ -18,7 +19,10 @@ use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
 use App\Services\Inventory\InventoryService;
+use App\Services\Parties\PartySnapshotService;
 use App\Support\Decimal;
+use App\Support\IdempotencyHasher;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +36,7 @@ class SalesService
         private readonly SettingService $settings,
         private readonly CustomerReceivableService $receivables,
         private readonly AccountingPeriodLockService $periods,
+        private readonly PartySnapshotService $partySnapshots,
     ) {}
 
     /**
@@ -44,20 +49,18 @@ class SalesService
         ?string $idempotencyKey = null,
         bool $forceProductTaxRate = false,
     ): Invoice {
-        if ($items === []) {
-            throw new DomainException('فاکتور فروش باید حداقل یک قلم داشته باشد.');
-        }
-
-        if ($forceProductTaxRate) {
-            $items = $this->withProductTaxRates($items);
-        }
-
-        $requestHash = $idempotencyKey === null
-            ? null
-            : $this->draftRequestHash($attributes, $items);
+        $requestPayload = $this->draftRequestPayload($attributes, $items, ignoreProductTaxRate: $forceProductTaxRate);
+        $requestHash = IdempotencyHasher::hash('sales.draft', $requestPayload);
 
         try {
-            return DB::transaction(function () use ($attributes, $items, $idempotencyKey, $requestHash): Invoice {
+            return DB::transaction(function () use (
+                $attributes,
+                $items,
+                $idempotencyKey,
+                $requestHash,
+                $requestPayload,
+                $forceProductTaxRate,
+            ): Invoice {
                 unset($attributes['status']);
 
                 if ($idempotencyKey !== null) {
@@ -67,8 +70,16 @@ class SalesService
                         ->first();
 
                     if ($existing) {
-                        return $this->resolveIdempotentDraft($existing, $requestHash);
+                        return $this->resolveIdempotentDraft($existing, $requestHash, $requestPayload, $forceProductTaxRate);
                     }
+                }
+
+                if ($items === []) {
+                    throw new DomainException('فاکتور فروش باید حداقل یک قلم داشته باشد.');
+                }
+
+                if ($forceProductTaxRate) {
+                    $items = $this->withProductTaxRates($items);
                 }
 
                 $customer = Customer::query()
@@ -186,7 +197,7 @@ class SalesService
                 ])->save();
 
                 return $invoice->refresh()->load('items');
-            });
+            }, attempts: 3);
         } catch (UniqueConstraintViolationException $exception) {
             if ($idempotencyKey !== null) {
                 $existing = Invoice::query()
@@ -194,7 +205,7 @@ class SalesService
                     ->first();
 
                 if ($existing) {
-                    return $this->resolveIdempotentDraft($existing, $requestHash);
+                    return $this->resolveIdempotentDraft($existing, $requestHash, $requestPayload, $forceProductTaxRate);
                 }
             }
 
@@ -226,6 +237,10 @@ class SalesService
                 || (int) $customer->party->store_id !== (int) $locked->store_id) {
                 throw new DomainException('مشتری فاکتور معتبر و متعلق به فروشگاه نیست.');
             }
+
+            $locked->forceFill([
+                'party_snapshot' => $this->partySnapshots->capture($customer->party),
+            ])->save();
 
             $creditIncrease = Decimal::subtract($locked->total, $posContext?->immediateAmount($locked) ?? '0.00', 2);
             $projectedCredit = Decimal::add(
@@ -351,39 +366,95 @@ class SalesService
             $locked->confirmDocument();
 
             return $locked->refresh()->load(['items', 'customer.party']);
-        });
+        }, attempts: 3);
     }
 
     /**
      * @param  array<string, mixed>  $attributes
      * @param  array<int, array<string, mixed>>  $items
+     * @return array<string, mixed>
      */
-    private function draftRequestHash(array $attributes, array $items): string
-    {
+    private function draftRequestPayload(
+        array $attributes,
+        array $items,
+        bool $ignoreProductTaxRate = false,
+    ): array {
         $canonicalItems = collect($items)
-            ->map(fn (array $item): array => [
-                'product_id' => (int) $item['product_id'],
-                'quantity' => Decimal::normalize($item['quantity'], Decimal::QUANTITY_SCALE),
-                'unit_price' => Decimal::normalize($item['unit_price'], Decimal::MONEY_SCALE),
-                'discount_amount' => Decimal::normalize($item['discount_amount'] ?? 0, Decimal::MONEY_SCALE),
-                'tax_rate' => isset($item['tax_rate'])
-                    ? Decimal::normalize($item['tax_rate'], Decimal::MONEY_SCALE)
-                    : null,
-            ])
+            ->map(function (array $item) use ($ignoreProductTaxRate): array {
+                $canonical = [
+                    'product_id' => (int) $item['product_id'],
+                    'quantity' => Decimal::normalize($item['quantity'], Decimal::QUANTITY_SCALE),
+                    'unit_price' => Decimal::normalize($item['unit_price'], Decimal::MONEY_SCALE),
+                    'discount_amount' => Decimal::normalize($item['discount_amount'] ?? 0, Decimal::MONEY_SCALE),
+                ];
+
+                if (! $ignoreProductTaxRate) {
+                    $canonical['tax_rate'] = isset($item['tax_rate'])
+                        ? Decimal::normalize($item['tax_rate'], Decimal::MONEY_SCALE)
+                        : null;
+                }
+
+                return $canonical;
+            })
             ->values()
             ->all();
 
-        return hash('sha256', json_encode([
+        $invoiceNumber = empty($attributes['invoice_number'])
+            ? null
+            : (string) $attributes['invoice_number'];
+
+        return [
             'store_id' => (int) $attributes['store_id'],
             'branch_id' => (int) $attributes['branch_id'],
             'fiscal_year_id' => (int) $attributes['fiscal_year_id'],
             'customer_id' => (int) $attributes['customer_id'],
-            'invoice_date' => (string) $attributes['invoice_date'],
-            'due_date' => $attributes['due_date'] ?? null,
+            'invoice_number' => $invoiceNumber,
+            'parent_invoice_id' => isset($attributes['parent_invoice_id'])
+                ? (int) $attributes['parent_invoice_id']
+                : null,
+            'invoice_date' => CarbonImmutable::parse($attributes['invoice_date'])->toDateString(),
+            'due_date' => isset($attributes['due_date'])
+                ? CarbonImmutable::parse($attributes['due_date'])->toDateString()
+                : null,
             'notes' => $attributes['notes'] ?? null,
             'created_by' => isset($attributes['created_by']) ? (int) $attributes['created_by'] : null,
             'items' => $canonicalItems,
-        ], JSON_THROW_ON_ERROR));
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function persistedDraftPayload(Invoice $invoice, bool $ignoreProductTaxRate): array
+    {
+        $items = $invoice->items()->get()->map(function (InvoiceItem $item) use ($ignoreProductTaxRate): array {
+            $canonical = [
+                'product_id' => (int) $item->product_id,
+                'quantity' => Decimal::normalize($item->quantity, Decimal::QUANTITY_SCALE),
+                'unit_price' => Decimal::normalize($item->unit_price, Decimal::MONEY_SCALE),
+                'discount_amount' => Decimal::normalize($item->discount_amount, Decimal::MONEY_SCALE),
+            ];
+
+            if (! $ignoreProductTaxRate) {
+                $canonical['tax_rate'] = Decimal::normalize($item->tax_rate, Decimal::MONEY_SCALE);
+            }
+
+            return $canonical;
+        })->values()->all();
+
+        return [
+            'store_id' => (int) $invoice->store_id,
+            'branch_id' => (int) $invoice->branch_id,
+            'fiscal_year_id' => (int) $invoice->fiscal_year_id,
+            'customer_id' => (int) $invoice->customer_id,
+            'invoice_number' => $invoice->invoice_number,
+            'parent_invoice_id' => $invoice->parent_invoice_id === null ? null : (int) $invoice->parent_invoice_id,
+            'invoice_date' => $invoice->invoice_date->toDateString(),
+            'due_date' => $invoice->due_date?->toDateString(),
+            'notes' => $invoice->notes,
+            'created_by' => $invoice->created_by === null ? null : (int) $invoice->created_by,
+            'items' => $items,
+        ];
     }
 
     /**
@@ -417,12 +488,44 @@ class SalesService
         }, $items);
     }
 
-    private function resolveIdempotentDraft(Invoice $invoice, string $requestHash): Invoice
-    {
-        if ($invoice->type !== InvoiceType::Sales
-            || $invoice->idempotency_request_hash === null
-            || ! hash_equals($invoice->idempotency_request_hash, $requestHash)) {
+    /**
+     * @param  array<string, mixed>  $requestPayload
+     */
+    private function resolveIdempotentDraft(
+        Invoice $invoice,
+        string $requestHash,
+        array $requestPayload,
+        bool $ignoreProductTaxRate,
+    ): Invoice {
+        if ($invoice->type !== InvoiceType::Sales) {
             throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+        }
+
+        if ($invoice->idempotency_request_hash !== null) {
+            if (! hash_equals($invoice->idempotency_request_hash, $requestHash)) {
+                throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+            }
+        } else {
+            $persistedPayload = $this->persistedDraftPayload($invoice, $ignoreProductTaxRate);
+
+            if ($requestPayload['invoice_number'] === null) {
+                $persistedPayload['invoice_number'] = null;
+            }
+
+            if (! $ignoreProductTaxRate) {
+                foreach ($requestPayload['items'] as $index => $item) {
+                    if ($item['tax_rate'] === null) {
+                        $persistedPayload['items'][$index]['tax_rate'] = null;
+                    }
+                }
+            }
+
+            if (! hash_equals(
+                IdempotencyHasher::hash('sales.draft', $persistedPayload),
+                $requestHash,
+            )) {
+                throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+            }
         }
 
         return $invoice->load('items');

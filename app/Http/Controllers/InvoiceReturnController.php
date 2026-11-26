@@ -413,9 +413,7 @@ class InvoiceReturnController extends Controller
      */
     private function mapInvoice(Invoice $invoice, string $kind): array
     {
-        $party = $kind === 'sales'
-            ? $invoice->customer?->party
-            : $invoice->supplier?->party;
+        $party = $invoice->partyIdentity();
 
         return [
             'id' => $invoice->id,
@@ -427,9 +425,10 @@ class InvoiceReturnController extends Controller
             'tax_total' => $invoice->tax_total,
             'total' => $invoice->total,
             'party' => [
-                'name' => $party?->name,
-                'code' => $party?->code,
-                'phone' => $party?->phone,
+                'name' => $party['name'],
+                'code' => $party['code'],
+                'phone' => $party['phone'],
+                'legacy_current' => $party['legacy_current'] ?? false,
             ],
         ];
     }

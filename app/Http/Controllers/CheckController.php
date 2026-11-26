@@ -6,8 +6,10 @@ use App\Enums\CheckStatus;
 use App\Enums\CheckType;
 use App\Enums\TreasuryAccountType;
 use App\Http\Requests\CheckBounceRequest;
+use App\Http\Requests\CheckCancelRequest;
 use App\Http\Requests\CheckRequest;
 use App\Http\Requests\CheckSettlementRequest;
+use App\Http\Requests\CheckUpdateRequest;
 use App\Models\Branch;
 use App\Models\Check;
 use App\Models\Customer;
@@ -16,8 +18,8 @@ use App\Models\JournalEntry;
 use App\Models\Store;
 use App\Models\Supplier;
 use App\Models\TreasuryAccount;
-use App\Services\Audit\AuditLogService;
 use App\Services\Branches\BranchContextService;
+use App\Services\Treasury\CheckLifecycleService;
 use App\Services\Treasury\CheckRegistrationService;
 use App\Services\Treasury\CheckSettlementService;
 use App\Support\BusinessClock;
@@ -56,8 +58,8 @@ class CheckController extends Controller
             ->where('branch_id', $branch->id);
         $checks = (clone $base)
             ->with([
-                'customer.party:id,code,name,phone',
-                'supplier.party:id,code,name,phone',
+                'customer.party',
+                'supplier.party',
                 'receipt:id,receipt_number,status,check_id',
                 'payment:id,payment_number,status,check_id',
             ])
@@ -134,15 +136,19 @@ class CheckController extends Controller
             ? CheckType::from($validated['type'])
             : CheckType::Receivable;
         $initialParty = null;
+        $allowInactive = isset($validated['return_to'])
+            && trim((string) ($validated['invoice_ids'] ?? '')) !== '';
 
         if ($type === CheckType::Receivable && isset($validated['customer_id'])) {
             $customer = Customer::query()
                 ->with('party')
                 ->whereKey((int) $validated['customer_id'])
-                ->where('is_active', true)
-                ->whereHas('party', fn (Builder $query) => $query
-                    ->where('store_id', $store->id)
-                    ->where('is_active', true))
+                ->when(! $allowInactive, fn (Builder $query) => $query->where('is_active', true))
+                ->whereHas('party', function (Builder $query) use ($store, $allowInactive): void {
+                    $query
+                        ->where('store_id', $store->id)
+                        ->when(! $allowInactive, fn (Builder $query) => $query->where('is_active', true));
+                })
                 ->firstOrFail();
             $initialParty = [
                 'id' => $customer->id,
@@ -156,10 +162,12 @@ class CheckController extends Controller
             $supplier = Supplier::query()
                 ->with('party')
                 ->whereKey((int) $validated['supplier_id'])
-                ->where('is_active', true)
-                ->whereHas('party', fn (Builder $query) => $query
-                    ->where('store_id', $store->id)
-                    ->where('is_active', true))
+                ->when(! $allowInactive, fn (Builder $query) => $query->where('is_active', true))
+                ->whereHas('party', function (Builder $query) use ($store, $allowInactive): void {
+                    $query
+                        ->where('store_id', $store->id)
+                        ->when(! $allowInactive, fn (Builder $query) => $query->where('is_active', true));
+                })
                 ->firstOrFail();
             $initialParty = [
                 'id' => $supplier->id,
@@ -186,6 +194,45 @@ class CheckController extends Controller
         ]);
     }
 
+    public function edit(Request $request, Check $check): Response
+    {
+        abort_unless($request->user()?->canManageChecks(), 403);
+        $this->assertCheckInScope($check);
+        abort_unless($this->isEditable($check), 404);
+        $check->load(['customer.party', 'supplier.party']);
+
+        return Inertia::render('checks/Edit', [
+            'check' => [
+                ...$this->mapCheckSummary($check),
+                'branch_name' => $check->branch_name,
+                'description' => $check->description,
+            ],
+        ]);
+    }
+
+    public function update(
+        CheckUpdateRequest $request,
+        Check $check,
+        CheckLifecycleService $checks,
+    ): RedirectResponse {
+        $this->assertCheckInScope($check);
+
+        try {
+            $updated = $checks->update($check, $request->validated(), $request->user());
+        } catch (DomainException $exception) {
+            throw ValidationException::withMessages([
+                'check' => $exception->getMessage(),
+            ]);
+        }
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => "چک {$updated->document_number} ویرایش شد.",
+        ]);
+
+        return to_route('checks.show', $updated);
+    }
+
     public function store(
         CheckRequest $request,
         CheckRegistrationService $checks,
@@ -198,6 +245,19 @@ class CheckController extends Controller
         $partyProfileId = $type === CheckType::Receivable
             ? (int) $data['customer_id']
             : (int) $data['supplier_id'];
+        $returnTo = $data['return_to'] ?? null;
+
+        if (($returnTo === 'receipt' && $type !== CheckType::Receivable)
+            || ($returnTo === 'payment' && $type !== CheckType::Payable)) {
+            throw ValidationException::withMessages([
+                'check' => 'نوع چک با فرم دریافت یا پرداخت سازگار نیست.',
+            ]);
+        }
+
+        $sourceInvoiceIds = array_values(array_unique(array_map(
+            'intval',
+            array_filter(explode(',', (string) ($data['invoice_ids'] ?? ''))),
+        )));
 
         try {
             $check = $checks->register(
@@ -215,6 +275,7 @@ class CheckController extends Controller
                 creator: $request->user(),
                 idempotencyKey: $data['submission_token'],
                 description: $data['description'] ?? null,
+                sourceInvoiceIds: $sourceInvoiceIds,
             );
         } catch (DomainException $exception) {
             throw ValidationException::withMessages([
@@ -326,29 +387,24 @@ class CheckController extends Controller
     }
 
     public function cancel(
-        Request $request,
+        CheckCancelRequest $request,
         Check $check,
-        AuditLogService $audit,
+        CheckLifecycleService $checks,
     ): RedirectResponse {
-        abort_unless(
-            (int) $check->store_id === $this->mainStore()->id
-            && (int) $check->branch_id === $this->defaultBranch($this->mainStore())->id,
-            404,
-        );
-        $validated = $request->validate([
-            'reason' => ['required', 'string', 'max:500'],
-        ]);
-        $locked = Check::query()->whereKey($check->id)->lockForUpdate()->firstOrFail();
+        $this->assertCheckInScope($check);
 
         try {
-            $locked->markCancelled(trim($validated['reason']));
+            $cancelled = $checks->cancel($check, $request->validated('reason'), $request->user());
         } catch (DomainException $exception) {
             throw ValidationException::withMessages(['check' => $exception->getMessage()]);
         }
 
-        $audit->record('check_cancelled', $locked, newValues: ['reason' => trim($validated['reason'])]);
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => "چک {$cancelled->document_number} ابطال شد.",
+        ]);
 
-        return to_route('checks.show', $locked);
+        return to_route('checks.show', $cancelled);
     }
 
     public function settle(
@@ -437,13 +493,16 @@ class CheckController extends Controller
     private function mapCheckSummary(Check $check): array
     {
         $isReceivable = $check->type === CheckType::Receivable;
-        $party = $isReceivable
-            ? $check->customer?->party
-            : $check->supplier?->party;
+        $party = $check->partyIdentity();
+        $isLinked = $check->receipt !== null || $check->payment !== null;
+        $canManageLifecycle = $check->status === CheckStatus::Pending && ! $isLinked;
 
         return [
             'id' => $check->id,
+            'check_id' => $check->id,
             'document_number' => $check->document_number,
+            'customer_id' => $check->customer_id,
+            'supplier_id' => $check->supplier_id,
             'check_number' => $check->check_number,
             'bank_name' => $check->bank_name,
             'amount' => $check->amount,
@@ -451,11 +510,15 @@ class CheckController extends Controller
             'due_date' => $check->due_date->toDateString(),
             'type' => $check->type->value,
             'status' => $check->status->value,
+            'is_linked' => $isLinked,
+            'can_edit' => $canManageLifecycle,
+            'can_cancel' => $canManageLifecycle,
             'party' => [
                 'kind' => $isReceivable ? 'customer' : 'supplier',
-                'id' => $party?->id,
-                'code' => $party?->code,
-                'name' => $party?->name,
+                'id' => $party['party_id'] ?? null,
+                'code' => $party['code'],
+                'name' => $party['name'],
+                'legacy_current' => $party['legacy_current'] ?? false,
             ],
             'treasury_document' => $check->receipt
                 ? [
@@ -513,6 +576,24 @@ class CheckController extends Controller
                 'is_default' => $account->is_default,
             ])
             ->all();
+    }
+
+    private function assertCheckInScope(Check $check): void
+    {
+        $store = $this->mainStore();
+
+        abort_unless(
+            (int) $check->store_id === $store->id
+            && (int) $check->branch_id === $this->defaultBranch($store)->id,
+            404,
+        );
+    }
+
+    private function isEditable(Check $check): bool
+    {
+        return $check->status === CheckStatus::Pending
+            && ! $check->receipt()->exists()
+            && ! $check->payment()->exists();
     }
 
     private function mainStore(): Store

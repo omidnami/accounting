@@ -30,4 +30,10 @@ class PosTender extends Model
     {
         return $this->belongsTo(PosSale::class, 'pos_sale_id');
     }
+
+    /** @return BelongsTo<Receipt, $this> */
+    public function receipt(): BelongsTo
+    {
+        return $this->belongsTo(Receipt::class);
+    }
 }

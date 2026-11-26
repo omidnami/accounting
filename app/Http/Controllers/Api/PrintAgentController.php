@@ -15,19 +15,11 @@ class PrintAgentController extends Controller
     public function claim(Request $request): JsonResponse
     {
         $station = $this->station($request);
-        $job = DB::transaction(function () use ($station): ?PrintJob {
-            $lockedStation = PrintStation::query()
-                ->whereKey($station->id)
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            abort_unless(
-                $lockedStation->status === 'active' && $lockedStation->revoked_at === null,
-                401,
-            );
+        $job = DB::transaction(function () use ($request, $station): ?PrintJob {
+            $lockedStation = $this->lockedStation($request, $station);
 
             $now = now();
-            $leaseExpiredAt = $now->subSeconds(
+            $leaseExpiredAt = $now->copy()->subSeconds(
                 max(1, (int) config('print_agent.lease_seconds', 180)),
             );
             $maxAttempts = max(1, (int) config('print_agent.max_attempts', 3));
@@ -71,24 +63,23 @@ class PrintAgentController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            if ($job === null) {
-                return null;
+            if ($job !== null) {
+                $job->forceFill([
+                    'status' => 'claimed',
+                    'claimed_at' => $now,
+                    'attempts' => $job->attempts + 1,
+                ])->save();
+                PrintEvent::query()->create([
+                    'print_job_id' => $job->id,
+                    'print_station_id' => $lockedStation->id,
+                    'event' => 'claimed',
+                ]);
             }
 
-            $job->forceFill([
-                'status' => 'claimed',
-                'claimed_at' => $now,
-                'attempts' => $job->attempts + 1,
-            ])->save();
-            PrintEvent::query()->create([
-                'print_job_id' => $job->id,
-                'print_station_id' => $lockedStation->id,
-                'event' => 'claimed',
-            ]);
+            $lockedStation->update(['last_seen_at' => $now]);
 
             return $job;
-        });
-        $station->update(['last_seen_at' => now()]);
+        }, attempts: 3);
 
         return response()->json(['job' => $job]);
     }
@@ -97,19 +88,21 @@ class PrintAgentController extends Controller
     {
         $station = $this->station($request);
 
-        return DB::transaction(function () use ($station, $job): JsonResponse {
+        return DB::transaction(function () use ($request, $station, $job): JsonResponse {
+            $lockedStation = $this->lockedStation($request, $station);
             $locked = PrintJob::query()
                 ->whereKey($job->id)
                 ->lockForUpdate()
                 ->firstOrFail();
-            abort_unless((int) $locked->print_station_id === (int) $station->id, 404);
+            abort_unless((int) $locked->print_station_id === (int) $lockedStation->id, 404);
             abort_unless($locked->status === 'claimed', 409);
 
-            $locked->forceFill(['claimed_at' => now()])->save();
-            $station->update(['last_seen_at' => now()]);
+            $now = now();
+            $locked->forceFill(['claimed_at' => $now])->save();
+            $lockedStation->update(['last_seen_at' => $now]);
 
             return response()->json(['ok' => true]);
-        });
+        }, attempts: 3);
     }
 
     public function complete(
@@ -122,12 +115,13 @@ class PrintAgentController extends Controller
             'message' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        return DB::transaction(function () use ($station, $job, $validated): JsonResponse {
+        return DB::transaction(function () use ($request, $station, $job, $validated): JsonResponse {
+            $lockedStation = $this->lockedStation($request, $station);
             $locked = PrintJob::query()
                 ->whereKey($job->id)
                 ->lockForUpdate()
                 ->firstOrFail();
-            abort_unless((int) $locked->print_station_id === (int) $station->id, 404);
+            abort_unless((int) $locked->print_station_id === (int) $lockedStation->id, 404);
 
             // Network retries are common: repeating the same completion must
             // succeed without emitting a second event or changing the result.
@@ -138,23 +132,24 @@ class PrintAgentController extends Controller
             }
 
             abort_unless($locked->status === 'claimed', 409);
+            $now = now();
             $locked->forceFill([
                 'status' => $validated['status'],
-                'printed_at' => $validated['status'] === 'printed' ? now() : null,
+                'printed_at' => $validated['status'] === 'printed' ? $now : null,
                 'last_error' => $validated['status'] === 'failed'
                     ? ($validated['message'] ?? 'Print failed')
                     : null,
             ])->save();
             PrintEvent::query()->create([
                 'print_job_id' => $locked->id,
-                'print_station_id' => $station->id,
+                'print_station_id' => $lockedStation->id,
                 'event' => $validated['status'],
                 'message' => $validated['message'] ?? null,
             ]);
-            $station->update(['last_seen_at' => now()]);
+            $lockedStation->update(['last_seen_at' => $now]);
 
             return response()->json(['ok' => true]);
-        });
+        }, attempts: 3);
     }
 
     private function station(Request $request): PrintStation
@@ -163,11 +158,28 @@ class PrintAgentController extends Controller
         abort_if($token === null || $token === '', 401);
         $station = PrintStation::query()
             ->where('token_hash', hash('sha256', $token))
-            ->where('status', 'active')
-            ->whereNull('revoked_at')
             ->first();
         abort_if($station === null, 401);
 
         return $station;
+    }
+
+    private function lockedStation(Request $request, PrintStation $station): PrintStation
+    {
+        $token = $request->bearerToken();
+        $locked = PrintStation::query()
+            ->whereKey($station->getKey())
+            ->lockForUpdate()
+            ->firstOrFail();
+
+        abort_unless(
+            $token !== null
+            && hash_equals((string) $locked->token_hash, hash('sha256', $token))
+            && $locked->status === 'active'
+            && $locked->revoked_at === null,
+            401,
+        );
+
+        return $locked;
     }
 }

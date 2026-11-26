@@ -7,11 +7,16 @@ use App\Enums\InvoiceType;
 use App\Models\Invoice;
 use App\Models\PrintJob;
 use App\Models\PrintStation;
+use App\Services\Parties\PartySnapshotService;
 use DomainException;
 use Illuminate\Support\Str;
 
 class PrintJobService
 {
+    public function __construct(
+        private readonly PartySnapshotService $partySnapshots,
+    ) {}
+
     public function queueSalesInvoice(Invoice $invoice): PrintJob
     {
         if ($invoice->type !== InvoiceType::Sales) {
@@ -25,12 +30,7 @@ class PrintJobService
         $station = PrintStation::query()
             ->where('store_id', $invoice->store_id)
             ->where('branch_id', $invoice->branch_id)
-            ->where('status', 'active')
-            ->whereNull('revoked_at')
-            ->where(function ($query): void {
-                $query->whereNull('last_seen_at')
-                    ->orWhere('last_seen_at', '>=', now()->subMinutes(5));
-            })
+            ->online()
             ->latest('last_seen_at')
             ->first();
 
@@ -50,6 +50,7 @@ class PrintJobService
         }
 
         $invoice->load(['items', 'customer.party', 'branch', 'store']);
+        $customer = $this->partySnapshots->resolve($invoice->party_snapshot, $invoice->customer?->party);
 
         return PrintJob::query()->create([
             'id' => (string) Str::uuid(),
@@ -70,8 +71,10 @@ class PrintJobService
                     'branch' => $invoice->branch?->name,
                 ],
                 'customer' => [
-                    'name' => $invoice->customer?->party?->name,
-                    'phone' => $invoice->customer?->party?->phone,
+                    'name' => $customer['name'],
+                    'phone' => $customer['phone'],
+                    'code' => $customer['code'],
+                    'legacy_current' => $customer['legacy_current'] ?? false,
                 ],
                 'items' => $invoice->items->map(fn ($item): array => [
                     'name' => $item->product_name,

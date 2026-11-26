@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ProductStockPolicy;
+use App\Support\Digits;
 use DomainException;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -155,6 +156,20 @@ class Product extends Model
     protected static function booted(): void
     {
         static::saving(function (Product $product): void {
+            foreach (['code', 'barcode'] as $identifier) {
+                $value = $product->getAttribute($identifier);
+
+                if (! is_string($value) || ($product->exists && ! $product->isDirty($identifier))) {
+                    continue;
+                }
+
+                $value = trim(Digits::toLatin($value));
+                $product->setAttribute(
+                    $identifier,
+                    $identifier === 'barcode' && $value === '' ? null : $value,
+                );
+            }
+
             $itemType = $product->item_type ?? 'stock';
             $product->item_type = $itemType;
 

@@ -37,8 +37,7 @@ class CustomerReceiptRequest extends FormRequest
                         'party_id',
                         Party::query()
                             ->select('id')
-                            ->where('store_id', $storeId)
-                            ->where('is_active', true),
+                            ->where('store_id', $storeId),
                     );
                 }),
             ],

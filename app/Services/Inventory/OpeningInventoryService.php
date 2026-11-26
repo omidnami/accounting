@@ -10,6 +10,7 @@ use App\Models\Branch;
 use App\Models\FiscalYear;
 use App\Models\InventoryMovement;
 use App\Models\InventoryOpening;
+use App\Models\InventoryOpeningItem;
 use App\Models\JournalEntryLine;
 use App\Models\Product;
 use App\Models\ProductBatch;
@@ -21,6 +22,7 @@ use App\Services\Accounting\SettingService;
 use App\Services\Audit\AuditLogService;
 use App\Services\Events\DomainEventService;
 use App\Support\Decimal;
+use App\Support\IdempotencyHasher;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -50,13 +52,15 @@ class OpeningInventoryService
         string $idempotencyKey,
     ): InventoryOpening {
         $openingDate = CarbonImmutable::parse($openingDate)->toDateString();
-        $requestHash = $this->requestHash(
+        $requestPayload = $this->requestPayload(
             $branch,
             $warehouse,
             $fiscalYear,
             $openingDate,
             $items,
+            (int) $actor->id,
         );
+        $requestHash = IdempotencyHasher::hash('inventory.opening', $requestPayload);
 
         try {
             return DB::transaction(function () use (
@@ -75,15 +79,7 @@ class OpeningInventoryService
                     ->first();
 
                 if ($existing !== null) {
-                    if (! hash_equals($existing->request_hash, $requestHash)) {
-                        throw new DomainException('کلید تکرارپذیری افتتاحیه قبلاً برای درخواست متفاوتی استفاده شده است.');
-                    }
-
-                    if ($existing->status !== 'posted') {
-                        throw new DomainException('افتتاحیه با همین کلید هنوز ناتمام است.');
-                    }
-
-                    return $existing->load(['items.product', 'journalEntry']);
+                    return $this->resolveIdempotentOpening($existing, $requestHash);
                 }
 
                 if ((int) $warehouse->store_id !== (int) $branch->store_id
@@ -113,8 +109,17 @@ class OpeningInventoryService
                     'created_by' => $actor->id,
                 ]);
                 $total = '0.00';
+                $orderedItems = collect($items)
+                    ->map(fn (array $item, int $index): array => ['item' => $item, 'index' => $index])
+                    ->sortBy([
+                        fn (array $entry): int => (int) $entry['item']['product_id'],
+                        fn (array $entry): int => $entry['index'],
+                    ])
+                    ->values();
 
-                foreach ($items as $index => $item) {
+                foreach ($orderedItems as $entry) {
+                    $item = $entry['item'];
+                    $index = $entry['index'];
                     $product = $products[(int) $item['product_id']];
                     $quantity = Decimal::normalize($item['quantity'], Decimal::QUANTITY_SCALE);
                     $unitCost = Decimal::normalize($item['unit_cost'], Decimal::UNIT_COST_SCALE);
@@ -217,11 +222,7 @@ class OpeningInventoryService
                 ->where('idempotency_key', $idempotencyKey)
                 ->firstOrFail();
 
-            if (! hash_equals($existing->request_hash, $requestHash)) {
-                throw new DomainException('کلید تکرارپذیری افتتاحیه قبلاً برای درخواست متفاوتی استفاده شده است.');
-            }
-
-            return $existing->load(['items.product', 'journalEntry']);
+            return $this->resolveIdempotentOpening($existing, $requestHash);
         }
     }
 
@@ -257,14 +258,16 @@ class OpeningInventoryService
 
     /**
      * @param  array<int, array<string, mixed>>  $items
+     * @return array<string, mixed>
      */
-    private function requestHash(
+    private function requestPayload(
         Branch $branch,
         Warehouse $warehouse,
         FiscalYear $fiscalYear,
         string $openingDate,
         array $items,
-    ): string {
+        int $createdBy,
+    ): array {
         $canonicalItems = collect($items)
             ->map(fn (array $item): array => [
                 'product_id' => (int) $item['product_id'],
@@ -281,14 +284,63 @@ class OpeningInventoryService
             ->values()
             ->all();
 
-        return hash('sha256', json_encode([
-            'store_id' => $branch->store_id,
-            'branch_id' => $branch->id,
-            'warehouse_id' => $warehouse->id,
-            'fiscal_year_id' => $fiscalYear->id,
+        return [
+            'store_id' => (int) $branch->store_id,
+            'branch_id' => (int) $branch->id,
+            'warehouse_id' => (int) $warehouse->id,
+            'fiscal_year_id' => (int) $fiscalYear->id,
             'opening_date' => $openingDate,
+            'created_by' => $createdBy,
             'items' => $canonicalItems,
-        ], JSON_THROW_ON_ERROR));
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function persistedPayload(InventoryOpening $opening): array
+    {
+        return [
+            'store_id' => (int) $opening->store_id,
+            'branch_id' => (int) $opening->branch_id,
+            'warehouse_id' => (int) $opening->warehouse_id,
+            'fiscal_year_id' => (int) $opening->fiscal_year_id,
+            'opening_date' => $opening->opening_date->toDateString(),
+            'created_by' => $opening->created_by === null ? null : (int) $opening->created_by,
+            'items' => $opening->items()
+                ->orderBy('sort_order')
+                ->get()
+                ->map(fn (InventoryOpeningItem $item): array => [
+                    'product_id' => (int) $item->product_id,
+                    'quantity' => Decimal::normalize($item->quantity, Decimal::QUANTITY_SCALE),
+                    'unit_cost' => Decimal::normalize($item->unit_cost, Decimal::UNIT_COST_SCALE),
+                    'product_batch_id' => $item->product_batch_id === null ? null : (int) $item->product_batch_id,
+                    'serial_numbers' => $item->serial_numbers ?? [],
+                ])->values()->all(),
+        ];
+    }
+
+    private function resolveIdempotentOpening(
+        InventoryOpening $opening,
+        string $requestHash,
+    ): InventoryOpening {
+        $storedHash = $opening->getRawOriginal('request_hash');
+        $matches = is_string($storedHash) && $storedHash !== ''
+            ? hash_equals($storedHash, $requestHash)
+            : hash_equals(
+                IdempotencyHasher::hash('inventory.opening', $this->persistedPayload($opening)),
+                $requestHash,
+            );
+
+        if (! $matches) {
+            throw new DomainException('کلید تکرارپذیری افتتاحیه قبلاً برای درخواست متفاوتی استفاده شده است.');
+        }
+
+        if ($opening->status !== 'posted') {
+            throw new DomainException('افتتاحیه با همین کلید هنوز ناتمام است.');
+        }
+
+        return $opening->load(['items.product', 'journalEntry']);
     }
 
     /**

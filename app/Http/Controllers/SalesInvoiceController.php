@@ -68,19 +68,24 @@ class SalesInvoiceController extends Controller
             ->orderByDesc('id')
             ->paginate(15)
             ->withQueryString()
-            ->through(fn (Invoice $invoice): array => [
-                'id' => $invoice->id,
-                'invoice_number' => $invoice->invoice_number,
-                'invoice_date' => $invoice->invoice_date->toDateString(),
-                'due_date' => $invoice->due_date?->toDateString(),
-                'status' => $invoice->status->value,
-                'total' => $invoice->total,
-                'customer' => [
-                    'name' => $invoice->customer->party->name,
-                    'code' => $invoice->customer->party->code,
-                    'phone' => $invoice->customer->party->phone,
-                ],
-            ]);
+            ->through(function (Invoice $invoice): array {
+                $party = $invoice->partyIdentity();
+
+                return [
+                    'id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'invoice_date' => $invoice->invoice_date->toDateString(),
+                    'due_date' => $invoice->due_date?->toDateString(),
+                    'status' => $invoice->status->value,
+                    'total' => $invoice->total,
+                    'customer' => [
+                        'name' => $party['name'],
+                        'code' => $party['code'],
+                        'phone' => $party['phone'],
+                        'legacy_current' => $party['legacy_current'] ?? false,
+                    ],
+                ];
+            });
 
         return Inertia::render('sales/Index', [
             'invoices' => $invoices,
@@ -196,6 +201,7 @@ class SalesInvoiceController extends Controller
                 ->orderByDesc('id'),
         ]);
         $trace = $traceability->forSource($invoice);
+        $party = $invoice->partyIdentity();
 
         return Inertia::render('sales/Show', [
             'can_confirm' => $request->user()->canConfirmSales(),
@@ -205,8 +211,7 @@ class SalesInvoiceController extends Controller
             'has_print_station' => PrintStation::query()
                 ->where('store_id', $invoice->store_id)
                 ->where('branch_id', $invoice->branch_id)
-                ->where('status', 'active')
-                ->whereNull('revoked_at')
+                ->online()
                 ->exists(),
             'outstanding' => $receivables->outstandingForInvoice($invoice),
             'seller' => [
@@ -240,9 +245,10 @@ class SalesInvoiceController extends Controller
                 'notes' => $invoice->notes,
                 'customer' => [
                     'id' => $invoice->customer->id,
-                    'name' => $invoice->customer->party->name,
-                    'code' => $invoice->customer->party->code,
-                    'phone' => $invoice->customer->party->phone,
+                    'name' => $party['name'],
+                    'code' => $party['code'],
+                    'phone' => $party['phone'],
+                    'legacy_current' => $party['legacy_current'] ?? false,
                     'credit_limit' => $invoice->customer->credit_limit,
                 ],
                 'items' => $invoice->items->map(fn ($item): array => [

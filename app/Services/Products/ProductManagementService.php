@@ -6,7 +6,11 @@ use App\Models\Product;
 use App\Models\ProductPriceHistory;
 use App\Models\User;
 use App\Support\Decimal;
+use App\Support\Digits;
+use Closure;
 use DomainException;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -20,9 +24,12 @@ class ProductManagementService
      */
     public function create(array $data, User $actor): Product
     {
+        $data = $this->normalizeIdentifiers($data);
+
         return $this->withImage($data, function (array $data) use ($actor): Product {
-            return DB::transaction(function () use ($data, $actor): Product {
+            return $this->productTransaction(function () use ($data, $actor): Product {
                 unset($data['version']);
+                $this->assertIdentifiersAvailable(null, $data['code'] ?? null, $data['barcode'] ?? null);
                 $parentId = isset($data['parent_product_id'])
                     ? (int) $data['parent_product_id']
                     : null;
@@ -47,7 +54,7 @@ class ProductManagementService
                 $this->recordPriceHistory($product, $actor, 'create');
 
                 return $product->refresh();
-            }, attempts: 3);
+            });
         });
     }
 
@@ -56,8 +63,10 @@ class ProductManagementService
      */
     public function update(Product $product, array $data, User $actor): Product
     {
+        $data = $this->normalizeIdentifiers($data);
+
         return $this->withImage($data, function (array $data) use ($product, $actor): Product {
-            return DB::transaction(function () use ($product, $data, $actor): Product {
+            return $this->productTransaction(function () use ($product, $data, $actor): Product {
                 $locked = Product::query()
                     ->whereKey($product->id)
                     ->lockForUpdate()
@@ -70,6 +79,13 @@ class ProductManagementService
                 }
 
                 unset($data['parent_product_id'], $data['version']);
+                $this->assertIdentifiersAvailable(
+                    $locked->id,
+                    $this->normalizeIdentifier($data['code'] ?? $locked->code),
+                    array_key_exists('barcode', $data)
+                        ? $this->normalizeIdentifier($data['barcode'])
+                        : $this->normalizeIdentifier($locked->barcode),
+                );
                 $previousPurchase = Decimal::normalize($locked->purchase_price, 2);
                 $previousSale = Decimal::normalize($locked->sale_price, 2);
 
@@ -112,8 +128,95 @@ class ProductManagementService
                 }
 
                 return $locked->refresh();
-            }, attempts: 3);
+            });
         });
+    }
+
+    /**
+     * @param  Closure(): Product  $save
+     */
+    private function productTransaction(Closure $save): Product
+    {
+        try {
+            return DB::transaction($save, attempts: 3);
+        } catch (QueryException $exception) {
+            $this->throwIdentifierConflict($exception);
+        }
+    }
+
+    /**
+     * Lock conflicting identifier rows (and their indexed gaps on MySQL/MariaDB)
+     * inside the same transaction that writes the product.
+     */
+    private function assertIdentifiersAvailable(?int $productId, ?string $code, ?string $barcode): void
+    {
+        if ($code === null || $code === '') {
+            throw new DomainException('کد کالا الزامی است.');
+        }
+
+        $identifiers = array_values(array_unique(array_filter(
+            [$code, $barcode],
+            fn (?string $identifier): bool => $identifier !== null && $identifier !== '',
+        )));
+        $conflict = Product::query()
+            ->when($productId !== null, fn (Builder $query) => $query->where('products.id', '!=', $productId))
+            ->where(function (Builder $query) use ($identifiers): void {
+                $query->whereIn('products.code', $identifiers)
+                    ->orWhereIn('products.barcode', $identifiers);
+            })
+            ->lockForUpdate()
+            ->first(['id', 'code', 'barcode']);
+
+        if ($conflict === null) {
+            return;
+        }
+
+        if ($conflict->code === $code || $conflict->barcode === $code) {
+            throw new DomainException("کد کالا «{$code}» قبلاً برای کالای دیگری ثبت شده است.");
+        }
+
+        if ($barcode !== null && ($conflict->code === $barcode || $conflict->barcode === $barcode)) {
+            throw new DomainException("بارکد «{$barcode}» قبلاً برای کالای دیگری ثبت شده است.");
+        }
+
+        throw new DomainException('کد کالا یا بارکد با شناسهٔ کالای دیگری تداخل دارد.');
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function normalizeIdentifiers(array $data): array
+    {
+        foreach (['code', 'barcode'] as $identifier) {
+            if (! array_key_exists($identifier, $data) || ! is_string($data[$identifier])) {
+                continue;
+            }
+
+            $data[$identifier] = $this->normalizeIdentifier($data[$identifier]);
+        }
+
+        return $data;
+    }
+
+    private function normalizeIdentifier(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim(Digits::toLatin($value));
+
+        return $value === '' ? null : $value;
+    }
+
+    private function throwIdentifierConflict(QueryException $exception): never
+    {
+        if (str_contains($exception->getMessage(), 'products_identifier_unique')) {
+            throw new DomainException('کد کالا یا بارکد با شناسهٔ کالای دیگری تداخل دارد.');
+        }
+
+        throw $exception;
     }
 
     /**

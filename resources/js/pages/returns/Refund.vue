@@ -17,6 +17,12 @@ const props = defineProps<{
         type: string;
         total: string;
         remaining: string;
+        party: {
+            name: string;
+            code: string;
+            phone: string | null;
+            legacy_current: boolean;
+        };
     };
     treasury_accounts: Array<{ id: number; name: string; type: string }>;
     default_date: string;
@@ -44,6 +50,15 @@ const backUrl =
                 <p class="mt-2 text-sm text-muted-foreground">
                     مرجوعی {{ invoice.number }} — مانده قابل refund:
                     {{ invoice.remaining }}
+                </p>
+                <p class="mt-1 text-sm font-bold">
+                    {{ invoice.party.name }} ({{ invoice.party.code }})
+                </p>
+                <p
+                    v-if="invoice.party.legacy_current"
+                    class="mt-1 text-xs text-amber-700 dark:text-amber-300"
+                >
+                    هویت جاری (سند قدیمی)
                 </p>
             </div>
             <Button as-child variant="outline" class="rounded-xl">

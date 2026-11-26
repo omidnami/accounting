@@ -58,6 +58,42 @@ it('blocks invoice enum rollback while return documents exist', function () {
         ->toThrow(RuntimeException::class, 'sales returns');
 });
 
+it('blocks party snapshot rollback while final identity snapshots exist', function () {
+    app(StoreSeeder::class)->run();
+    app(AccountSeeder::class)->run();
+    app(AccountingSetupSeeder::class)->run();
+    $store = Store::query()->where('code', 'MAIN')->firstOrFail();
+    $branch = Branch::query()->where('store_id', $store->id)->firstOrFail();
+    $year = $store->fiscalYears()->where('is_current', true)->firstOrFail();
+    $snapshot = json_encode([
+        'schema_version' => 1,
+        'party_id' => 1,
+        'party_version' => 1,
+        'store_id' => $store->id,
+        'code' => 'SNAPSHOT-PARTY',
+        'entity_type' => 'individual',
+        'name' => 'نام تاریخی',
+    ], JSON_THROW_ON_ERROR);
+    DB::table('invoices')->insert([
+        'store_id' => $store->id,
+        'branch_id' => $branch->id,
+        'fiscal_year_id' => $year->id,
+        'invoice_number' => 'SNAPSHOT-INVOICE',
+        'type' => 'sales',
+        'invoice_date' => $year->starts_on->toDateString(),
+        'status' => 'confirmed',
+        'party_snapshot' => $snapshot,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $migration = require database_path('migrations/2026_11_26_000010_add_party_snapshots_to_final_documents.php');
+
+    expect(fn () => $migration->down())
+        ->toThrow(RuntimeException::class, 'invoices contains final party identity snapshots')
+        ->and(DB::table('invoices')->where('invoice_number', 'SNAPSHOT-INVOICE')->value('party_snapshot'))
+        ->toBe($snapshot);
+});
+
 it('makes tracking migration retry-safe and blocks destructive rollback', function () {
     app(StoreSeeder::class)->run();
     $store = Store::query()->where('code', 'MAIN')->firstOrFail();

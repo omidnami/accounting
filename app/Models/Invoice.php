@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Enums\JournalEntryStatus;
+use App\Services\Parties\PartySnapshotService;
 use App\Support\Decimal;
 use Carbon\CarbonImmutable;
 use DomainException;
@@ -20,6 +21,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property InvoiceStatus $status
  * @property CarbonImmutable $invoice_date
  * @property CarbonImmutable|null $due_date
+ * @property array<string, mixed>|null $party_snapshot
  */
 class Invoice extends Model
 {
@@ -39,6 +41,7 @@ class Invoice extends Model
         'invoice_number',
         'idempotency_key',
         'idempotency_request_hash',
+        'party_snapshot',
         'type',
         'invoice_date',
         'due_date',
@@ -57,6 +60,7 @@ class Invoice extends Model
     protected function casts(): array
     {
         return [
+            'party_snapshot' => 'array',
             'type' => InvoiceType::class,
             'status' => InvoiceStatus::class,
             'invoice_date' => 'immutable_date',
@@ -194,6 +198,18 @@ class Invoice extends Model
         return $this->hasMany(ReturnRefund::class, 'original_invoice_id')->where('direction', 'supplier');
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public function partyIdentity(): array
+    {
+        $party = in_array($this->type, [InvoiceType::Sales, InvoiceType::SalesReturn], true)
+            ? $this->customer?->party
+            : $this->supplier?->party;
+
+        return app(PartySnapshotService::class)->resolve($this->party_snapshot, $party);
+    }
+
     protected static function booted(): void
     {
         static::saving(function (Invoice $invoice): void {
@@ -255,6 +271,10 @@ class Invoice extends Model
 
         if (! $hasPostedEntry) {
             throw new DomainException('فاکتور بدون سند حسابداری ثبت‌شده قابل تأیید نیست.');
+        }
+
+        if ($this->party_snapshot === null) {
+            throw new DomainException('پیش از تأیید نهایی، هویت طرف‌حساب فاکتور باید snapshot شود.');
         }
 
         $this->transitionStatusTo(InvoiceStatus::Confirmed);

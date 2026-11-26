@@ -29,6 +29,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('print-settings.edit');
     Route::patch('settings/print', [PrintSettingsController::class, 'update'])
         ->name('print-settings.update');
+    Route::post('settings/print/stations/{station}/rotate', [PrintSettingsController::class, 'rotateStation'])
+        ->name('print-stations.rotate');
+    Route::post('settings/print/stations/{station}/revoke', [PrintSettingsController::class, 'revokeStation'])
+        ->name('print-stations.revoke');
 
     Route::inertia('settings/appearance', 'settings/Appearance')->name('appearance.edit');
     Route::get('settings/activity', MyActivityController::class)->name('my-activity.index');

@@ -211,14 +211,75 @@ it('rejects payment above outstanding and renders payment pages', function () {
             ->where('payable', fn ($value) => is_string($value)));
 });
 
-it('rejects payment when the supplier is deactivated before paying', function () {
+it('uses a labelled settlement lookup and prefill for a deactivated supplier', function () {
     $context = supplierPaymentUiContext();
     $context['supplier']->update(['is_active' => false]);
+    $context['party']->update(['is_active' => false]);
+    $otherStore = Store::query()->create(['code' => 'OTHER-PAYMENT', 'name' => 'فروشگاه دیگر']);
+    $otherParty = Party::query()->create([
+        'store_id' => $otherStore->id,
+        'code' => 'PAY-OTHER-SUPPLIER',
+        'name' => 'تأمین‌کننده فروشگاه دیگر',
+    ]);
+    $otherSupplier = Supplier::query()->create(['party_id' => $otherParty->id]);
 
     $this->actingAs($context['user'])
-        ->post(route('payments.store'), supplierPaymentPayload($context))
-        ->assertSessionHasErrors('payment');
+        ->get(route('payments.create', [
+            'supplier_id' => $context['supplier']->id,
+            'invoice_id' => $context['invoice']->id,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('initial_supplier.id', $context['supplier']->id)
+            ->where('initial_supplier.is_active', false)
+            ->where('initial_supplier.status_label', 'غیرفعال')
+            ->has('initial_invoices', 1));
 
-    expect(Payment::query()->count())->toBe(0)
-        ->and($context['invoice']->refresh()->status)->toBe(InvoiceStatus::Confirmed);
+    $this->actingAs($context['user'])
+        ->getJson(route('payments.lookups.suppliers', ['search' => $context['party']->code]))
+        ->assertOk()
+        ->assertJsonPath('data.0.id', $context['supplier']->id)
+        ->assertJsonPath('data.0.is_active', false)
+        ->assertJsonPath('data.0.status_label', 'غیرفعال');
+
+    $this->actingAs($context['user'])
+        ->getJson(route('payments.lookups.invoices', ['supplier_id' => $context['supplier']->id]))
+        ->assertOk()
+        ->assertJsonPath('supplier.status_label', 'غیرفعال')
+        ->assertJsonCount(1, 'invoices');
+
+    $this->actingAs($context['user'])
+        ->getJson(route('purchases.lookups.suppliers', ['search' => $context['party']->code]))
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
+
+    $this->actingAs($context['user'])
+        ->getJson(route('payments.lookups.suppliers', ['search' => $otherParty->code]))
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
+
+    $this->actingAs($context['user'])
+        ->getJson(route('payments.lookups.invoices', ['supplier_id' => $otherSupplier->id]))
+        ->assertNotFound();
+});
+
+it('allows a deactivated supplier to pay an existing historical purchase invoice', function () {
+    $context = supplierPaymentUiContext();
+    $context['supplier']->update(['is_active' => false]);
+    $context['party']->update(['is_active' => false]);
+    $payload = supplierPaymentPayload($context);
+
+    $this->actingAs($context['user'])
+        ->post(route('payments.store'), $payload)
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect(Payment::query()->count())->toBe(1)
+        ->and($context['invoice']->refresh()->status)->toBe(InvoiceStatus::PartiallyPaid);
+
+    $this->actingAs($context['user'])
+        ->post(route('payments.store'), $payload)
+        ->assertRedirect();
+
+    expect(Payment::query()->count())->toBe(1);
 });

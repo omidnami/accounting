@@ -15,6 +15,7 @@ use App\Models\ProductBatch;
 use App\Models\ProductSerial;
 use App\Models\Warehouse;
 use App\Support\Decimal;
+use App\Support\IdempotencyHasher;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Model;
@@ -64,7 +65,7 @@ class InventoryService
             serialNumbers: $serialNumbers,
             batchAllocations: $batchAllocations,
             serialIds: $serialIds,
-        ));
+        ), attempts: 3);
     }
 
     /**
@@ -103,7 +104,7 @@ class InventoryService
             serialNumbers: [],
             batchAllocations: $batchAllocations,
             serialIds: $serialIds,
-        ));
+        ), attempts: 3);
     }
 
     /**
@@ -199,7 +200,7 @@ class InventoryService
             );
 
             return ['out' => $out, 'in' => $in];
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -226,6 +227,39 @@ class InventoryService
         array $batchAllocations,
         array $serialIds,
     ): InventoryMovement {
+        $normalizedQuantity = Decimal::normalize($quantity, Decimal::QUANTITY_SCALE);
+        $normalizedMovementDate = CarbonImmutable::parse($movementDate)->toDateString();
+        $requestPayload = $this->movementRequestPayload(
+            warehouseId: $warehouseId,
+            productId: $productId,
+            direction: $direction,
+            movementType: $movementType,
+            quantity: $normalizedQuantity,
+            movementDate: $normalizedMovementDate,
+            source: $source,
+            createdBy: $createdBy,
+            reference: $reference,
+            description: $description,
+            unitCost: $unitCost,
+            exactTotalCost: $exactTotalCost,
+            productBatchId: $productBatchId,
+            serialNumbers: $serialNumbers,
+            serialIds: $serialIds,
+            batchAllocations: $batchAllocations,
+        );
+        $requestHash = IdempotencyHasher::hash('inventory.movement', $requestPayload);
+
+        $existing = InventoryMovement::query()
+            ->where('idempotency_key', $idempotencyKey)
+            ->lockForUpdate()
+            ->first();
+
+        if ($existing) {
+            $this->assertIdempotentMatch($existing, $requestHash, $requestPayload);
+
+            return $existing;
+        }
+
         if (! $movementType->supports($direction)) {
             throw new DomainException('نوع حرکت با جهت ورود یا خروج انبار سازگار نیست.');
         }
@@ -255,35 +289,8 @@ class InventoryService
             throw new DomainException('کالای والد تنوع موجودی مستقل ندارد؛ یکی از تنوع‌ها را انتخاب کنید.');
         }
 
-        $normalizedQuantity = Decimal::normalize($quantity, Decimal::QUANTITY_SCALE);
-        $normalizedMovementDate = CarbonImmutable::parse($movementDate)->toDateString();
-
         if (! Decimal::isPositive($normalizedQuantity)) {
             throw new DomainException('مقدار حرکت انبار باید بزرگ‌تر از صفر باشد.');
-        }
-
-        $existing = InventoryMovement::query()
-            ->where('idempotency_key', $idempotencyKey)
-            ->first();
-
-        if ($existing) {
-            $this->assertIdempotentMatch(
-                $existing,
-                $warehouse,
-                $product,
-                $direction,
-                $movementType,
-                $normalizedQuantity,
-                $normalizedMovementDate,
-                $source,
-                $productBatchId,
-                $serialNumbers,
-                $serialIds,
-                $batchAllocations,
-                $exactTotalCost,
-            );
-
-            return $existing;
         }
 
         $laterMovement = InventoryMovement::query()
@@ -354,6 +361,7 @@ class InventoryService
             'source_type' => $source?->getMorphClass(),
             'source_id' => $source?->getKey(),
             'idempotency_key' => $idempotencyKey,
+            'idempotency_request_hash' => $requestHash,
             'created_by' => $createdBy,
             'reference' => $reference,
             'description' => $description,
@@ -378,7 +386,6 @@ class InventoryService
                 product: $product,
                 warehouse: $warehouse,
                 quantity: $movementQuantity,
-                unitCost: $movementUnitCost,
                 totalCost: $movementTotalCost,
                 movementDate: $normalizedMovementDate,
                 movementType: $movementType,
@@ -386,6 +393,8 @@ class InventoryService
                 batchAllocations: $batchAllocations,
             );
         }
+
+        $this->assertPersistedTrackingMatches($movement, $product);
 
         return $movement;
     }
@@ -417,6 +426,13 @@ class InventoryService
             throw new DomainException('ورود سریال با شناسه فقط برای انتقال یا برگشت فروش مجاز است.');
         }
 
+        $serialIdCount = count($serialIds);
+        $serialIds = array_values(array_unique(array_map('intval', $serialIds)));
+
+        if ($serialIds !== [] && count($serialIds) !== $serialIdCount) {
+            throw new DomainException('سریال‌های ورودی تکراری هستند.');
+        }
+
         foreach ($serialNumbers as $serialNumber) {
             $serialNumber = trim((string) $serialNumber);
 
@@ -435,7 +451,7 @@ class InventoryService
         $serialNumbers = $normalizedSerialNumbers;
 
         if (! $product->track_batches && ! $product->track_serials) {
-            if ($batchId !== null || $serialNumbers !== [] || $serialIds !== []) {
+            if ($batchId !== null || $serialNumbers !== [] || $serialIds !== [] || $batchAllocations !== []) {
                 throw new DomainException('کالای بدون ردیابی سری ساخت یا سریال نمی‌پذیرد.');
             }
 
@@ -496,11 +512,17 @@ class InventoryService
                 'total_cost' => $totalCost,
             ]];
         }
+        $batchAllocations = $this->normalizeBatchAllocations(
+            $product,
+            $batchAllocations,
+            $quantity,
+            $totalCost,
+        );
         $trackingBatchId = null;
 
         foreach ($batchAllocations as $allocation) {
             $batch = $this->productBatch($product, (int) $allocation['product_batch_id']);
-            $batchQuantity = Decimal::normalize($allocation['quantity'], 3);
+            $batchQuantity = $allocation['quantity'];
             $trackingBatchId ??= $batch->id;
             InventoryBatchBalance::query()->insertOrIgnore([
                 'store_id' => $warehouse->store_id,
@@ -527,20 +549,8 @@ class InventoryService
                 'inventory_movement_id' => $movement->id,
                 'product_batch_id' => $batch->id,
                 'quantity' => $batchQuantity,
-                'unit_cost' => Decimal::normalize(
-                    $allocation['unit_cost']
-                        ?? Decimal::divide($totalCost, $quantity, Decimal::UNIT_COST_SCALE),
-                    4,
-                ),
-                'total_cost' => Decimal::normalize(
-                    $allocation['total_cost']
-                        ?? Decimal::divide(
-                            Decimal::multiply($totalCost, $batchQuantity, 4),
-                            $quantity,
-                            Decimal::MONEY_SCALE,
-                        ),
-                    2,
-                ),
+                'unit_cost' => $allocation['unit_cost'],
+                'total_cost' => $allocation['total_cost'],
             ]);
         }
 
@@ -593,6 +603,10 @@ class InventoryService
                         }
                     }
 
+                    if (in_array($serial->id, $serialIds, true)) {
+                        throw new DomainException("سریال {$serialNumber} تکراری است.");
+                    }
+
                     $serialIds[] = $serial->id;
                 }
             }
@@ -630,6 +644,175 @@ class InventoryService
     }
 
     /**
+     * @param  array<int, array{product_batch_id: int, quantity: string|int|float, unit_cost?: string|int|float, total_cost?: string|int|float}>  $allocations
+     * @return array<int, array{product_batch_id: int, quantity: string, unit_cost: string, total_cost: string}>
+     */
+    private function normalizeBatchAllocations(
+        Product $product,
+        array $allocations,
+        string $quantity,
+        string $totalCost,
+    ): array {
+        if ($allocations === []) {
+            return [];
+        }
+
+        if (! $product->track_batches) {
+            throw new DomainException('تخصیص سری ساخت برای کالای بدون ردیابی سری ساخت مجاز نیست.');
+        }
+
+        $normalized = [];
+        $seenBatchIds = [];
+
+        foreach ($allocations as $allocation) {
+            $batchId = (int) $allocation['product_batch_id'];
+
+            if ($batchId <= 0 || isset($seenBatchIds[$batchId])) {
+                throw new DomainException('تخصیص‌های سری ساخت باید شناسهٔ معتبر و یکتا داشته باشند.');
+            }
+
+            $seenBatchIds[$batchId] = true;
+            $allocationQuantity = Decimal::normalize($allocation['quantity'], Decimal::QUANTITY_SCALE);
+
+            if (! Decimal::isPositive($allocationQuantity)) {
+                throw new DomainException('مقدار تخصیص سری ساخت باید مثبت باشد.');
+            }
+
+            $hasTotalCost = isset($allocation['total_cost']);
+            $allocationTotalCost = $hasTotalCost
+                ? Decimal::normalize($allocation['total_cost'], Decimal::MONEY_SCALE)
+                : null;
+
+            if ($allocationTotalCost !== null && ! Decimal::isPositive($allocationTotalCost)) {
+                throw new DomainException('هزینهٔ تخصیص سری ساخت باید مثبت باشد.');
+            }
+
+            $normalized[] = [
+                'product_batch_id' => $batchId,
+                'quantity' => $allocationQuantity,
+                'unit_cost' => isset($allocation['unit_cost'])
+                    ? Decimal::normalize($allocation['unit_cost'], Decimal::UNIT_COST_SCALE)
+                    : null,
+                'total_cost' => $allocationTotalCost,
+            ];
+        }
+
+        usort($normalized, fn (array $left, array $right): int => $left['product_batch_id'] <=> $right['product_batch_id']);
+        $allocatedQuantity = '0.000';
+
+        foreach ($normalized as $allocation) {
+            $allocatedQuantity = Decimal::add($allocatedQuantity, $allocation['quantity'], Decimal::QUANTITY_SCALE);
+        }
+
+        if (Decimal::compare($allocatedQuantity, $quantity, Decimal::QUANTITY_SCALE) !== 0) {
+            throw new DomainException('جمع مقدار تخصیص‌های سری ساخت با مقدار حرکت انبار برابر نیست.');
+        }
+
+        $hasExplicitCosts = collect($normalized)->every(
+            fn (array $allocation): bool => $allocation['total_cost'] !== null,
+        );
+
+        if ($hasExplicitCosts) {
+            $allocatedCost = '0.00';
+
+            foreach ($normalized as $allocation) {
+                $allocatedCost = Decimal::add($allocatedCost, $allocation['total_cost'], Decimal::MONEY_SCALE);
+            }
+
+            if (Decimal::compare($allocatedCost, $totalCost, Decimal::MONEY_SCALE) !== 0) {
+                throw new DomainException('جمع هزینهٔ تخصیص‌های سری ساخت با هزینهٔ حرکت انبار برابر نیست.');
+            }
+        } else {
+            $normalized = $this->allocateBatchCosts($normalized, $quantity, $totalCost);
+        }
+
+        foreach ($normalized as &$allocation) {
+            $allocation['unit_cost'] ??= Decimal::divide(
+                $allocation['total_cost'],
+                $allocation['quantity'],
+                Decimal::UNIT_COST_SCALE,
+            );
+        }
+
+        unset($allocation);
+
+        return $normalized;
+    }
+
+    /**
+     * @param  array<int, array{product_batch_id: int, quantity: string, unit_cost: string|null, total_cost: string|null}>  $allocations
+     * @return array<int, array{product_batch_id: int, quantity: string, unit_cost: string|null, total_cost: string}>
+     */
+    private function allocateBatchCosts(array $allocations, string $quantity, string $totalCost): array
+    {
+        $allocatedCost = '0.00';
+        $cumulativeQuantity = '0.000';
+        $lastIndex = count($allocations) - 1;
+
+        foreach ($allocations as $index => &$allocation) {
+            $cumulativeQuantity = Decimal::add(
+                $cumulativeQuantity,
+                $allocation['quantity'],
+                Decimal::QUANTITY_SCALE,
+            );
+            $cumulativeCost = Decimal::divide(
+                Decimal::multiply($totalCost, $cumulativeQuantity, 4),
+                $quantity,
+                Decimal::MONEY_SCALE,
+            );
+            $allocation['total_cost'] = $index === $lastIndex
+                ? Decimal::subtract($totalCost, $allocatedCost, Decimal::MONEY_SCALE)
+                : Decimal::subtract($cumulativeCost, $allocatedCost, Decimal::MONEY_SCALE);
+
+            if (! Decimal::isPositive($allocation['total_cost'])) {
+                throw new DomainException('هزینهٔ تخصیص سری ساخت پس از گردکردن باید مثبت بماند.');
+            }
+
+            $allocatedCost = Decimal::add($allocatedCost, $allocation['total_cost'], Decimal::MONEY_SCALE);
+        }
+
+        unset($allocation);
+
+        return $allocations;
+    }
+
+    private function assertPersistedTrackingMatches(InventoryMovement $movement, Product $product): void
+    {
+        $batchAssignments = $movement->batchAssignments()->get(['quantity', 'total_cost']);
+
+        if ($product->track_batches) {
+            if ($batchAssignments->isEmpty()) {
+                throw new DomainException('حرکت کالای دارای سری ساخت باید تخصیص سری ساخت داشته باشد.');
+            }
+
+            $quantity = '0.000';
+            $totalCost = '0.00';
+
+            foreach ($batchAssignments as $assignment) {
+                $quantity = Decimal::add($quantity, $assignment->quantity, Decimal::QUANTITY_SCALE);
+                $totalCost = Decimal::add($totalCost, $assignment->total_cost, Decimal::MONEY_SCALE);
+            }
+
+            if (Decimal::compare($quantity, $movement->quantity, Decimal::QUANTITY_SCALE) !== 0
+                || Decimal::compare($totalCost, $movement->total_cost, Decimal::MONEY_SCALE) !== 0) {
+                throw new DomainException('تخصیص‌های ثبت‌شدهٔ سری ساخت با حرکت انبار سازگار نیستند.');
+            }
+        } elseif ($batchAssignments->isNotEmpty()) {
+            throw new DomainException('کالای بدون ردیابی سری ساخت نباید تخصیص سری ساخت داشته باشد.');
+        }
+
+        $serialCount = $movement->serialAssignments()->count();
+
+        if ($product->track_serials) {
+            if ($serialCount !== (int) round((float) $movement->quantity)) {
+                throw new DomainException('تعداد سریال‌های ثبت‌شده با مقدار حرکت انبار برابر نیست.');
+            }
+        } elseif ($serialCount !== 0) {
+            throw new DomainException('کالای بدون ردیابی سریال نباید تخصیص سریال داشته باشد.');
+        }
+    }
+
+    /**
      * @param  array<int, int>  $serialIds
      * @param  array<int, array{product_batch_id: int, quantity: string|int|float}>  $batchAllocations
      */
@@ -638,7 +821,6 @@ class InventoryService
         Product $product,
         Warehouse $warehouse,
         string $quantity,
-        string $unitCost,
         string $totalCost,
         string $movementDate,
         InventoryMovementType $movementType,
@@ -686,9 +868,16 @@ class InventoryService
                     $movementType,
                 ));
 
+            $allocations = $this->normalizeBatchAllocations(
+                $product,
+                $allocations,
+                $quantity,
+                $totalCost,
+            );
+
             foreach ($allocations as $allocation) {
                 $batch = $this->productBatch($product, (int) $allocation['product_batch_id']);
-                $allocationQuantity = Decimal::normalize($allocation['quantity'], 3);
+                $allocationQuantity = $allocation['quantity'];
                 $batchBalance = InventoryBatchBalance::query()
                     ->where('warehouse_id', $warehouse->id)
                     ->where('product_batch_id', $batch->id)
@@ -711,14 +900,12 @@ class InventoryService
                     'inventory_movement_id' => $movement->id,
                     'product_batch_id' => $batch->id,
                     'quantity' => $allocationQuantity,
-                    'unit_cost' => $unitCost,
-                    'total_cost' => Decimal::divide(
-                        Decimal::multiply($totalCost, $allocationQuantity, 4),
-                        $quantity,
-                        2,
-                    ),
+                    'unit_cost' => $allocation['unit_cost'],
+                    'total_cost' => $allocation['total_cost'],
                 ]);
             }
+        } elseif ($batchAllocations !== []) {
+            throw new DomainException('تخصیص سری ساخت برای کالای بدون ردیابی سری ساخت مجاز نیست.');
         }
 
         if ($product->track_serials) {
@@ -991,95 +1178,170 @@ class InventoryService
      * @param  array<int, string>  $serialNumbers
      * @param  array<int, int>  $serialIds
      * @param  array<int, array{product_batch_id: int, quantity: string|int|float, unit_cost?: string|int|float, total_cost?: string|int|float}>  $batchAllocations
+     * @return array<string, mixed>
      */
-    private function assertIdempotentMatch(
-        InventoryMovement $movement,
-        Warehouse $warehouse,
-        Product $product,
+    private function movementRequestPayload(
+        int $warehouseId,
+        int $productId,
         InventoryDirection $direction,
         InventoryMovementType $movementType,
         string $quantity,
         string $movementDate,
-        ?Model $source = null,
-        ?int $batchId = null,
-        array $serialNumbers = [],
-        array $serialIds = [],
-        array $batchAllocations = [],
-        string|int|float|null $exactTotalCost = null,
-    ): void {
-        $matches = (int) $movement->store_id === (int) $warehouse->store_id
-            && (int) $movement->branch_id === (int) $warehouse->branch_id
-            && (int) $movement->warehouse_id === (int) $warehouse->id
-            && (int) $movement->product_id === (int) $product->id
-            && $movement->direction === $direction
-            && $movement->movement_type === $movementType
-            && $movement->movement_date->toDateString() === $movementDate
-            && Decimal::compare($movement->quantity, $quantity, Decimal::QUANTITY_SCALE) === 0
-            && $movement->source_type === $source?->getMorphClass()
-            && (int) $movement->source_id === (int) ($source?->getKey() ?? 0);
-
-        if ($exactTotalCost !== null) {
-            $matches = $matches && Decimal::compare(
-                $movement->total_cost,
-                $exactTotalCost,
-                Decimal::MONEY_SCALE,
-            ) === 0;
-        }
-
-        $normalizedSerialNumbers = array_map(
+        ?Model $source,
+        ?int $createdBy,
+        ?string $reference,
+        ?string $description,
+        string|int|float|null $unitCost,
+        string|int|float|null $exactTotalCost,
+        ?int $productBatchId,
+        array $serialNumbers,
+        array $serialIds,
+        array $batchAllocations,
+    ): array {
+        $serialNumbers = array_map(
             fn (mixed $serial): string => trim((string) $serial),
             $serialNumbers,
         );
-        sort($normalizedSerialNumbers);
-        $storedSerialNumbers = $movement->serialAssignments()
-            ->with('serial:id,serial_number')
-            ->get()
-            ->pluck('serial.serial_number')
-            ->map(fn (mixed $serial): string => (string) $serial)
-            ->sort()
-            ->values()
-            ->all();
-        $matches = $matches && ($normalizedSerialNumbers === [] || $normalizedSerialNumbers === $storedSerialNumbers);
+        sort($serialNumbers, \SORT_STRING);
 
-        if ($serialIds !== []) {
-            $storedSerialIds = $movement->serialAssignments()->pluck('product_serial_id')
-                ->map(fn ($id): int => (int) $id)->sort()->values()->all();
-            $normalizedSerialIds = array_map('intval', $serialIds);
-            sort($normalizedSerialIds);
-            $matches = $matches && $normalizedSerialIds === $storedSerialIds;
+        $serialIds = array_map('intval', $serialIds);
+        sort($serialIds, \SORT_NUMERIC);
+
+        $batchAllocations = array_map(fn (array $allocation): array => [
+            'product_batch_id' => (int) $allocation['product_batch_id'],
+            'quantity' => Decimal::normalize($allocation['quantity'], Decimal::QUANTITY_SCALE),
+            'unit_cost' => isset($allocation['unit_cost'])
+                ? Decimal::normalize($allocation['unit_cost'], Decimal::UNIT_COST_SCALE)
+                : null,
+            'total_cost' => isset($allocation['total_cost'])
+                ? Decimal::normalize($allocation['total_cost'], Decimal::MONEY_SCALE)
+                : null,
+        ], $batchAllocations);
+        usort(
+            $batchAllocations,
+            fn (array $left, array $right): int => $left['product_batch_id'] <=> $right['product_batch_id'],
+        );
+
+        $hasExactTotal = $exactTotalCost !== null;
+
+        return [
+            'warehouse_id' => $warehouseId,
+            'product_id' => $productId,
+            'direction' => $direction->value,
+            'movement_type' => $movementType->value,
+            'quantity' => $quantity,
+            'movement_date' => $movementDate,
+            'source_type' => $source?->getMorphClass(),
+            'source_id' => $source?->getKey() === null ? null : (int) $source->getKey(),
+            'created_by' => $createdBy,
+            'reference' => $reference,
+            'description' => $description,
+            'unit_cost' => $direction === InventoryDirection::In && ! $hasExactTotal
+                ? Decimal::normalize($unitCost ?? 0, Decimal::UNIT_COST_SCALE)
+                : null,
+            'exact_total_cost' => $hasExactTotal
+                ? Decimal::normalize($exactTotalCost, Decimal::MONEY_SCALE)
+                : null,
+            'product_batch_id' => $productBatchId,
+            'serial_numbers' => $serialNumbers,
+            'serial_ids' => $serialIds,
+            'batch_allocations' => $batchAllocations,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $requestPayload
+     */
+    private function assertIdempotentMatch(
+        InventoryMovement $movement,
+        string $requestHash,
+        array $requestPayload,
+    ): void {
+        if ($movement->idempotency_request_hash !== null) {
+            if (hash_equals($movement->idempotency_request_hash, $requestHash)) {
+                return;
+            }
+
+            throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
         }
 
-        if ($batchId !== null) {
-            $matches = $matches && $movement->batchAssignments()->where('product_batch_id', $batchId)->exists();
+        if (! $this->movementMatchesPersistedPayload($movement, $requestPayload)) {
+            throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function movementMatchesPersistedPayload(InventoryMovement $movement, array $payload): bool
+    {
+        $matches = (int) $movement->warehouse_id === $payload['warehouse_id']
+            && (int) $movement->product_id === $payload['product_id']
+            && $movement->direction->value === $payload['direction']
+            && $movement->movement_type->value === $payload['movement_type']
+            && $movement->movement_date->toDateString() === $payload['movement_date']
+            && Decimal::compare($movement->quantity, $payload['quantity'], Decimal::QUANTITY_SCALE) === 0
+            && $movement->source_type === $payload['source_type']
+            && ($movement->source_id === null ? null : (int) $movement->source_id) === $payload['source_id']
+            && ($movement->created_by === null ? null : (int) $movement->created_by) === $payload['created_by']
+            && $movement->reference === $payload['reference']
+            && $movement->description === $payload['description'];
+
+        if ($payload['direction'] === InventoryDirection::In->value) {
+            $matches = $matches && ($payload['exact_total_cost'] !== null
+                ? Decimal::compare($movement->total_cost, $payload['exact_total_cost'], Decimal::MONEY_SCALE) === 0
+                : Decimal::compare($movement->unit_cost, $payload['unit_cost'], Decimal::UNIT_COST_SCALE) === 0);
         }
 
-        if ($batchAllocations !== []) {
+        if ($payload['serial_numbers'] !== []) {
+            $storedSerialNumbers = $movement->serialAssignments()
+                ->with('serial:id,serial_number')
+                ->get()
+                ->pluck('serial.serial_number')
+                ->map(fn (mixed $serial): string => (string) $serial)
+                ->sort()
+                ->values()
+                ->all();
+            $matches = $matches && $payload['serial_numbers'] === $storedSerialNumbers;
+        }
+
+        if ($payload['serial_ids'] !== []) {
+            $storedSerialIds = $movement->serialAssignments()
+                ->pluck('product_serial_id')
+                ->map(fn (mixed $id): int => (int) $id)
+                ->sort()
+                ->values()
+                ->all();
+            $matches = $matches && $payload['serial_ids'] === $storedSerialIds;
+        }
+
+        if ($payload['product_batch_id'] !== null) {
+            $matches = $matches && $movement->batchAssignments()
+                ->where('product_batch_id', $payload['product_batch_id'])
+                ->exists();
+        }
+
+        if ($payload['batch_allocations'] !== []) {
             $storedAllocations = $movement->batchAssignments()
                 ->get(['product_batch_id', 'quantity', 'unit_cost', 'total_cost'])
-                ->map(fn ($allocation): array => [
-                    'product_batch_id' => (int) $allocation->product_batch_id,
-                    'quantity' => Decimal::normalize($allocation->quantity, 3),
-                    'unit_cost' => Decimal::normalize($allocation->unit_cost, 4),
-                    'total_cost' => Decimal::normalize($allocation->total_cost, 2),
-                ])
-                ->keyBy('product_batch_id')
-                ->sortKeys()
-                ->all();
-            $normalizedAllocations = collect($batchAllocations)
-                ->map(fn (array $allocation): array => [
-                    'product_batch_id' => (int) $allocation['product_batch_id'],
-                    'quantity' => Decimal::normalize($allocation['quantity'], 3),
-                    'unit_cost' => Decimal::normalize($allocation['unit_cost'] ?? 0, 4),
-                    'total_cost' => Decimal::normalize($allocation['total_cost'] ?? 0, 2),
-                ])
-                ->keyBy('product_batch_id')
-                ->sortKeys()
-                ->all();
-            $matches = $matches && $normalizedAllocations === $storedAllocations;
+                ->keyBy(fn (InventoryMovementBatch $allocation): int => (int) $allocation->product_batch_id);
+            $matches = $matches && count($payload['batch_allocations']) === $storedAllocations->count();
+
+            foreach ($payload['batch_allocations'] as $allocation) {
+                $stored = $storedAllocations->get($allocation['product_batch_id']);
+
+                if (! $stored
+                    || Decimal::compare($stored->quantity, $allocation['quantity'], Decimal::QUANTITY_SCALE) !== 0
+                    || ($allocation['unit_cost'] !== null
+                        && Decimal::compare($stored->unit_cost, $allocation['unit_cost'], Decimal::UNIT_COST_SCALE) !== 0)
+                    || ($allocation['total_cost'] !== null
+                        && Decimal::compare($stored->total_cost, $allocation['total_cost'], Decimal::MONEY_SCALE) !== 0)) {
+                    $matches = false;
+                    break;
+                }
+            }
         }
 
-        if (! $matches) {
-            throw new DomainException('کلید تکرارپذیری قبلاً برای حرکت متفاوتی استفاده شده است.');
-        }
+        return $matches;
     }
 }

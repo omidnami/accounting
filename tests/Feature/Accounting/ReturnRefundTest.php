@@ -139,14 +139,25 @@ it('shows paid sales returns as credit and clears it through a customer refund',
     expect($receivables->outstandingForInvoice($invoice))->toBe('-100.00')
         ->and($receivables->customerOutstanding($context['customer']))->toBe('-100.00');
 
-    $refund = app(ReturnRefundService::class)->refund(
-        $return,
-        $context['cash']->id,
-        $date,
-        '100',
-        $context['manager'],
-        'customer-refund',
-    );
+    $context['customer']->update(['is_active' => false]);
+    $context['customer']->party()->update(['is_active' => false]);
+
+    $this->actingAs($context['manager'])
+        ->get(route('returns.refund.create', $return))
+        ->assertOk();
+
+    $submissionToken = fake()->uuid();
+
+    $this->actingAs($context['manager'])
+        ->post(route('returns.refund.store', $return), [
+            'treasury_account_id' => $context['cash']->id,
+            'refund_date' => $date,
+            'amount' => '100',
+            'submission_token' => $submissionToken,
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+    $refund = ReturnRefund::query()->firstOrFail();
 
     expect($refund->status)->toBe('posted')
         ->and($refund->journalEntry->totalDebit())->toBe('100.00')
@@ -160,7 +171,7 @@ it('shows paid sales returns as credit and clears it through a customer refund',
         $date,
         '100',
         $context['manager'],
-        'customer-refund',
+        $submissionToken,
     );
     expect($retry->id)->toBe($refund->id)
         ->and(ReturnRefund::query()->count())->toBe(1);
@@ -218,6 +229,9 @@ it('shows paid purchase returns as supplier credit and clears it through a refun
 
     expect($payables->outstandingForInvoice($invoice))->toBe('-100.00')
         ->and($payables->supplierOutstanding($context['supplier']))->toBe('-100.00');
+
+    $context['supplier']->update(['is_active' => false]);
+    $context['supplier']->party()->update(['is_active' => false]);
 
     app(ReturnRefundService::class)->refund(
         $return,

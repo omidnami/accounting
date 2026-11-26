@@ -10,6 +10,8 @@ use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\Accounting\AccountingPeriodLockService;
 use App\Support\Decimal;
+use App\Support\IdempotencyHasher;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\QueryException;
@@ -28,17 +30,18 @@ class InventoryTransferService
      */
     public function transfer(Store $store, array $data, User $creator): InventoryTransfer
     {
-        $requestHash = $this->requestHash($data);
+        $requestPayload = $this->requestPayload($store, $data, $creator);
+        $requestHash = IdempotencyHasher::hash('inventory.transfer', $requestPayload);
 
         try {
-            return DB::transaction(function () use ($store, $data, $creator, $requestHash): InventoryTransfer {
+            return DB::transaction(function () use ($store, $data, $creator, $requestHash, $requestPayload): InventoryTransfer {
                 $existing = InventoryTransfer::query()
                     ->where('idempotency_key', (string) $data['submission_token'])
                     ->lockForUpdate()
                     ->first();
 
                 if ($existing) {
-                    $this->assertIdempotentMatch($existing, $requestHash);
+                    $this->assertIdempotentMatch($existing, $requestHash, $requestPayload);
 
                     return $existing->load([
                         'sourceWarehouse',
@@ -143,7 +146,7 @@ class InventoryTransferService
                 ->first();
 
             if ($existing) {
-                $this->assertIdempotentMatch($existing, $requestHash);
+                $this->assertIdempotentMatch($existing, $requestHash, $requestPayload);
 
                 return $existing->load([
                     'sourceWarehouse',
@@ -242,36 +245,77 @@ class InventoryTransferService
 
     /**
      * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
      */
-    private function requestHash(array $data): string
+    private function requestPayload(Store $store, array $data, User $creator): array
     {
-        return hash('sha256', json_encode([
+        return [
+            'store_id' => (int) $store->id,
+            'created_by' => (int) $creator->id,
             'source_warehouse_id' => (int) ($data['source_warehouse_id'] ?? 0),
             'destination_warehouse_id' => (int) ($data['destination_warehouse_id'] ?? 0),
-            'items' => $this->normalizedItems($data['items'] ?? []),
-            'transfer_date' => (string) ($data['transfer_date'] ?? ''),
+            'items' => $this->normalizedItems($data['items'] ?? [], validateProducts: false),
+            'transfer_date' => CarbonImmutable::parse($data['transfer_date'] ?? '')->toDateString(),
             'reference' => $data['reference'] ?? null,
             'notes' => $data['notes'] ?? null,
-        ], JSON_THROW_ON_ERROR));
+        ];
     }
 
-    private function assertIdempotentMatch(InventoryTransfer $transfer, string $hash): void
+    /**
+     * @return array<string, mixed>
+     */
+    private function persistedPayload(InventoryTransfer $transfer): array
     {
-        if ($transfer->idempotency_request_hash !== $hash) {
-            throw new DomainException('کلید تکرارپذیری قبلاً برای انتقال دیگری استفاده شده است.');
+        return [
+            'store_id' => (int) $transfer->store_id,
+            'created_by' => $transfer->created_by === null ? null : (int) $transfer->created_by,
+            'source_warehouse_id' => (int) $transfer->source_warehouse_id,
+            'destination_warehouse_id' => (int) $transfer->destination_warehouse_id,
+            'items' => $transfer->items()
+                ->orderBy('product_id')
+                ->get()
+                ->map(fn (InventoryTransferItem $item): array => [
+                    'product_id' => (int) $item->product_id,
+                    'quantity' => Decimal::normalize($item->quantity, Decimal::QUANTITY_SCALE),
+                ])->values()->all(),
+            'transfer_date' => $transfer->transfer_date->toDateString(),
+            'reference' => $transfer->reference,
+            'notes' => $transfer->notes,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $requestPayload
+     */
+    private function assertIdempotentMatch(
+        InventoryTransfer $transfer,
+        string $hash,
+        array $requestPayload,
+    ): void {
+        if ($transfer->idempotency_request_hash !== null) {
+            if (hash_equals($transfer->idempotency_request_hash, $hash)) {
+                return;
+            }
+        } elseif (hash_equals(
+            IdempotencyHasher::hash('inventory.transfer', $this->persistedPayload($transfer)),
+            $hash,
+        )) {
+            return;
         }
+
+        throw new DomainException('کلید تکرارپذیری قبلاً برای انتقال دیگری استفاده شده است.');
     }
 
     /**
      * @return array<int, array{product_id: int, quantity: string}>
      */
-    private function normalizedItems(mixed $items): array
+    private function normalizedItems(mixed $items, bool $validateProducts = true): array
     {
         if (! is_array($items) || $items === []) {
             throw new DomainException('انتقال باید حداقل یک کالا داشته باشد.');
         }
 
-        $normalized = collect($items)->map(function (mixed $item): array {
+        $normalized = collect($items)->map(function (mixed $item) use ($validateProducts): array {
             if (! is_array($item)) {
                 throw new DomainException('ردیف انتقال معتبر نیست.');
             }
@@ -279,7 +323,7 @@ class InventoryTransferService
             $productId = (int) ($item['product_id'] ?? 0);
             $quantity = Decimal::normalize($item['quantity'] ?? 0, 3);
 
-            if (! Product::query()
+            if ($validateProducts && ! Product::query()
                 ->whereKey($productId)
                 ->where('is_active', true)
                 ->whereDoesntHave('variants')

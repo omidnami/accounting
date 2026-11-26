@@ -3,6 +3,7 @@
 use App\Enums\InventoryMovementType;
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
+use App\Enums\JournalEntryStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\UserRole;
 use App\Models\FiscalYear;
@@ -118,6 +119,75 @@ it('confirms a partial purchase return and updates inventory and payable', funct
         ->and($returnJournal->totalDebit())->toBe('440000.00')
         ->and($returnJournal->totalCredit())->toBe('440000.00');
 });
+
+it('allows a historical purchase return after the supplier, party, and product are deactivated', function () {
+    $context = createReturnPaymentContext();
+    $product = Product::query()->create([
+        'code' => 'RETURN-INACTIVE-P',
+        'name' => 'کالای برگشت غیرفعال',
+        'purchase_price' => 100_000,
+    ]);
+    $purchase = createConfirmedPurchase($context, $product, 'PUR-RET-INACTIVE', 2, 100_000);
+    $context['supplier']->update(['is_active' => false]);
+    $context['party']->update(['is_active' => false]);
+    $product->update(['is_active' => false]);
+    $items = [['invoice_item_id' => $purchase->items->first()->id, 'quantity' => 1]];
+
+    $return = app(PurchaseReturnService::class)->createDraft(
+        $purchase,
+        $items,
+        '2026-05-02',
+        $context['manager']->id,
+        null,
+        'inactive-purchase-return',
+    );
+    $retry = app(PurchaseReturnService::class)->createDraft(
+        $purchase,
+        $items,
+        '2026-05-02',
+        $context['manager']->id,
+        null,
+        'inactive-purchase-return',
+    );
+    $confirmed = app(PurchaseReturnService::class)->confirm(
+        $return,
+        $context['warehouse']->id,
+        $context['manager'],
+    );
+
+    expect($retry->getKey())->toBe($return->getKey())
+        ->and($confirmed->status)->toBe(InvoiceStatus::Confirmed)
+        ->and(JournalEntry::query()
+            ->where('source_type', Invoice::class)
+            ->where('source_id', $confirmed->id)
+            ->firstOrFail()->status)->toBe(JournalEntryStatus::Posted);
+});
+
+it('still rejects a new purchase for a deactivated supplier or party', function () {
+    $context = createReturnPaymentContext();
+    $context['supplier']->update(['is_active' => false]);
+    $context['party']->update(['is_active' => false]);
+    $product = Product::query()->create([
+        'code' => 'PURCHASE-INACTIVE-P',
+        'name' => 'کالای خرید غیرفعال',
+        'purchase_price' => 100_000,
+    ]);
+
+    app(PurchaseService::class)->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_date' => '2026-05-03',
+        ],
+        [[
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'unit_price' => 100_000,
+        ]],
+    );
+})->throws(DomainException::class);
 
 it('rejects returning more than the remaining purchased quantity', function () {
     $context = createReturnPaymentContext();

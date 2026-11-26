@@ -10,21 +10,23 @@
 ### وضعیت تحویل
 
 - مخزن: `omidnami/accounting`، شاخهٔ `main`.
-- آخرین کامیت کد: `a6236b1` — streaming گزارش‌ها، دفتر کل و جریان نقد.
+- آخرین تغییر کد: بستن کامل B02، B06، B09، B23، B27، B30، B33، B38 و B39.
 - ممیزی عمیق بخش ۱ در `.codex/project-audit-and-roadmap.md` با وضعیت اجرا به‌روز شد.
 - P1 اصلی، First-run، backup/restore، خدمت/غیرانباری، موجودی افتتاحیه، refund،
   tenant resolver، module registry و outbox پیاده‌سازی شدند.
 - B19 و B46 تکمیل شدند: XLSX و خروجی گزارش‌ها streaming هستند، صورتحساب و
   aging صفحه‌بندی/SQL aggregation دارند، دفتر کل و جریان نقد با UI و export اضافه شدند.
-- موارد باقی‌ماندهٔ بخش ۱ فقط اصلاحات جزئی B02، B06، B09، B23، B27، B30، B33،
-  B38 و B39 هستند.
-- ۴۱۳ تست موفق با ۳۲۲۶ assertion هم روی SQLite و هم روی MariaDB 10.11؛
-  Pint، PHPStan، TypeScript، `npm run check` و build سبزند.
-- CI همین کامیت روی MySQL 8.4 و MariaDB 11.4 با migrations و ۸ تست هم‌زمانی
-  سبز است: [Run 45787454869](https://github.com/omidnami/accounting/actions/runs/45787454869).
+- همهٔ موارد P2 بخش ۱ (B01–B46) بسته شدند؛ B30 اکنون برای هر ۷۲ سرویس
+  ارجاع تست مستقیم دارد.
+- SQLite: ۵۸۲ تست موفق و ۵۰۶۵ assertion. MariaDB 10.11: ۵۸۱ موفق،
+  ۵۰۵۸ assertion و یک skip مخصوص SQLite. ۹ تست هم‌زمانی با ۳۵ assertion سبز است.
+- Pint، PHPStan، TypeScript، `npm run check` و build سبزند.
+- CI پایهٔ قبلی روی MySQL 8.4 و MariaDB 11.4 سبز بود؛ CI تغییرات جدید پس از
+  push نهایی بررسی می‌شود.
 - backup/restore واقعی روی MariaDB با marker داده تأیید شد.
 - MVP هنوز برای تگ نسخهٔ ۱ تأیید نشده است؛ بدون درخواست صریح کاربر تگ نزن.
-- آزمون production راست‌چین، چاپگر واقعی و Firefox هنوز انجام نشده است.
+- آزمون production راست‌چین و چاپگر واقعی هنوز انجام نشده است؛ تست دستی
+  Chrome و Firefox به کاربر واگذار شده است.
 
 ### روش همکاری و محدودهٔ قطعی
 
@@ -80,14 +82,18 @@
    فیلتر شعبه و خروجی CSV/XLSX/PDF اضافه شد. منبع حساب‌های نقد و بانک همان
    `accounting.treasury_account_gl_codes` است. ناسازگاری‌های MySQL/MariaDB
    در aggregate دفتر کل و محاسبهٔ aging نیز رفع و روی هر دو دیتابیس تست شدند.
+9. موارد جزئی بخش ۱ بسته شدند: retry/lock order، اصلاح تاریخی با دادهٔ غیرفعال،
+   یکتایی متقاطع کد/بارکد، ویرایش و ابطال چک، rotation/revocation Print Station،
+   تست مستقیم همهٔ سرویس‌ها، canonical idempotency، snapshot هویت حقوقی
+   طرف‌حساب در اسناد نهایی و تطبیق دقیق allocationهای Batch/Serial.
+10. migrationهای `000002`، `000003`، `000010` و `000011` روی SQLite و MariaDB
+    آزموده شدند؛ rollback snapshotها هنگام وجود داده نهایی مسدود است.
 
 ### ادامهٔ موردنظر کاربر
 
-ظاهر و فعالیت شخصی انجام شده‌اند. ادامهٔ گفتگو روی تکمیل و پولیش مدیریت
-کاربران، ایجاد کاربر، دسترسی‌ها و تنظیمات مدیریتی است؛ ابتدا از کاربر جزئیات
-بخش بعدی را بگیر. مدیریت کاربران و نقش‌ها از قبل وجود دارند؛ آن‌ها را دوباره
-از صفر نساز. غیرفعال‌سازی کاربر، قطع نشست و reset مدیریتی 2FA در مستند قبلی
-باقی‌مانده‌اند، اما پیاده‌سازی آن‌ها هنوز در این جلسه سفارش داده نشده است.
+همهٔ اصلاحات خواسته‌شدهٔ بخش ۱ انجام شده است. مرحلهٔ بعد پذیرش دستی کاربر در
+Chrome و Firefox است؛ checklist در `README.md` قرار دارد. قابلیت جدید یا ممیزی
+خودکار شروع نشود و تا تأیید دستی، تگ نسخهٔ ۱ زده نمی‌شود.
 
 مارکت‌پلیس، چندشعبه‌ای و امکانات نسخه‌های بعدی فعلاً شروع نشوند. هزینه‌های
 عمومی در MVP با سند دستی `/journals/create` ثبت می‌شوند. دریافت فاکتور فروش
@@ -109,19 +115,29 @@
   `AgingReportService.php` و `ReportExportService.php`
 - B46: `GeneralLedgerReportService.php`، `CashFlowReportService.php`،
   `FinancialReportsController.php` و `resources/js/pages/reports/Index.vue`
+- B02/B06/B33: `PostingService.php`، `SalesReturnService.php`،
+  `PurchaseReturnService.php`، `CustomerReceiptService.php`،
+  `SupplierPaymentService.php`، `CheckRegistrationService.php` و
+  `CheckSettlementService.php`
+- B09/B23/B27: `ProductManagementService.php`، `CheckLifecycleService.php`،
+  `PrintStationService.php` و `resources/js/components/settings/PrintStations.vue`
+- B30/B38/B39: تست‌های `tests/Feature/Accounting/*Service*Test.php`،
+  `PartySnapshotService.php` و `InventoryService.php`
 
 ### فرمان دریافت تغییرات کد
 
 ```bash
 git pull --ff-only origin main &&
+php artisan migrate --force &&
 php artisan optimize:clear &&
 npm run build &&
 composer ci:check
 ```
 
 Build پیش از CI، مسیرهای تولیدشدهٔ Wayfinder و manifest صفحه‌های تازه را نیز
-آماده می‌کند. برای تغییرات appearance/activity و B19/B46 اجرای migration لازم نیست.
-برای commit صرفاً مستند، pull کافی است.
+آماده می‌کند. migrationهای این مرحله برای یکتایی شناسهٔ کالا، hashهای canonical،
+snapshot طرف‌حساب و context ثبت/تسویه چک ضروری هستند. برای commit صرفاً مستند،
+pull کافی است.
 
 ## هدف این سند
 
@@ -376,20 +392,19 @@ Business logic باید در Service بماند. برای تغییرات درخ�
 ## وضعیت Git و کیفیت
 
 - شاخهٔ مرجع: `main` در `omidnami/accounting`.
-- آخرین commit کد: `a6236b1` — streaming گزارش‌ها، دفتر کل و جریان نقد.
+- آخرین تغییر کد: بستن کامل B02/B06/B09/B23/B27/B30/B33/B38/B39.
 - commit و push این تغییرات با مجوز کاربر انجام شده‌اند؛ مجوز برای تغییرات
   درخواستی برقرار است. برای کار خارج از دامنه، از روی نقشهٔ راه اقدام نکن.
-- CI GitHub برای این کامیت موفق است:
+- CI پایهٔ `a6236b1` موفق بود:
   [Run 45787454869](https://github.com/omidnami/accounting/actions/runs/45787454869).
-  هر دو job مربوط به MySQL و MariaDB، migrations، `composer ci:check` و
-  تست‌های هم‌زمانی را موفق اجرا کردند.
+  CI commit نهایی این مرحله پس از push بررسی می‌شود.
 
 آخرین اجرای محلی تأییدشده:
 
-- کل مجموعهٔ غیر Integration روی SQLite و MariaDB 10.11: ۴۱۳ تست موفق و
-  ۳۲۲۶ assertion در هر دو دیتابیس.
-- تست‌های متمرکز B19/B46: ۳۷ تست و ۳۱۴ assertion روی هر دو دیتابیس.
-- Pint، PHPStan با صفر خطا، lint، Vue type-check، Build و `composer ci:check` موفق.
+- SQLite: ۵۸۲ تست موفق و ۵۰۶۵ assertion.
+- MariaDB 10.11: ۵۸۱ تست موفق، ۵۰۵۸ assertion و یک skip مخصوص SQLite.
+- Integration: ۹ تست هم‌زمانی و ۳۵ assertion روی MariaDB.
+- Pint، PHPStan با صفر خطا، lint، Vue type-check و Build موفق.
 - تست‌های Node: ۴ تقویم و ۱۱ صندوق/POS موفق.
 - این شواهد تأیید کامل همهٔ UIها، Firefox، چاپگر واقعی یا محیط مشتری نیستند.
 

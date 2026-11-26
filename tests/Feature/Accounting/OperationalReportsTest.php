@@ -5,6 +5,7 @@ use App\Enums\UserRole;
 use App\Models\Account;
 use App\Models\Customer;
 use App\Models\FiscalYear;
+use App\Models\Invoice;
 use App\Models\Party;
 use App\Models\Product;
 use App\Models\Store;
@@ -194,6 +195,72 @@ it('builds party statements and aging from outstanding invoice balances', functi
         ->and($payables['rows'][0]['party']['id'])->toBe($context['supplierParty']->id)
         ->and($receivables['rows'][0]['bucket'])->toBe('over_90')
         ->and($payables['rows'][0]['bucket'])->toBe('over_90');
+});
+
+it('captures party identity on finalized sales and purchase invoices', function () {
+    $context = operationalReportContext();
+    $purchase = Invoice::query()->where('type', 'purchase')->firstOrFail();
+    $salesSnapshot = $context['invoice']->party_snapshot;
+    $purchaseSnapshot = $purchase->party_snapshot;
+
+    expect($salesSnapshot['name'])->toBe($context['customerParty']->name)
+        ->and($salesSnapshot['party_id'])->toBe($context['customerParty']->id)
+        ->and($purchaseSnapshot['name'])->toBe($context['supplierParty']->name)
+        ->and($purchaseSnapshot['party_id'])->toBe($context['supplierParty']->id);
+
+    $context['customerParty']->update(['name' => 'نام جدید مشتری']);
+    $context['supplierParty']->update(['name' => 'نام جدید تأمین‌کننده']);
+
+    expect($context['invoice']->refresh()->party_snapshot)->toBe($salesSnapshot)
+        ->and($purchase->refresh()->party_snapshot)->toBe($purchaseSnapshot);
+});
+
+it('renders final invoice pages with snapshotted party identity', function () {
+    $context = operationalReportContext();
+    $purchase = Invoice::query()->where('type', 'purchase')->firstOrFail();
+    $context['customerParty']->update(['name' => 'نام جدید مشتری']);
+    $context['supplierParty']->update(['name' => 'نام جدید تأمین‌کننده']);
+
+    $this->actingAs($context['manager'])
+        ->get(route('sales.show', $context['invoice']))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('invoice.customer.name', 'مشتری گزارش عملیاتی')
+            ->where('invoice.customer.phone', null));
+    $this->actingAs($context['manager'])
+        ->get(route('purchases.show', $purchase))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('invoice.supplier.name', 'تأمین‌کننده گزارش عملیاتی'));
+});
+
+it('uses the final invoice party snapshot in aging reports', function () {
+    $context = operationalReportContext();
+    DB::table('invoices')->where('id', $context['invoice']->id)->update([
+        'party_snapshot' => json_encode([
+            'schema_version' => 1,
+            'party_id' => $context['customerParty']->id,
+            'party_version' => 1,
+            'store_id' => $context['store']->id,
+            'code' => $context['customerParty']->code,
+            'entity_type' => 'individual',
+            'name' => 'نام تاریخی مشتری',
+            'phone' => null,
+            'email' => null,
+            'national_id' => null,
+            'tax_id' => null,
+            'address' => null,
+        ], JSON_THROW_ON_ERROR),
+    ]);
+    $context['customerParty']->update(['name' => 'نام جدید مشتری']);
+    $report = app(AgingReportService::class)->receivables(
+        $context['store']->id,
+        $context['fiscalYear']->ends_on->toDateString(),
+        $context['branch']->id,
+    );
+
+    expect($report['rows'][0]['party']['name'])->toBe('نام تاریخی مشتری')
+        ->and($report['rows'][0]['party']['id'])->toBe($context['customerParty']->id);
 });
 
 it('renders operational reports and account ledger for financial roles', function () {

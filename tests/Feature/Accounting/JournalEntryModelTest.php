@@ -3,13 +3,18 @@
 use App\Enums\AccountingPeriodStatus;
 use App\Enums\AccountLevel;
 use App\Enums\AccountType;
+use App\Enums\InvoiceType;
+use App\Enums\JournalEntryKind;
 use App\Enums\JournalEntryStatus;
 use App\Enums\NormalBalance;
 use App\Enums\UserRole;
 use App\Models\Account;
 use App\Models\AccountingPeriod;
+use App\Models\Customer;
 use App\Models\FiscalYear;
+use App\Models\Invoice;
 use App\Models\JournalEntry;
+use App\Models\Party;
 use App\Models\Store;
 use App\Models\User;
 use App\Services\Accounting\PostingService;
@@ -251,3 +256,183 @@ it('rejects a line account from another store', function () {
         'credit' => 0,
     ]);
 })->throws(DomainException::class);
+
+it('applies the historical correction party policy consistently to lines and final posting', function () {
+    $context = createHardenedJournalContext();
+    $manager = createPostingUser(UserRole::Manager);
+    $party = Party::query()->create([
+        'store_id' => $context['store']->id,
+        'code' => 'INACTIVE-JOURNAL-PARTY',
+        'name' => 'طرف‌حساب غیرفعال',
+        'is_active' => false,
+    ]);
+    $customer = Customer::query()->create([
+        'party_id' => $party->id,
+        'credit_limit' => 0,
+        'is_active' => false,
+    ]);
+    $return = Invoice::query()->create([
+        'store_id' => $context['store']->id,
+        'branch_id' => $context['branch']->id,
+        'fiscal_year_id' => $context['fiscalYear']->id,
+        'invoice_number' => 'JE-HISTORICAL-RETURN',
+        'type' => InvoiceType::SalesReturn,
+        'invoice_date' => '2026-03-22',
+        'customer_id' => $customer->id,
+    ]);
+
+    $entry = app(PostingService::class)->post(
+        [
+            ...journalAttributes($context, 'JE-HISTORICAL-1'),
+            'entry_kind' => JournalEntryKind::System,
+            'source_type' => $return->getMorphClass(),
+            'source_id' => $return->id,
+        ],
+        [
+            ['account_id' => $context['cash']->id, 'party_id' => $party->id, 'debit' => '100.00', 'credit' => '0.00'],
+            ['account_id' => $context['sales']->id, 'debit' => '0.00', 'credit' => '100.00'],
+        ],
+        $manager,
+    );
+
+    expect($entry->allowsInactiveParty())->toBeTrue()
+        ->and($entry->status)->toBe(JournalEntryStatus::Posted);
+});
+
+it('rejects inactive parties for new invoices, manual entries, and other-store parties', function () {
+    $context = createHardenedJournalContext();
+    $manager = createPostingUser(UserRole::Manager);
+    $party = Party::query()->create([
+        'store_id' => $context['store']->id,
+        'code' => 'INACTIVE-JOURNAL-REJECT',
+        'name' => 'طرف‌حساب رد',
+        'is_active' => false,
+    ]);
+    $customer = Customer::query()->create([
+        'party_id' => $party->id,
+        'credit_limit' => 0,
+        'is_active' => false,
+    ]);
+    $sale = Invoice::query()->create([
+        'store_id' => $context['store']->id,
+        'branch_id' => $context['branch']->id,
+        'fiscal_year_id' => $context['fiscalYear']->id,
+        'invoice_number' => 'JE-NEW-SALE',
+        'type' => InvoiceType::Sales,
+        'invoice_date' => '2026-03-22',
+        'customer_id' => $customer->id,
+    ]);
+    $lines = [
+        ['account_id' => $context['cash']->id, 'party_id' => $party->id, 'debit' => '100.00', 'credit' => '0.00'],
+        ['account_id' => $context['sales']->id, 'debit' => '0.00', 'credit' => '100.00'],
+    ];
+
+    expect(fn () => app(PostingService::class)->post(
+        [
+            ...journalAttributes($context, 'JE-REJECT-SALE'),
+            'source_type' => $sale->getMorphClass(),
+            'source_id' => $sale->id,
+        ],
+        $lines,
+        $manager,
+    ))->toThrow(DomainException::class);
+
+    expect(fn () => app(PostingService::class)->post(
+        [
+            ...journalAttributes($context, 'JE-REJECT-MANUAL'),
+            'entry_kind' => JournalEntryKind::Manual,
+            'source_type' => $sale->getMorphClass(),
+            'source_id' => $sale->id,
+        ],
+        $lines,
+        $manager,
+    ))->toThrow(DomainException::class);
+
+    $otherStore = Store::query()->create(['code' => 'OTHER-JOURNAL', 'name' => 'فروشگاه دیگر']);
+    $otherParty = Party::query()->create([
+        'store_id' => $otherStore->id,
+        'code' => 'OTHER-JOURNAL-PARTY',
+        'name' => 'طرف‌حساب فروشگاه دیگر',
+        'is_active' => false,
+    ]);
+    $return = Invoice::query()->create([
+        'store_id' => $context['store']->id,
+        'branch_id' => $context['branch']->id,
+        'fiscal_year_id' => $context['fiscalYear']->id,
+        'invoice_number' => 'JE-SCOPE-RETURN',
+        'type' => InvoiceType::SalesReturn,
+        'invoice_date' => '2026-03-22',
+        'customer_id' => $customer->id,
+    ]);
+    $lines[0]['party_id'] = $otherParty->id;
+
+    expect(fn () => app(PostingService::class)->post(
+        [
+            ...journalAttributes($context, 'JE-REJECT-SCOPE'),
+            'source_type' => $return->getMorphClass(),
+            'source_id' => $return->id,
+        ],
+        $lines,
+        $manager,
+    ))->toThrow(DomainException::class);
+
+    expect(JournalEntry::query()->whereIn('entry_number', [
+        'JE-REJECT-SALE',
+        'JE-REJECT-MANUAL',
+        'JE-REJECT-SCOPE',
+    ])->exists())->toBeFalse();
+});
+
+it('rejects final posting when a party line has no identity snapshot', function () {
+    $context = createHardenedJournalContext();
+    $manager = createPostingUser(UserRole::Manager);
+    $party = Party::query()->create([
+        'store_id' => $context['store']->id,
+        'code' => 'SNAPSHOT-MISSING-PARTY',
+        'name' => 'طرف‌حساب بدون snapshot',
+    ]);
+    $entry = app(PostingService::class)->createDraft(
+        journalAttributes($context, 'JE-SNAPSHOT-MISSING'),
+        [
+            ['account_id' => $context['cash']->id, 'party_id' => $party->id, 'debit' => '100.00', 'credit' => '0.00'],
+            ['account_id' => $context['sales']->id, 'debit' => '0.00', 'credit' => '100.00'],
+        ],
+    );
+
+    expect(fn () => $entry->finalizePosting($manager))
+        ->toThrow(DomainException::class, 'snapshot')
+        ->and($entry->fresh()->status)->toBe(JournalEntryStatus::Draft);
+});
+
+it('captures party identity at posting and preserves it in reversals', function () {
+    $context = createHardenedJournalContext();
+    $manager = createPostingUser(UserRole::Manager);
+    $party = Party::query()->create([
+        'store_id' => $context['store']->id,
+        'code' => 'SNAPSHOT-JOURNAL-PARTY',
+        'name' => 'نام زمان ثبت',
+        'phone' => '02100000000',
+        'national_id' => '1234567890',
+        'version' => 1,
+    ]);
+    $entry = app(PostingService::class)->post(
+        journalAttributes($context, 'JE-SNAPSHOT-1'),
+        [
+            ['account_id' => $context['cash']->id, 'party_id' => $party->id, 'debit' => '100.00', 'credit' => '0.00'],
+            ['account_id' => $context['sales']->id, 'debit' => '0.00', 'credit' => '100.00'],
+        ],
+        $manager,
+    );
+    $line = $entry->lines()->whereNotNull('party_id')->firstOrFail();
+    $party->update(['name' => 'نام پس از ویرایش', 'phone' => '02111111111']);
+    $reversal = app(PostingService::class)->postReversal($entry, $manager, [
+        'entry_number' => 'JE-SNAPSHOT-REV',
+        'description' => 'معکوس سند snapshot',
+    ]);
+    $reversalLine = $reversal->lines()->whereNotNull('party_id')->firstOrFail();
+
+    expect($line->party_snapshot['name'])->toBe('نام زمان ثبت')
+        ->and($line->party_snapshot['phone'])->toBe('02100000000')
+        ->and($line->party_snapshot['party_version'])->toBe(1)
+        ->and($reversalLine->party_snapshot)->toBe($line->party_snapshot);
+});

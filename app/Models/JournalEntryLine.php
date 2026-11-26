@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 /**
  * @property numeric-string $debit
  * @property numeric-string $credit
+ * @property array<string, mixed>|null $party_snapshot
  */
 class JournalEntryLine extends Model
 {
@@ -24,6 +25,7 @@ class JournalEntryLine extends Model
         'journal_entry_id',
         'account_id',
         'party_id',
+        'party_snapshot',
         'debit',
         'credit',
         'description',
@@ -33,6 +35,7 @@ class JournalEntryLine extends Model
     protected function casts(): array
     {
         return [
+            'party_snapshot' => 'array',
             'debit' => 'decimal:2',
             'credit' => 'decimal:2',
         ];
@@ -73,6 +76,7 @@ class JournalEntryLine extends Model
 
             $account = Account::query()->find($line->account_id);
             $historicalReversal = $entry?->isHistoricalReversal() ?? false;
+            $historicalPartyAllowed = $entry?->allowsInactiveParty() ?? false;
             $closingEntry = $entry?->entry_kind === JournalEntryKind::Closing;
 
             if (! $account || (! $account->is_active && ! $historicalReversal && ! $closingEntry)) {
@@ -90,8 +94,8 @@ class JournalEntryLine extends Model
             if ($line->party_id !== null) {
                 $party = Party::query()->find($line->party_id);
 
-                if (! $party || (! $party->is_active && ! $historicalReversal)) {
-                    throw new DomainException('طرف‌حساب ردیف سند باید معتبر باشد؛ طرف‌حساب غیرفعال فقط در سند معکوس تاریخی مجاز است.');
+                if (! $party || (! $party->is_active && ! $historicalPartyAllowed)) {
+                    throw new DomainException('طرف‌حساب ردیف سند باید معتبر باشد؛ طرف‌حساب غیرفعال فقط در سند معکوس تاریخی یا اصلاح تاریخی مجاز است.');
                 }
 
                 if ($entry && (int) $party->store_id !== (int) $entry->store_id) {

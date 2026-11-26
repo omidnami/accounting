@@ -16,6 +16,8 @@ use App\Services\Accounting\AccountingPeriodLockService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
 use App\Support\Decimal;
+use App\Support\IdempotencyHasher;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\QueryException;
@@ -36,17 +38,23 @@ class StockCountService
      */
     public function createDraft(Store $store, array $data, User $creator): StockCount
     {
-        $requestHash = $this->requestHash($data);
+        $requestPayload = $this->requestPayload(
+            $store,
+            $data,
+            (int) $creator->id,
+            $creator->canViewInventoryCosts(),
+        );
+        $requestHash = IdempotencyHasher::hash('inventory.stock-count.draft', $requestPayload);
 
         try {
-            return DB::transaction(function () use ($store, $data, $creator, $requestHash): StockCount {
+            return DB::transaction(function () use ($store, $data, $creator, $requestHash, $requestPayload): StockCount {
                 $existing = StockCount::query()
                     ->where('idempotency_key', (string) $data['submission_token'])
                     ->lockForUpdate()
                     ->first();
 
                 if ($existing) {
-                    $this->assertIdempotentMatch($existing, $requestHash);
+                    $this->assertIdempotentMatch($existing, $requestHash, $requestPayload, $creator->canViewInventoryCosts());
 
                     return $existing->load(['warehouse', 'items.product']);
                 }
@@ -88,7 +96,7 @@ class StockCountService
                 ->first();
 
             if ($existing) {
-                $this->assertIdempotentMatch($existing, $requestHash);
+                $this->assertIdempotentMatch($existing, $requestHash, $requestPayload, $creator->canViewInventoryCosts());
 
                 return $existing->load(['warehouse', 'items.product']);
             }
@@ -122,6 +130,14 @@ class StockCountService
                 throw new DomainException('انباردار فقط می‌تواند شمارش ایجادشده توسط خودش را ویرایش کند.');
             }
 
+            $requestPayload = $this->requestPayload(
+                $store,
+                $data,
+                $locked->created_by === null ? null : (int) $locked->created_by,
+                $actor->canViewInventoryCosts(),
+            );
+            $requestHash = IdempotencyHasher::hash('inventory.stock-count.draft', $requestPayload);
+
             $warehouse = $this->warehouse($store, (int) $data['warehouse_id']);
             $context = $this->periods->lockCurrentOpenPeriod(
                 $store->id,
@@ -142,6 +158,7 @@ class StockCountService
             ])->save();
             $locked->items()->delete();
             $this->storeItems($locked, $warehouse, $items);
+            $locked->forceFill(['idempotency_request_hash' => $requestHash])->save();
 
             return $locked->refresh()->load(['warehouse', 'items.product']);
         }, attempts: 3);
@@ -540,33 +557,78 @@ class StockCountService
 
     /**
      * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
      */
-    private function requestHash(array $data): string
-    {
-        $items = collect((array) ($data['items'] ?? []))
-            ->map(fn (array $item): array => [
-                'product_id' => (int) ($item['product_id'] ?? 0),
-                'counted_quantity' => Decimal::normalize($item['counted_quantity'] ?? 0, 3),
-                'unit_cost' => isset($item['unit_cost']) && $item['unit_cost'] !== ''
-                    ? Decimal::normalize($item['unit_cost'], 4)
-                    : null,
-            ])
-            ->sortBy('product_id')
-            ->values()
-            ->all();
-
-        return hash('sha256', json_encode([
+    private function requestPayload(
+        Store $store,
+        array $data,
+        ?int $createdBy,
+        bool $allowCost,
+    ): array {
+        return [
+            'store_id' => (int) $store->id,
+            'created_by' => $createdBy,
             'warehouse_id' => (int) ($data['warehouse_id'] ?? 0),
-            'count_date' => (string) ($data['count_date'] ?? ''),
+            'count_date' => CarbonImmutable::parse($data['count_date'] ?? '')->toDateString(),
             'notes' => $data['notes'] ?? null,
-            'items' => $items,
-        ], JSON_THROW_ON_ERROR));
+            'items' => $this->normalizedItems($data['items'] ?? [], $allowCost),
+        ];
     }
 
-    private function assertIdempotentMatch(StockCount $count, string $hash): void
+    /**
+     * @return array<string, mixed>
+     */
+    private function persistedPayload(StockCount $count, bool $allowCost): array
     {
-        if ($count->idempotency_request_hash !== $hash) {
-            throw new DomainException('کلید تکرارپذیری قبلاً برای شمارش دیگری استفاده شده است.');
+        return [
+            'store_id' => (int) $count->store_id,
+            'created_by' => $count->created_by === null ? null : (int) $count->created_by,
+            'warehouse_id' => (int) $count->warehouse_id,
+            'count_date' => $count->count_date->toDateString(),
+            'notes' => $count->notes,
+            'items' => $count->items()
+                ->orderBy('product_id')
+                ->get()
+                ->map(fn (StockCountItem $item): array => [
+                    'product_id' => (int) $item->product_id,
+                    'counted_quantity' => Decimal::normalize($item->counted_quantity, Decimal::QUANTITY_SCALE),
+                    'unit_cost' => $allowCost && $item->unit_cost !== null
+                        ? Decimal::normalize($item->unit_cost, Decimal::UNIT_COST_SCALE)
+                        : null,
+                ])->values()->all(),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $requestPayload
+     */
+    private function assertIdempotentMatch(
+        StockCount $count,
+        string $hash,
+        array $requestPayload,
+        bool $allowCost,
+    ): void {
+        if ($count->idempotency_request_hash !== null) {
+            if (hash_equals($count->idempotency_request_hash, $hash)) {
+                return;
+            }
+        } else {
+            $persistedPayload = $this->persistedPayload($count, $allowCost);
+
+            foreach ($requestPayload['items'] as $index => $item) {
+                if ($item['unit_cost'] === null) {
+                    $persistedPayload['items'][$index]['unit_cost'] = null;
+                }
+            }
+
+            if (hash_equals(
+                IdempotencyHasher::hash('inventory.stock-count.draft', $persistedPayload),
+                $hash,
+            )) {
+                return;
+            }
         }
+
+        throw new DomainException('کلید تکرارپذیری قبلاً برای شمارش دیگری استفاده شده است.');
     }
 }

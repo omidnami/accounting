@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\JournalEntryStatus;
 use App\Enums\PaymentMethod;
 use App\Enums\TreasuryDocumentStatus;
+use App\Services\Parties\PartySnapshotService;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -18,6 +19,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property TreasuryDocumentStatus $status
  * @property numeric-string $amount
  * @property CarbonImmutable $payment_date
+ * @property array<string, mixed>|null $party_snapshot
  */
 class Payment extends Model
 {
@@ -37,6 +39,7 @@ class Payment extends Model
         'payment_number',
         'idempotency_key',
         'idempotency_request_hash',
+        'party_snapshot',
         'payment_date',
         'amount',
         'payment_method',
@@ -51,6 +54,7 @@ class Payment extends Model
     protected function casts(): array
     {
         return [
+            'party_snapshot' => 'array',
             'payment_date' => 'immutable_date',
             'amount' => 'decimal:2',
             'payment_method' => PaymentMethod::class,
@@ -120,9 +124,24 @@ class Payment extends Model
         return $this->hasMany(PaymentAllocation::class);
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    public function partyIdentity(): array
+    {
+        return app(PartySnapshotService::class)->resolve($this->party_snapshot, $this->supplier?->party);
+    }
+
     protected static function booted(): void
     {
         static::saving(function (Payment $payment): void {
+            if (in_array($payment->status, [
+                TreasuryDocumentStatus::Confirmed,
+                TreasuryDocumentStatus::Bounced,
+            ], true) && $payment->party_snapshot === null) {
+                throw new DomainException('پیش از نهایی‌شدن پرداخت، هویت طرف‌حساب باید snapshot شود.');
+            }
+
             if (($payment->payment_method === PaymentMethod::Check) !== ($payment->check_id !== null)) {
                 throw new DomainException('پرداخت چکی باید به یک چک متصل باشد؛ سایر روش‌ها نباید چک داشته باشند.');
             }
@@ -146,6 +165,10 @@ class Payment extends Model
 
     public function markConfirmed(): self
     {
+        if ($this->party_snapshot === null) {
+            throw new DomainException('پیش از تأیید نهایی، هویت طرف‌حساب پرداخت باید snapshot شود.');
+        }
+
         $hasEntry = JournalEntry::query()
             ->where('source_type', $this->getMorphClass())
             ->where('source_id', $this->getKey())

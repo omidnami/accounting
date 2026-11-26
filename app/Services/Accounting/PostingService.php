@@ -10,8 +10,11 @@ use App\Enums\JournalEntryStatus;
 use App\Models\AccountingPeriod;
 use App\Models\FiscalYear;
 use App\Models\JournalEntry;
+use App\Models\JournalEntryLine;
+use App\Models\Party;
 use App\Models\User;
 use App\Services\Accounting\Contracts\PostingAuthorizationContext;
+use App\Services\Parties\PartySnapshotService;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +23,7 @@ class PostingService
 {
     public function __construct(
         private readonly DocumentNumberService $documentNumbers,
+        private readonly PartySnapshotService $partySnapshots,
     ) {}
 
     /**
@@ -52,7 +56,7 @@ class PostingService
             $entry->assertBalanced();
 
             return $entry->refresh()->load('lines');
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -65,7 +69,7 @@ class PostingService
             $entry = $this->createDraft($attributes, $lines);
 
             return $this->approveAndPost($entry, $approver, $posContext);
-        });
+        }, attempts: 3);
     }
 
     public function approveAndPost(JournalEntry $entry, User $approver, ?PostingAuthorizationContext $posContext = null): JournalEntry
@@ -98,8 +102,38 @@ class PostingService
                 throw new DomainException('ثبت سند در سال مالی غیرفعال مجاز نیست.');
             }
 
+            $this->capturePartySnapshots($entry);
+
             return $entry->finalizePosting($approver, $posContext);
         }, attempts: 3);
+    }
+
+    private function capturePartySnapshots(JournalEntry $entry): void
+    {
+        $lines = $entry->lines()->whereNotNull('party_id')->get();
+        $partyIds = $lines->pluck('party_id')->unique()->values();
+
+        if ($partyIds->isEmpty()) {
+            return;
+        }
+
+        $parties = Party::query()->whereIn('id', $partyIds)->get()->keyBy('id');
+
+        foreach ($lines as $line) {
+            if ($line->party_snapshot !== null) {
+                continue;
+            }
+
+            $party = $parties->get($line->party_id);
+
+            if ($party === null || (int) $party->store_id !== (int) $entry->store_id) {
+                throw new DomainException('طرف‌حساب ردیف سند باید معتبر و متعلق به فروشگاه سند باشد.');
+            }
+
+            $line->forceFill([
+                'party_snapshot' => $this->partySnapshots->capture($party),
+            ])->save();
+        }
     }
 
     /**
@@ -133,9 +167,10 @@ class PostingService
             $lines = $lockedOriginal->lines()
                 ->orderBy('sort_order')
                 ->get()
-                ->map(fn ($line): array => [
+                ->map(fn (JournalEntryLine $line): array => [
                     'account_id' => $line->account_id,
                     'party_id' => $line->party_id,
+                    'party_snapshot' => $line->party_snapshot,
                     'debit' => $line->credit,
                     'credit' => $line->debit,
                     'description' => $line->description,

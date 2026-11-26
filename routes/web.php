@@ -191,6 +191,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('sales.lookups.customers');
     Route::get('sales/lookups/products', [SalesLookupController::class, 'products'])
         ->name('sales.lookups.products');
+    Route::get('receipts/lookups/customers', [CustomerReceiptController::class, 'customers'])
+        ->name('receipts.lookups.customers');
     Route::get('receipts/lookups/invoices', [CustomerReceiptController::class, 'openInvoices'])
         ->name('receipts.lookups.invoices');
     Route::get('receipts', [CustomerReceiptController::class, 'index'])->name('receipts.index');
@@ -199,6 +201,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('receipts/{receipt}', [CustomerReceiptController::class, 'show'])->name('receipts.show');
     Route::get('checks', [CheckController::class, 'index'])->name('checks.index');
     Route::get('checks/create', [CheckController::class, 'create'])->name('checks.create');
+    Route::get('checks/{check}/edit', [CheckController::class, 'edit'])->name('checks.edit');
+    Route::patch('checks/{check}', [CheckController::class, 'update'])->name('checks.update');
     Route::post('checks', [CheckController::class, 'store'])->name('checks.store');
     Route::get('checks/{check}', [CheckController::class, 'show'])->name('checks.show');
     Route::post('checks/{check}/cancel', [CheckController::class, 'cancel'])->name('checks.cancel');
@@ -216,6 +220,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
         ->name('purchases.confirm');
     Route::delete('purchases/{invoice}', [PurchaseInvoiceController::class, 'destroy'])
         ->name('purchases.destroy');
+    Route::get('payments/lookups/suppliers', [SupplierPaymentController::class, 'suppliers'])
+        ->name('payments.lookups.suppliers');
     Route::get('payments/lookups/invoices', [SupplierPaymentController::class, 'openInvoices'])
         ->name('payments.lookups.invoices');
     Route::get('payments', [SupplierPaymentController::class, 'index'])->name('payments.index');

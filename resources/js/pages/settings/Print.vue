@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
-import { Check, Printer, Router as RouterIcon } from '@lucide/vue';
+import { Check, Printer } from '@lucide/vue';
 import { computed } from 'vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
+import PrintStations from '@/components/settings/PrintStations.vue';
 import { Button } from '@/components/ui/button';
 import {
     invoicePrintFormatMap,
@@ -22,6 +23,15 @@ const props = defineProps<{
         copies: number;
         header_note: string | null;
     };
+    stations: Array<{
+        id: number;
+        name: string;
+        platform: string;
+        status: 'active' | 'revoked';
+        last_seen_at: string | null;
+        revoked_at: string | null;
+        connection_status: 'online' | 'offline' | 'never-seen';
+    }>;
 }>();
 
 const form = useForm({
@@ -173,37 +183,7 @@ defineOptions({
                 <InputError class="mt-2" :message="form.errors.header_note" />
             </section>
 
-            <section
-                class="rounded-2xl border border-dashed bg-muted/20 p-5 lg:col-span-2"
-            >
-                <div class="flex flex-col gap-4 sm:flex-row sm:items-start">
-                    <span
-                        class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-background text-muted-foreground"
-                    >
-                        <RouterIcon class="size-5" />
-                    </span>
-                    <div class="flex-1">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <h2 class="text-sm font-bold">
-                                چاپ خودکار با Print Agent
-                            </h2>
-                            <span
-                                class="rounded-full bg-amber-500/10 px-2 py-1 text-[9px] font-bold text-amber-700"
-                            >
-                                فاز بعد
-                            </span>
-                        </div>
-                        <p
-                            class="mt-2 max-w-3xl text-xs leading-6 text-muted-foreground"
-                        >
-                            چاپ فعلی از پنجرهٔ مرورگر انجام می‌شود و به درایور
-                            سیستم‌عامل نیاز دارد. عامل چاپ اختیاری در فاز بعد
-                            امکان چاپ بی‌صدا، صف محلی و گزارش وضعیت چاپگر را
-                            بدون بازکردن چاپگر روی اینترنت فراهم می‌کند.
-                        </p>
-                    </div>
-                </div>
-            </section>
+            <PrintStations :stations="props.stations" />
 
             <div class="flex flex-wrap items-center gap-4 lg:col-span-2">
                 <Button

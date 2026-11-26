@@ -21,8 +21,10 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { normalizeNumber, parseNumber } from '@/lib/number';
 import { create as createCheck } from '@/routes/checks';
-import { suppliers as supplierLookup } from '@/routes/purchases/lookups';
-import { invoices as invoiceLookup } from '@/routes/payments/lookups';
+import {
+    invoices as invoiceLookup,
+    suppliers as supplierLookup,
+} from '@/routes/payments/lookups';
 import {
     create as createPayment,
     index as paymentsIndex,
@@ -35,6 +37,8 @@ type Supplier = {
     name: string;
     phone: string | null;
     payment_terms: string | null;
+    is_active: boolean;
+    status_label: string;
 };
 type Invoice = {
     id: number;
@@ -393,6 +397,14 @@ defineOptions({
                                     selectedSupplier.payment_terms ??
                                     'بدون شرایط'
                                 }}
+                                ·
+                                <span
+                                    :class="
+                                        !selectedSupplier.is_active &&
+                                        'text-amber-700 dark:text-amber-300'
+                                    "
+                                    >{{ selectedSupplier.status_label }}</span
+                                >
                             </p>
                         </div>
                         <Button
@@ -437,9 +449,14 @@ defineOptions({
                                     <span
                                         class="mt-1 block text-[10px] text-muted-foreground"
                                         >{{ supplier.code }} ·
-                                        {{
-                                            supplier.phone ?? 'بدون تلفن'
-                                        }}</span
+                                        {{ supplier.phone ?? 'بدون تلفن' }} ·
+                                        <span
+                                            :class="
+                                                !supplier.is_active &&
+                                                'text-amber-700 dark:text-amber-300'
+                                            "
+                                            >{{ supplier.status_label }}</span
+                                        ></span
                                     >
                                 </span>
                                 <Check class="size-4 text-primary" />

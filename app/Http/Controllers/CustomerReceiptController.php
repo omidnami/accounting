@@ -19,6 +19,7 @@ use App\Models\TreasuryAccount;
 use App\Services\Branches\BranchContextService;
 use App\Services\Sales\CustomerReceiptService;
 use App\Services\Sales\CustomerReceivableService;
+use App\Services\Sales\SalesCheckoutLookupService;
 use App\Support\BusinessClock;
 use App\Support\Digits;
 use DomainException;
@@ -51,7 +52,7 @@ class CustomerReceiptController extends Controller
             ->where('store_id', $store->id)
             ->where('branch_id', $branch->id);
         $receipts = (clone $base)
-            ->with(['customer.party:id,code,name,phone', 'allocations'])
+            ->with(['customer.party', 'allocations'])
             ->when($search !== '', function (Builder $query) use ($search): void {
                 $term = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search).'%';
                 $query->where(function (Builder $query) use ($term): void {
@@ -71,20 +72,25 @@ class CustomerReceiptController extends Controller
             ->orderByDesc('id')
             ->paginate(15)
             ->withQueryString()
-            ->through(fn (Receipt $receipt): array => [
-                'id' => $receipt->id,
-                'receipt_number' => $receipt->receipt_number,
-                'receipt_date' => $receipt->receipt_date->toDateString(),
-                'amount' => $receipt->amount,
-                'payment_method' => $receipt->payment_method->value,
-                'status' => $receipt->status->value,
-                'allocations_count' => $receipt->allocations->count(),
-                'customer' => [
-                    'name' => $receipt->customer->party->name,
-                    'code' => $receipt->customer->party->code,
-                    'phone' => $receipt->customer->party->phone,
-                ],
-            ]);
+            ->through(function (Receipt $receipt): array {
+                $party = $receipt->partyIdentity();
+
+                return [
+                    'id' => $receipt->id,
+                    'receipt_number' => $receipt->receipt_number,
+                    'receipt_date' => $receipt->receipt_date->toDateString(),
+                    'amount' => $receipt->amount,
+                    'payment_method' => $receipt->payment_method->value,
+                    'status' => $receipt->status->value,
+                    'allocations_count' => $receipt->allocations->count(),
+                    'customer' => [
+                        'name' => $party['name'],
+                        'code' => $party['code'],
+                        'phone' => $party['phone'],
+                        'legacy_current' => $party['legacy_current'] ?? false,
+                    ],
+                ];
+            });
 
         return Inertia::render('receipts/Index', [
             'receipts' => $receipts,
@@ -140,10 +146,8 @@ class CustomerReceiptController extends Controller
             $customer = Customer::query()
                 ->with('party')
                 ->whereKey($customerId)
-                ->where('is_active', true)
                 ->whereHas('party', fn (Builder $query) => $query
-                    ->where('store_id', $store->id)
-                    ->where('is_active', true))
+                    ->where('store_id', $store->id))
                 ->firstOrFail();
             $focusInvoiceId = isset($validated['invoice_id']) ? (int) $validated['invoice_id'] : null;
             $initialInvoiceIds = array_values(array_unique(array_map(
@@ -192,6 +196,23 @@ class CustomerReceiptController extends Controller
         ]);
     }
 
+    public function customers(Request $request, SalesCheckoutLookupService $lookup): JsonResponse
+    {
+        abort_unless($request->user()?->canManageReceipts(), 403);
+
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        return response()->json([
+            'data' => $lookup->customers(
+                $this->mainStore()->id,
+                (string) ($validated['search'] ?? ''),
+                includeInactive: true,
+            ),
+        ]);
+    }
+
     public function openInvoices(
         Request $request,
         CustomerReceivableService $receivables,
@@ -207,10 +228,8 @@ class CustomerReceiptController extends Controller
         $customer = Customer::query()
             ->with('party')
             ->whereKey((int) $validated['customer_id'])
-            ->where('is_active', true)
             ->whereHas('party', fn (Builder $query) => $query
-                ->where('store_id', $store->id)
-                ->where('is_active', true))
+                ->where('store_id', $store->id))
             ->firstOrFail();
         $focusInvoiceId = isset($validated['invoice_id']) ? (int) $validated['invoice_id'] : null;
 
@@ -290,6 +309,7 @@ class CustomerReceiptController extends Controller
             'treasuryAccount',
             'check',
         ]);
+        $party = $receipt->partyIdentity();
 
         return Inertia::render('receipts/Show', [
             'receipt' => [
@@ -312,9 +332,10 @@ class CustomerReceiptController extends Controller
                     : null,
                 'customer' => [
                     'id' => $receipt->customer->id,
-                    'name' => $receipt->customer->party->name,
-                    'code' => $receipt->customer->party->code,
-                    'phone' => $receipt->customer->party->phone,
+                    'name' => $party['name'],
+                    'code' => $party['code'],
+                    'phone' => $party['phone'],
+                    'legacy_current' => $party['legacy_current'] ?? false,
                 ],
                 'allocations' => $receipt->allocations->map(fn ($allocation): array => [
                     'id' => $allocation->id,
@@ -334,7 +355,7 @@ class CustomerReceiptController extends Controller
     /**
      * @return array{
      *     id: int, code: string, name: string, phone: string|null,
-     *     credit_limit: string
+     *     credit_limit: string, is_active: bool, status_label: string
      * }
      */
     private function mapCustomer(Customer $customer): array
@@ -345,6 +366,8 @@ class CustomerReceiptController extends Controller
             'name' => $customer->party->name,
             'phone' => $customer->party->phone,
             'credit_limit' => $customer->credit_limit,
+            'is_active' => $customer->is_active && $customer->party->is_active,
+            'status_label' => $customer->is_active && $customer->party->is_active ? 'فعال' : 'غیرفعال',
         ];
     }
 

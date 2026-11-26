@@ -120,6 +120,22 @@ HTTP فقط برای `localhost` مجاز است. agent دارای retry/backoff
 completion idempotent است. ویندوز در نسخهٔ فعلی HTML خام را با `Out-Printer` چاپ
 می‌کند؛ برای چاپ حرفه‌ای ویندوزی باید renderer PDF اختصاصی اضافه شود.
 
+مدیریت Print Station در `/settings/print` انجام می‌شود: چرخش توکن فقط یک‌بار توکن
+جدید را نمایش می‌دهد و ابطال، jobهای `queued/claimed` باقی‌مانده را `failed` می‌کند.
+توکن قدیمی پس از چرخش یا ابطال در همهٔ endpointهای agent با ۴۰۱ رد می‌شود.
+
+## پذیرش دستی Chrome و Firefox
+
+- `/checks`: ویرایش و ابطال چک `pending` بدون اتصال؛ رد عملیات برای چک متصل،
+  وصول‌شده، برگشتی یا ابطال‌شده و نمایش درست وضعیت «ابطال‌شده».
+- `/settings/print`: نمایش never-seen/online/offline، چرخش و ابطال station و
+  نمایش یک‌بارمصرف توکن تازه.
+- `/receipts/create` و `/payments/create`: انتخاب طرف‌حساب غیرفعال با برچسب
+  «تسویه تاریخی» و ادامهٔ تسویهٔ فاکتور باز همان فروشگاه.
+- `/sales` و `/purchases`: پس از ویرایش نام طرف‌حساب، صفحه و چاپ اسناد نهایی
+  همچنان هویت snapshotشده را نشان دهند.
+- `/reports`: دفتر کل، جریان نقد و aging بدون خطای JavaScript در هر دو مرورگر.
+
 ## تست و CI
 
 ```bash
@@ -127,9 +143,9 @@ composer ci:check
 php artisan test tests/Integration/ConcurrencySafetyTest.php --fail-on-skipped
 ```
 
-CI فعلی MySQL، `pcntl`، audit وابستگی‌ها، PHPStan، Pint، TypeScript، build و
-تست‌های هم‌زمانی را پوشش می‌دهد. تست هم‌زمانی روی SQLite skip می‌شود و در CI با
-`--fail-on-skipped` نباید skip شود.
+CI فعلی MySQL 8.4 و MariaDB 11.4، `pcntl`، audit وابستگی‌ها، PHPStan، Pint،
+TypeScript، build و تست‌های هم‌زمانی را پوشش می‌دهد. تست هم‌زمانی روی SQLite skip
+می‌شود و در CI با `--fail-on-skipped` نباید skip شود.
 
 ## Tenancy و Moduleها
 

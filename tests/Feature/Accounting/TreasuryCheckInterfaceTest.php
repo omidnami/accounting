@@ -7,6 +7,7 @@ use App\Enums\UserRole;
 use App\Models\Check;
 use App\Models\Customer;
 use App\Models\FiscalYear;
+use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\Party;
 use App\Models\Product;
@@ -556,6 +557,174 @@ it('returns a validation error when settlement date has no fiscal period', funct
             ->where('source_type', Check::class)
             ->where('source_id', $check->id)
             ->exists())->toBeFalse();
+});
+
+it('rejects standalone check registration for a deactivated customer or party', function () {
+    $context = treasuryCheckUiContext();
+    $context['customer']->update(['is_active' => false]);
+    $context['customer']->party()->update(['is_active' => false]);
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), treasuryCheckPayload($context))
+        ->assertSessionHasErrors('check');
+
+    expect(Check::query()->count())->toBe(0);
+});
+
+it('rejects standalone payable check registration for a deactivated supplier or party', function () {
+    $context = treasuryCheckUiContext();
+    $context['supplier']->update(['is_active' => false]);
+    $context['supplier']->party()->update(['is_active' => false]);
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), treasuryCheckPayload($context, CheckType::Payable))
+        ->assertSessionHasErrors('check');
+
+    expect(Check::query()->count())->toBe(0);
+});
+
+it('registers, retries, and bounces a historical check for a deactivated customer', function () {
+    $context = treasuryCheckUiContext();
+    $context['customer']->update(['is_active' => false]);
+    $context['customer']->party()->update(['is_active' => false]);
+    $payload = treasuryCheckPayload($context, CheckType::Receivable, [
+        'return_to' => 'receipt',
+        'invoice_ids' => (string) $context['salesInvoice']->id,
+    ]);
+
+    $this->actingAs($context['user'])
+        ->get(route('checks.create', [
+            'type' => 'receivable',
+            'customer_id' => $context['customer']->id,
+            'return_to' => 'receipt',
+            'invoice_ids' => (string) $context['salesInvoice']->id,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('initial_party.id', $context['customer']->id));
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), $payload)
+        ->assertRedirect(route('receipts.create', [
+            'customer_id' => $context['customer']->id,
+            'check_id' => Check::query()->firstOrFail()->id,
+            'invoice_ids' => (string) $context['salesInvoice']->id,
+        ]));
+
+    $check = Check::query()->firstOrFail();
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), $payload)
+        ->assertRedirect(route('receipts.create', [
+            'customer_id' => $context['customer']->id,
+            'check_id' => $check->id,
+            'invoice_ids' => (string) $context['salesInvoice']->id,
+        ]));
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), array_replace($payload, ['invoice_ids' => '999999']))
+        ->assertSessionHasErrors('check');
+
+    $this->actingAs($context['user'])
+        ->post(route('receipts.store'), treasuryCheckReceiptPayload($context, $check))
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.bounce', $check), ['bounce_date' => $context['date']])
+        ->assertRedirect(route('checks.show', $check))
+        ->assertSessionHasNoErrors();
+
+    $entry = JournalEntry::query()
+        ->where('source_type', Check::class)
+        ->where('source_id', $check->id)
+        ->firstOrFail();
+
+    expect(Check::query()->count())->toBe(1)
+        ->and(JournalEntry::query()->where('source_type', Check::class)->where('source_id', $check->id)->count())->toBe(1)
+        ->and($check->refresh()->status)->toBe(CheckStatus::Bounced)
+        ->and($entry->lines->firstWhere('party_id', $context['customer']->party_id))->not->toBeNull();
+});
+
+it('registers and bounces a historical payable check for a deactivated supplier', function () {
+    $context = treasuryCheckUiContext();
+    $context['supplier']->update(['is_active' => false]);
+    $context['supplier']->party()->update(['is_active' => false]);
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), treasuryCheckPayload($context, CheckType::Payable, [
+            'return_to' => 'payment',
+            'invoice_ids' => (string) $context['purchaseInvoice']->id,
+        ]))
+        ->assertRedirect();
+
+    $check = Check::query()->where('type', CheckType::Payable)->firstOrFail();
+
+    $this->actingAs($context['user'])
+        ->post(route('payments.store'), treasuryCheckPaymentPayload($context, $check))
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.bounce', $check), ['bounce_date' => $context['date']])
+        ->assertRedirect(route('checks.show', $check))
+        ->assertSessionHasNoErrors();
+
+    $entry = JournalEntry::query()
+        ->where('source_type', Check::class)
+        ->where('source_id', $check->id)
+        ->firstOrFail();
+
+    expect($check->refresh()->status)->toBe(CheckStatus::Bounced)
+        ->and($entry->lines->firstWhere('party_id', $context['supplier']->party_id))->not->toBeNull();
+});
+
+it('validates historical check invoice type and outstanding scope', function () {
+    $context = treasuryCheckUiContext();
+    $context['customer']->update(['is_active' => false]);
+    $context['customer']->party()->update(['is_active' => false]);
+    $payload = treasuryCheckPayload($context, CheckType::Receivable, [
+        'return_to' => 'receipt',
+        'invoice_ids' => (string) $context['purchaseInvoice']->id,
+    ]);
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), $payload)
+        ->assertSessionHasErrors('check');
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), array_replace($payload, [
+            'submission_token' => fake()->uuid(),
+            'invoice_ids' => (string) $context['salesInvoice']->id,
+            'amount' => '999999',
+        ]))
+        ->assertSessionHasErrors('check');
+
+    $draft = Invoice::query()->create([
+        'store_id' => $context['store']->id,
+        'branch_id' => $context['branch']->id,
+        'fiscal_year_id' => $context['fiscalYear']->id,
+        'invoice_number' => 'CHECK-DRAFT-INVOICE',
+        'type' => 'sales',
+        'invoice_date' => $context['date'],
+        'customer_id' => $context['customer']->id,
+    ]);
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), array_replace($payload, [
+            'submission_token' => fake()->uuid(),
+            'invoice_ids' => (string) $draft->id,
+        ]))
+        ->assertSessionHasErrors('check');
+
+    $this->actingAs($context['user'])
+        ->post(route('checks.store'), array_replace($payload, [
+            'submission_token' => fake()->uuid(),
+            'invoice_ids' => '999999',
+        ]))
+        ->assertSessionHasErrors('check');
+
+    expect(Check::query()->count())->toBe(0);
 });
 
 it('returns to the receipt form with selected invoices and check', function () {

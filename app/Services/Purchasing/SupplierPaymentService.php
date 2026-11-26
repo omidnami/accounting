@@ -24,7 +24,10 @@ use App\Models\User;
 use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
+use App\Services\Parties\PartySnapshotService;
 use App\Support\Decimal;
+use App\Support\IdempotencyHasher;
+use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
@@ -36,6 +39,7 @@ class SupplierPaymentService
         private readonly PostingService $posting,
         private readonly SettingService $settings,
         private readonly SupplierPayableService $payables,
+        private readonly PartySnapshotService $partySnapshots,
     ) {}
 
     /**
@@ -68,20 +72,31 @@ class SupplierPaymentService
             ->sortBy('invoice_id')
             ->values()
             ->all();
-        $requestHash = hash('sha256', json_encode([
-            'store_id' => $storeId,
-            'branch_id' => $branchId,
-            'fiscal_year_id' => $fiscalYearId,
-            'supplier_id' => $supplierId,
-            'payment_date' => $paymentDate,
-            'payment_method' => $paymentMethod->value,
-            'treasury_account_id' => $treasuryAccountId,
-            'check_id' => $checkId,
-            'reference' => $reference,
-            'description' => $description,
-            'created_by' => $approver->id,
-            'allocations' => $canonicalAllocations,
-        ], JSON_THROW_ON_ERROR));
+        $requestedAmount = collect($canonicalAllocations)
+            ->reduce(
+                fn (string $total, array $allocation): string => Decimal::add(
+                    $total,
+                    $allocation['amount'],
+                    Decimal::MONEY_SCALE,
+                ),
+                '0.00',
+            );
+        $requestPayload = $this->requestPayload(
+            $storeId,
+            $branchId,
+            $fiscalYearId,
+            $supplierId,
+            $paymentDate,
+            $paymentMethod,
+            $treasuryAccountId,
+            $checkId,
+            $reference,
+            $description,
+            $approver->id,
+            $canonicalAllocations,
+            $requestedAmount,
+        );
+        $requestHash = IdempotencyHasher::hash('supplier.payment', $requestPayload);
 
         try {
             return DB::transaction(function () use (
@@ -99,17 +114,16 @@ class SupplierPaymentService
                 $reference,
                 $description,
                 $requestHash,
+                $requestPayload,
                 $canonicalAllocations,
             ): Payment {
-                $existing = Payment::query()->where('idempotency_key', $idempotencyKey)->first();
+                $existing = Payment::query()
+                    ->where('idempotency_key', $idempotencyKey)
+                    ->lockForUpdate()
+                    ->first();
 
                 if ($existing) {
-                    if ($existing->idempotency_request_hash !== null
-                        && ! hash_equals($existing->idempotency_request_hash, $requestHash)) {
-                        throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
-                    }
-
-                    return $existing->load(['allocations.invoice', 'supplier.party', 'check']);
+                    return $this->resolveIdempotentPayment($existing, $requestHash, $requestPayload);
                 }
 
                 $supplier = Supplier::query()
@@ -122,8 +136,8 @@ class SupplierPaymentService
                     ->first();
                 $supplier->setRelation('party', $party);
 
-                if (! $supplier->is_active || ! $party?->is_active) {
-                    throw new DomainException('تأمین‌کننده پرداخت فعال نیست.');
+                if (! $party) {
+                    throw new DomainException('تأمین‌کننده پرداخت معتبر نیست.');
                 }
 
                 if ((int) $party->store_id !== $storeId) {
@@ -206,6 +220,12 @@ class SupplierPaymentService
                         || Decimal::compare($check->amount, $paymentAmount, Decimal::MONEY_SCALE) !== 0) {
                         throw new DomainException('چک پرداختی با تأمین‌کننده یا مبلغ پرداخت سازگار نیست.');
                     }
+
+                    if ($check->party_snapshot === null) {
+                        $check->forceFill([
+                            'party_snapshot' => $this->partySnapshots->capture($party),
+                        ])->save();
+                    }
                 } elseif ($checkId !== null) {
                     throw new DomainException('برای روش‌های غیرچکی نباید شناسه چک ارسال شود.');
                 } else {
@@ -241,6 +261,7 @@ class SupplierPaymentService
                     ),
                     'idempotency_key' => $idempotencyKey,
                     'idempotency_request_hash' => $requestHash,
+                    'party_snapshot' => $this->partySnapshots->capture($party),
                     'payment_date' => $paymentDate,
                     'amount' => $paymentAmount,
                     'payment_method' => $paymentMethod,
@@ -303,13 +324,138 @@ class SupplierPaymentService
                 return $payment->refresh()->load(['allocations.invoice', 'supplier.party', 'check']);
             }, attempts: 3);
         } catch (UniqueConstraintViolationException) {
-            $existing = Payment::query()->where('idempotency_key', $idempotencyKey)->first();
+            $existing = Payment::query()
+                ->where('idempotency_key', $idempotencyKey)
+                ->first();
 
-            if ($existing && hash_equals((string) $existing->idempotency_request_hash, $requestHash)) {
-                return $existing->load(['allocations.invoice', 'supplier.party', 'check']);
+            if ($existing) {
+                return $this->resolveIdempotentPayment($existing, $requestHash, $requestPayload);
             }
 
             throw new DomainException('سند خزانه با این کلید تکرارپذیری قبلاً ثبت شده است.');
         }
+    }
+
+    /**
+     * @param  array<int, array{invoice_id: int, amount: string}>  $allocations
+     * @return array<string, mixed>
+     */
+    private function requestPayload(
+        int $storeId,
+        int $branchId,
+        int $fiscalYearId,
+        int $supplierId,
+        string $paymentDate,
+        PaymentMethod $paymentMethod,
+        ?int $treasuryAccountId,
+        ?int $checkId,
+        ?string $reference,
+        ?string $description,
+        int $createdBy,
+        array $allocations,
+        string $amount,
+    ): array {
+        $sourceInvoiceIds = collect($allocations)
+            ->pluck('invoice_id')
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        return [
+            'store_id' => $storeId,
+            'branch_id' => $branchId,
+            'fiscal_year_id' => $fiscalYearId,
+            'supplier_id' => $supplierId,
+            'payment_date' => CarbonImmutable::parse($paymentDate)->toDateString(),
+            'payment_method' => $paymentMethod->value,
+            'amount' => $amount,
+            'treasury_account_id' => $treasuryAccountId,
+            'treasury_account_type' => $this->treasuryTypeFor($paymentMethod)?->value,
+            'check_id' => $checkId,
+            'reference' => $reference,
+            'description' => $description,
+            'created_by' => $createdBy,
+            'allocations' => $allocations,
+            'source_invoice_ids' => $sourceInvoiceIds,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function persistedPayload(Payment $payment): array
+    {
+        $allocations = $payment->allocations()
+            ->orderBy('invoice_id')
+            ->get()
+            ->map(fn (PaymentAllocation $allocation): array => [
+                'invoice_id' => (int) $allocation->invoice_id,
+                'amount' => Decimal::normalize($allocation->amount, Decimal::MONEY_SCALE),
+            ])
+            ->values()
+            ->all();
+        $sourceInvoiceIds = collect($allocations)
+            ->pluck('invoice_id')
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        return [
+            'store_id' => (int) $payment->store_id,
+            'branch_id' => (int) $payment->branch_id,
+            'fiscal_year_id' => (int) $payment->fiscal_year_id,
+            'supplier_id' => (int) $payment->supplier_id,
+            'payment_date' => $payment->payment_date->toDateString(),
+            'payment_method' => $payment->payment_method->value,
+            'amount' => Decimal::normalize($payment->amount, Decimal::MONEY_SCALE),
+            'treasury_account_id' => $payment->treasury_account_id === null ? null : (int) $payment->treasury_account_id,
+            'treasury_account_type' => $payment->treasuryAccount?->type?->value,
+            'check_id' => $payment->check_id === null ? null : (int) $payment->check_id,
+            'reference' => $payment->reference,
+            'description' => $payment->description,
+            'created_by' => $payment->created_by === null ? null : (int) $payment->created_by,
+            'allocations' => $allocations,
+            'source_invoice_ids' => $sourceInvoiceIds,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $requestPayload
+     */
+    private function resolveIdempotentPayment(
+        Payment $payment,
+        string $requestHash,
+        array $requestPayload,
+    ): Payment {
+        if ($payment->idempotency_request_hash !== null) {
+            if (! hash_equals($payment->idempotency_request_hash, $requestHash)) {
+                throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+            }
+        } else {
+            $persistedPayload = $this->persistedPayload($payment);
+
+            if ($requestPayload['treasury_account_id'] === null) {
+                $persistedPayload['treasury_account_id'] = null;
+            }
+
+            if (! hash_equals(
+                IdempotencyHasher::hash('supplier.payment', $persistedPayload),
+                $requestHash,
+            )) {
+                throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست متفاوتی استفاده شده است.');
+            }
+        }
+
+        return $payment->load(['allocations.invoice', 'supplier.party', 'check']);
+    }
+
+    private function treasuryTypeFor(PaymentMethod $paymentMethod): ?TreasuryAccountType
+    {
+        return match ($paymentMethod) {
+            PaymentMethod::Cash => TreasuryAccountType::Cash,
+            PaymentMethod::Bank => TreasuryAccountType::Bank,
+            PaymentMethod::Card => TreasuryAccountType::Card,
+            PaymentMethod::Check => null,
+        };
     }
 }

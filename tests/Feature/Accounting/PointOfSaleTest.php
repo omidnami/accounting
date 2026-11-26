@@ -2,6 +2,7 @@
 
 use App\Enums\CheckType;
 use App\Enums\InventoryMovementType;
+use App\Enums\PaymentMethod;
 use App\Enums\UserRole;
 use App\Models\Check;
 use App\Models\Customer;
@@ -22,6 +23,7 @@ use App\Services\Accounting\PostingService;
 use App\Services\Inventory\InventoryService;
 use App\Services\Pos\PosPostingContext;
 use App\Services\Pos\PosSessionService;
+use App\Services\Sales\CustomerReceiptService;
 use App\Services\Sales\CustomerReceivableService;
 use App\Services\Treasury\CheckRegistrationService;
 use Carbon\CarbonImmutable;
@@ -236,6 +238,86 @@ it('keeps check declarations and credit outstanding until the accountant registe
         ->and(app(CustomerReceivableService::class)->outstandingForInvoice(Invoice::query()->first()))->toBe('40.00')
         ->and($tender->fresh()->check_received)->toBeTrue();
 });
+
+it('resolves a POS check against its server-validated invoice after the customer is deactivated', function () {
+    $context = posContext();
+    $payload = posPayload($context, [
+        'due_date' => '2026-06-01',
+        'tenders' => [['method' => 'check', 'amount' => '440', 'check_received' => false]],
+    ]);
+    $this->actingAs($context['user'])
+        ->postJson(route('pos.checkout'), $payload)
+        ->assertOk();
+    $tender = PosTender::query()->where('method', 'check')->firstOrFail();
+    $context['customer']->update(['is_active' => false]);
+    $context['customer']->party()->update(['is_active' => false]);
+    $registration = ['check_number' => 'INACTIVE-POS', 'bank_name' => 'ملت', 'due_date' => '2026-07-01', 'receipt_date' => '2026-05-02'];
+
+    $this->actingAs($context['manager'])
+        ->postJson(route('pos.checks.register', $tender), $registration)
+        ->assertOk();
+    $this->postJson(route('pos.checks.register', $tender), $registration)->assertOk();
+
+    expect(Check::query()->count())->toBe(1)
+        ->and(Receipt::query()->count())->toBe(1)
+        ->and($tender->fresh()->resolved_at)->not->toBeNull();
+});
+
+it('rejects POS check resolution when the invoice outstanding is below the tender', function () {
+    $context = posContext();
+    $payload = posPayload($context, [
+        'due_date' => '2026-06-01',
+        'tenders' => [['method' => 'check', 'amount' => '440', 'check_received' => false]],
+    ]);
+    $this->actingAs($context['user'])
+        ->postJson(route('pos.checkout'), $payload)
+        ->assertOk();
+    $invoice = Invoice::query()->firstOrFail();
+    app(CustomerReceiptService::class)->receive(
+        storeId: $context['store']->id,
+        branchId: $context['branch']->id,
+        fiscalYearId: $invoice->fiscal_year_id,
+        customerId: $context['customer']->id,
+        receiptDate: '2026-05-02',
+        paymentMethod: PaymentMethod::Cash,
+        allocations: [['invoice_id' => $invoice->id, 'amount' => '100']],
+        approver: $context['manager'],
+        idempotencyKey: 'pos-reduce-outstanding',
+        treasuryAccountId: $context['cash']->id,
+    );
+    $tender = PosTender::query()->where('method', 'check')->firstOrFail();
+
+    $this->actingAs($context['manager'])
+        ->postJson(route('pos.checks.register', $tender), [
+            'check_number' => 'INSUFFICIENT-POS',
+            'bank_name' => 'ملت',
+            'due_date' => '2026-07-01',
+            'receipt_date' => '2026-05-02',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('pos');
+
+    expect(Check::query()->count())->toBe(0)
+        ->and($tender->fresh()->resolved_at)->toBeNull();
+});
+
+it('still rejects a new POS checkout for a deactivated customer or party', function (bool $deactivateParty) {
+    $context = posContext();
+    $context['customer']->update(['is_active' => false]);
+
+    if ($deactivateParty) {
+        $context['customer']->party()->update(['is_active' => false]);
+    }
+
+    $this->actingAs($context['user'])
+        ->postJson(route('pos.checkout'), posPayload($context))
+        ->assertUnprocessable();
+
+    expect(Invoice::query()->count())->toBe(0);
+})->with([
+    'customer profile' => [false],
+    'party' => [true],
+]);
 
 it('allows anonymous fully paid sales with zero credit and rejects anonymous credit or checks', function () {
     $context = posContext();

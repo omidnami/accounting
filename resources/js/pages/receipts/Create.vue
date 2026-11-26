@@ -21,8 +21,10 @@ import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
 import { normalizeNumber, parseNumber } from '@/lib/number';
 import { create as createCheck } from '@/routes/checks';
-import { customers as customerLookup } from '@/routes/sales/lookups';
-import { invoices as invoiceLookup } from '@/routes/receipts/lookups';
+import {
+    customers as customerLookup,
+    invoices as invoiceLookup,
+} from '@/routes/receipts/lookups';
 import {
     create as createReceipt,
     index as receiptsIndex,
@@ -35,6 +37,8 @@ type CustomerOption = {
     name: string;
     phone: string | null;
     credit_limit: string;
+    is_active: boolean;
+    status_label: string;
 };
 
 type OpenInvoice = {
@@ -462,7 +466,14 @@ defineOptions({
                             </p>
                             <p class="mt-1 text-[10px] text-muted-foreground">
                                 {{ selectedCustomer.code }} ·
-                                {{ selectedCustomer.phone ?? 'بدون تلفن' }}
+                                {{ selectedCustomer.phone ?? 'بدون تلفن' }} ·
+                                <span
+                                    :class="
+                                        !selectedCustomer.is_active &&
+                                        'text-amber-700 dark:text-amber-300'
+                                    "
+                                    >{{ selectedCustomer.status_label }}</span
+                                >
                             </p>
                         </div>
                         <Button
@@ -508,9 +519,14 @@ defineOptions({
                                     <span
                                         class="mt-1 block text-[10px] text-muted-foreground"
                                         >{{ customer.code }} ·
-                                        {{
-                                            customer.phone ?? 'بدون تلفن'
-                                        }}</span
+                                        {{ customer.phone ?? 'بدون تلفن' }} ·
+                                        <span
+                                            :class="
+                                                !customer.is_active &&
+                                                'text-amber-700 dark:text-amber-300'
+                                            "
+                                            >{{ customer.status_label }}</span
+                                        ></span
                                     >
                                 </span>
                                 <Check class="size-4 text-primary" />
@@ -521,7 +537,7 @@ defineOptions({
                                 "
                                 class="px-4 py-4 text-xs text-muted-foreground"
                             >
-                                مشتری فعالی پیدا نشد.
+                                مشتریی پیدا نشد.
                             </p>
                         </div>
                         <InputError

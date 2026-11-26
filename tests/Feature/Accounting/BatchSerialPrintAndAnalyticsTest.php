@@ -589,6 +589,7 @@ it('claims and completes an outbound-only print agent job', function () {
         'platform' => 'linux',
         'token_hash' => hash('sha256', $token),
         'status' => 'active',
+        'last_seen_at' => now(),
     ]);
     $job = app(PrintJobService::class)->queueSalesInvoice($sale);
 

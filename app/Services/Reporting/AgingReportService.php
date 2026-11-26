@@ -4,6 +4,7 @@ namespace App\Services\Reporting;
 
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
+use App\Services\Parties\PartySnapshotService;
 use App\Support\Decimal;
 use App\Support\ReportDateRange;
 use Illuminate\Database\Query\Builder;
@@ -13,6 +14,10 @@ use Illuminate\Support\LazyCollection;
 
 class AgingReportService
 {
+    public function __construct(
+        private readonly PartySnapshotService $partySnapshots,
+    ) {}
+
     /**
      * @return array{rows: array<int, array<string, mixed>>, buckets: array<string, string>, total: string}
      */
@@ -233,6 +238,7 @@ class AgingReportService
                 'parties.id as party_id',
                 'parties.code as party_code',
                 'parties.name as party_name',
+                'invoices.party_snapshot',
             ])
             ->selectSub($settled, 'received')
             ->selectSub($returned, 'returned');
@@ -279,15 +285,22 @@ class AgingReportService
      */
     private function row(array $row): array
     {
+        $party = $this->partySnapshots->fromDatabase($row['party_snapshot'] ?? null, [
+            'id' => (int) $row['party_id'],
+            'code' => $row['party_code'],
+            'name' => $row['party_name'],
+        ]);
+
         return [
             'invoice_id' => (int) $row['invoice_id'],
             'invoice_number' => $row['invoice_number'],
             'invoice_date' => substr((string) $row['invoice_date'], 0, 10),
             'due_date' => substr((string) ($row['due_date'] ?? $row['invoice_date']), 0, 10),
             'party' => [
-                'id' => (int) $row['party_id'],
-                'code' => $row['party_code'],
-                'name' => $row['party_name'],
+                'id' => (int) ($party['party_id'] ?? $party['id']),
+                'code' => $party['code'],
+                'name' => $party['name'],
+                'legacy_current' => $party['legacy_current'] ?? false,
             ],
             'outstanding' => Decimal::normalize($row['outstanding'], 2),
             'days_overdue' => (int) $row['days_overdue'],

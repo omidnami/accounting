@@ -8,6 +8,7 @@ import {
     ChevronRight,
     CircleDollarSign,
     FilterX,
+    PencilLine,
     Plus,
     ReceiptText,
     Search,
@@ -17,6 +18,7 @@ import { reactive } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
     create as createCheck,
+    edit as editCheck,
     index as checksIndex,
     show as showCheck,
 } from '@/routes/checks';
@@ -24,7 +26,7 @@ import { show as showPayment } from '@/routes/payments';
 import { show as showReceipt } from '@/routes/receipts';
 
 type CheckType = 'receivable' | 'payable';
-type CheckStatus = 'pending' | 'collected' | 'spent' | 'bounced';
+type CheckStatus = 'pending' | 'collected' | 'spent' | 'bounced' | 'cancelled';
 
 type TreasuryDocument = {
     kind: 'receipt' | 'payment';
@@ -43,11 +45,13 @@ type CheckRow = {
     due_date: string;
     type: CheckType;
     status: CheckStatus;
+    can_edit: boolean;
     party: {
         kind: 'customer' | 'supplier';
         id: number | null;
         code: string | null;
         name: string | null;
+        legacy_current: boolean;
     };
     treasury_document: TreasuryDocument | null;
 };
@@ -118,6 +122,10 @@ const statusMeta: Record<CheckStatus, { label: string; className: string }> = {
     bounced: {
         label: 'برگشتی',
         className: 'bg-red-500/10 text-red-700 dark:text-red-300',
+    },
+    cancelled: {
+        label: 'ابطال‌شده',
+        className: 'bg-muted text-muted-foreground',
     },
 };
 
@@ -320,6 +328,7 @@ defineOptions({
                 <option value="collected">وصول‌شده</option>
                 <option value="spent">خرج‌شده</option>
                 <option value="bounced">برگشتی</option>
+                <option value="cancelled">ابطال‌شده</option>
             </select>
             <select
                 v-model="filters.due_state"
@@ -401,6 +410,12 @@ defineOptions({
                                 >
                                     {{ check.party.code ?? 'بدون کد' }}
                                 </p>
+                                <p
+                                    v-if="check.party.legacy_current"
+                                    class="mt-1 text-[9px] text-amber-700 dark:text-amber-300"
+                                >
+                                    هویت جاری (سند قدیمی)
+                                </p>
                             </td>
                             <td class="px-4 py-4">
                                 <span
@@ -455,12 +470,25 @@ defineOptions({
                                 </span>
                             </td>
                             <td class="px-5 py-4 text-left">
-                                <Button as-child variant="ghost" size="sm">
-                                    <Link :href="showCheck(check.id)">
-                                        مشاهده
-                                        <ChevronLeft class="size-4" />
-                                    </Link>
-                                </Button>
+                                <div class="flex justify-end gap-1">
+                                    <Button
+                                        v-if="check.can_edit"
+                                        as-child
+                                        variant="ghost"
+                                        size="sm"
+                                    >
+                                        <Link :href="editCheck(check.id)">
+                                            <PencilLine class="size-4" />
+                                            ویرایش
+                                        </Link>
+                                    </Button>
+                                    <Button as-child variant="ghost" size="sm">
+                                        <Link :href="showCheck(check.id)">
+                                            مشاهده
+                                            <ChevronLeft class="size-4" />
+                                        </Link>
+                                    </Button>
+                                </div>
                             </td>
                         </tr>
                     </tbody>

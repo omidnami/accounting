@@ -11,6 +11,7 @@ import {
     CircleX,
     FileText,
     Landmark,
+    PencilLine,
     ReceiptText,
     RotateCcw,
     UserRound,
@@ -26,6 +27,7 @@ import { Spinner } from '@/components/ui/spinner';
 import {
     bounce as bounceCheck,
     cancel as cancelCheck,
+    edit as editCheck,
     index as checksIndex,
     settle as settleCheck,
 } from '@/routes/checks';
@@ -69,7 +71,10 @@ type TreasuryDocument = {
 const props = defineProps<{
     check: {
         id: number;
+        check_id: number;
         document_number: string | null;
+        customer_id: number | null;
+        supplier_id: number | null;
         check_number: string;
         bank_name: string;
         branch_name: string | null;
@@ -78,11 +83,15 @@ const props = defineProps<{
         due_date: string;
         type: CheckType;
         status: CheckStatus;
+        is_linked: boolean;
+        can_edit: boolean;
+        can_cancel: boolean;
         party: {
             kind: 'customer' | 'supplier';
             id: number | null;
             code: string | null;
             name: string | null;
+            legacy_current: boolean;
         };
         description: string | null;
         creator: string | null;
@@ -205,7 +214,8 @@ const statusMeta: Record<
 };
 const status = computed(() => statusMeta[props.check.status]);
 const isPending = computed(() => props.check.status === 'pending');
-const isLinked = computed(
+const isLinked = computed(() => props.check.treasury_document !== null);
+const isConfirmed = computed(
     () => props.check.treasury_document?.status === 'confirmed',
 );
 const actionLabel = computed(() =>
@@ -220,6 +230,9 @@ const settlementCheckError = computed(
 );
 const bounceCheckError = computed(
     () => (bounceForm.errors as Record<string, string>).check ?? '',
+);
+const cancelCheckError = computed(
+    () => (cancelForm.errors as Record<string, string>).check ?? '',
 );
 const partyIcon = computed(() =>
     props.check.type === 'receivable' ? UserRound : Building2,
@@ -240,15 +253,22 @@ const invoiceUrl = (invoiceId: number) =>
         ? showSale(invoiceId)
         : showPurchase(invoiceId);
 const linkDocumentUrl = computed(() => {
-    const partyId = props.check.party.id;
+    const partyId =
+        props.check.type === 'receivable'
+            ? props.check.customer_id
+            : props.check.supplier_id;
 
-    if (partyId === null) {
+    if (!isPending.value || partyId === null) {
         return null;
     }
 
     return props.check.type === 'receivable'
-        ? createReceipt.url({ query: { customer_id: partyId } })
-        : createPayment.url({ query: { supplier_id: partyId } });
+        ? createReceipt.url({
+              query: { customer_id: partyId, check_id: props.check.check_id },
+          })
+        : createPayment.url({
+              query: { supplier_id: partyId, check_id: props.check.check_id },
+          });
 });
 const submitSettlement = () => {
     settlementForm.post(settleCheck(props.check.id).url, {
@@ -334,12 +354,25 @@ defineOptions({
                         </span>
                     </p>
                 </div>
-                <Button as-child variant="outline" class="rounded-xl">
-                    <Link :href="checksIndex()">
-                        <ArrowRight class="size-4" />
-                        بازگشت به چک‌ها
-                    </Link>
-                </Button>
+                <div class="flex flex-wrap gap-2">
+                    <Button
+                        v-if="check.can_edit"
+                        as-child
+                        variant="outline"
+                        class="rounded-xl"
+                    >
+                        <Link :href="editCheck(check.id)">
+                            <PencilLine class="size-4" />
+                            ویرایش چک
+                        </Link>
+                    </Button>
+                    <Button as-child variant="outline" class="rounded-xl">
+                        <Link :href="checksIndex()">
+                            <ArrowRight class="size-4" />
+                            بازگشت به چک‌ها
+                        </Link>
+                    </Button>
+                </div>
             </div>
         </section>
 
@@ -419,6 +452,12 @@ defineOptions({
                             </p>
                             <p class="mt-1 text-[10px] text-muted-foreground">
                                 {{ check.party.code ?? 'بدون کد' }}
+                            </p>
+                            <p
+                                v-if="check.party.legacy_current"
+                                class="mt-1 text-[9px] text-amber-700 dark:text-amber-300"
+                            >
+                                هویت جاری (سند قدیمی)
                             </p>
                         </div>
                     </div>
@@ -641,7 +680,7 @@ defineOptions({
                             class="h-11 w-full rounded-xl"
                             :disabled="
                                 settlementForm.processing ||
-                                !isLinked ||
+                                !isConfirmed ||
                                 !bank_accounts.length
                             "
                         >
@@ -656,11 +695,18 @@ defineOptions({
                             ابتدا چک را از طریق فرم دریافت/پرداخت به سند
                             تأییدشده متصل کنید.
                         </p>
+                        <p
+                            v-else-if="!isConfirmed"
+                            class="text-[10px] leading-5 text-amber-700 dark:text-amber-300"
+                        >
+                            سند خزانه مرتبط هنوز تأیید نشده است؛ تا تأیید سند،
+                            وصول یا خرج چک ممکن نیست.
+                        </p>
                     </form>
                 </article>
 
                 <article
-                    v-if="isPending && !isLinked"
+                    v-if="check.can_cancel"
                     class="rounded-2xl border bg-card p-5"
                 >
                     <h2 class="text-sm font-bold">ابطال چک</h2>
@@ -674,6 +720,7 @@ defineOptions({
                         placeholder="دلیل ابطال"
                     />
                     <InputError :message="cancelForm.errors.reason" />
+                    <InputError :message="cancelCheckError" />
                     <Button
                         type="button"
                         variant="outline"
@@ -716,7 +763,7 @@ defineOptions({
                         type="button"
                         variant="outline"
                         class="mt-4 w-full rounded-xl border-red-500/30 text-red-700 hover:bg-red-500/10 dark:text-red-300"
-                        :disabled="!isLinked"
+                        :disabled="!isConfirmed"
                         @click="showBounce = true"
                     >
                         ثبت برگشت

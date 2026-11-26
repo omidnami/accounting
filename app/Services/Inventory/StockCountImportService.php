@@ -79,13 +79,20 @@ class StockCountImportService
                     }
                 }
 
-                $product = Product::query()
+                $identifier = trim(Digits::toLatin($code));
+                $matches = Product::query()
                     ->where('is_active', true)
                     ->whereDoesntHave('variants')
                     ->where(fn ($query) => $query
-                        ->where('code', Digits::toLatin($code))
-                        ->orWhere('barcode', Digits::toLatin($code)))
-                    ->first();
+                        ->where('code', $identifier)
+                        ->orWhere('barcode', $identifier))
+                    ->get();
+
+                if ($matches->count() > 1) {
+                    throw new DomainException("خط {$line}: شناسهٔ «{$code}» مبهم است و به چند کالا اشاره می‌کند.");
+                }
+
+                $product = $matches->first();
 
                 if (! $product) {
                     throw new DomainException("خط {$line}: کالای «{$code}» پیدا نشد.");

@@ -20,8 +20,10 @@ use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\PostingService;
 use App\Services\Accounting\SettingService;
 use App\Services\Inventory\InventoryService;
+use App\Services\Parties\PartySnapshotService;
 use App\Services\Returns\ReturnableQuantityService;
 use App\Support\Decimal;
+use App\Support\IdempotencyHasher;
 use Carbon\CarbonImmutable;
 use DomainException;
 use Illuminate\Database\QueryException;
@@ -36,6 +38,7 @@ class SalesReturnService
         private readonly SettingService $settings,
         private readonly ReturnableQuantityService $returnableQuantities,
         private readonly AccountingPeriodLockService $periods,
+        private readonly PartySnapshotService $partySnapshots,
     ) {}
 
     /**
@@ -52,20 +55,14 @@ class SalesReturnService
             throw new DomainException('برگشت فروش باید حداقل یک قلم داشته باشد.');
         }
 
-        $canonicalItems = collect($items)
-            ->map(fn (array $item): array => [
-                'invoice_item_id' => (int) $item['invoice_item_id'],
-                'quantity' => Decimal::normalize($item['quantity'], Decimal::QUANTITY_SCALE),
-            ])
-            ->sortBy('invoice_item_id')
-            ->values()
-            ->all();
-        $requestHash = hash('sha256', json_encode([
-            'parent_invoice_id' => $salesInvoice->id,
-            'return_date' => $returnDate,
-            'created_by' => $createdBy,
-            'items' => $canonicalItems,
-        ], JSON_THROW_ON_ERROR));
+        $requestPayload = $this->draftRequestPayload(
+            $salesInvoice,
+            $items,
+            $returnDate,
+            $createdBy,
+            null,
+        );
+        $requestHash = IdempotencyHasher::hash('sales.return.draft', $requestPayload);
 
         try {
             return DB::transaction(function () use (
@@ -82,9 +79,7 @@ class SalesReturnService
                         ->first();
 
                     if ($existing) {
-                        $this->assertMatchingIdempotentReturn($existing, $requestHash);
-
-                        return $existing->load('items');
+                        return $this->resolveIdempotentReturn($existing, $requestHash);
                     }
                 }
 
@@ -99,7 +94,7 @@ class SalesReturnService
                         InvoiceStatus::PartiallyPaid,
                         InvoiceStatus::Paid,
                     ], true)
-                    || ! $original->customer?->party?->is_active
+                    || ! $original->customer?->party
                     || (int) $original->customer->party->store_id !== (int) $original->store_id) {
                     throw new DomainException('فاکتور فروش معتبر و متعلق به فروشگاه برای برگشت یافت نشد.');
                 }
@@ -139,6 +134,7 @@ class SalesReturnService
                     'customer_id' => $original->customer_id,
                     'supplier_id' => null,
                     'parent_invoice_id' => $original->id,
+                    'party_snapshot' => $this->partySnapshots->capture($original->customer->party),
                     'subtotal' => '0.00',
                     'discount_total' => '0.00',
                     'tax_total' => '0.00',
@@ -234,7 +230,7 @@ class SalesReturnService
                 ])->save();
 
                 return $return->refresh()->load('items');
-            });
+            }, attempts: 3);
         } catch (QueryException $exception) {
             if ($idempotencyKey === null || (string) $exception->getCode() !== '23000') {
                 throw $exception;
@@ -248,7 +244,7 @@ class SalesReturnService
                 throw $exception;
             }
 
-            $this->assertMatchingIdempotentReturn($existing, $requestHash);
+            $this->resolveIdempotentReturn($existing, $requestHash);
 
             return $existing->load('items');
         }
@@ -291,7 +287,7 @@ class SalesReturnService
                 InvoiceStatus::PartiallyPaid,
                 InvoiceStatus::Paid,
             ], true)
-                || ! $original->customer?->party?->is_active
+                || ! $original->customer?->party
                 || (int) $original->customer->party->store_id !== (int) $original->store_id) {
                 throw new DomainException('فاکتور فروش معتبر و متعلق به فروشگاه برای برگشت یافت نشد.');
             }
@@ -396,12 +392,21 @@ class SalesReturnService
                 $total = Decimal::add($total, $lineTotal, 2);
             }
 
+            $requestHash = IdempotencyHasher::hash('sales.return.draft', $this->draftRequestPayload(
+                $original,
+                $items,
+                $returnDate,
+                $return->created_by === null ? null : (int) $return->created_by,
+                $return->notes,
+            ));
+
             $return->forceFill([
                 'invoice_date' => $returnDate,
                 'subtotal' => $subtotal,
                 'discount_total' => $discountTotal,
                 'tax_total' => $taxTotal,
                 'total' => $total,
+                'idempotency_request_hash' => $requestHash,
             ])->save();
 
             return $return->refresh()->load('items');
@@ -491,6 +496,10 @@ class SalesReturnService
                 throw new DomainException('مشتری برگشت فروش معتبر نیست.');
             }
 
+            $return->forceFill([
+                'party_snapshot' => $this->partySnapshots->capture($return->customer->party),
+            ])->save();
+
             $period = AccountingPeriod::query()
                 ->where('store_id', $return->store_id)
                 ->where('fiscal_year_id', $return->fiscal_year_id)
@@ -508,7 +517,7 @@ class SalesReturnService
             $discountTotal = '0.00';
             $total = '0.00';
 
-            foreach ($return->items as $item) {
+            foreach ($return->items->sortBy([['product_id', 'asc'], ['id', 'asc']])->values() as $item) {
                 $originalItem = $original->items
                     ->firstWhere('id', $item->parent_invoice_item_id);
 
@@ -675,7 +684,7 @@ class SalesReturnService
             $return->parentInvoice?->syncSettlementStatus();
 
             return $return->refresh()->load(['items', 'parentInvoice']);
-        });
+        }, attempts: 3);
     }
 
     /**
@@ -813,13 +822,87 @@ class SalesReturnService
         return ['serial_ids' => $serialIds, 'batch_allocations' => $allocations];
     }
 
-    private function assertMatchingIdempotentReturn(Invoice $existing, string $requestHash): void
+    /**
+     * @param  array<int, array{invoice_item_id: int, quantity: string|int|float}>  $items
+     * @return array<string, mixed>
+     */
+    private function draftRequestPayload(
+        Invoice $parentInvoice,
+        array $items,
+        string $returnDate,
+        ?int $createdBy,
+        ?string $notes,
+    ): array {
+        $canonicalItems = collect($items)
+            ->map(fn (array $item): array => [
+                'invoice_item_id' => (int) $item['invoice_item_id'],
+                'quantity' => Decimal::normalize($item['quantity'], Decimal::QUANTITY_SCALE),
+            ])
+            ->sortBy('invoice_item_id')
+            ->values()
+            ->all();
+
+        return [
+            'store_id' => (int) $parentInvoice->store_id,
+            'branch_id' => (int) $parentInvoice->branch_id,
+            'fiscal_year_id' => (int) $parentInvoice->fiscal_year_id,
+            'parent_invoice_id' => (int) $parentInvoice->id,
+            'customer_id' => $parentInvoice->customer_id === null ? null : (int) $parentInvoice->customer_id,
+            'supplier_id' => null,
+            'return_date' => CarbonImmutable::parse($returnDate)->toDateString(),
+            'created_by' => $createdBy,
+            'notes' => $notes,
+            'items' => $canonicalItems,
+            'source_invoice_ids' => [(int) $parentInvoice->id],
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function persistedDraftPayload(Invoice $return): array
     {
-        if ($existing->type !== InvoiceType::SalesReturn
-            || ($existing->idempotency_request_hash !== null
-                && ! hash_equals($existing->idempotency_request_hash, $requestHash))) {
+        $items = $return->items()
+            ->get()
+            ->map(fn (InvoiceItem $item): array => [
+                'invoice_item_id' => (int) $item->parent_invoice_item_id,
+                'quantity' => Decimal::normalize($item->quantity, Decimal::QUANTITY_SCALE),
+            ])
+            ->sortBy('invoice_item_id')
+            ->values()
+            ->all();
+
+        return [
+            'store_id' => (int) $return->store_id,
+            'branch_id' => (int) $return->branch_id,
+            'fiscal_year_id' => (int) $return->fiscal_year_id,
+            'parent_invoice_id' => (int) $return->parent_invoice_id,
+            'customer_id' => $return->customer_id === null ? null : (int) $return->customer_id,
+            'supplier_id' => null,
+            'return_date' => $return->invoice_date->toDateString(),
+            'created_by' => $return->created_by === null ? null : (int) $return->created_by,
+            'notes' => $return->notes,
+            'items' => $items,
+            'source_invoice_ids' => [(int) $return->parent_invoice_id],
+        ];
+    }
+
+    private function resolveIdempotentReturn(Invoice $existing, string $requestHash): Invoice
+    {
+        if ($existing->type !== InvoiceType::SalesReturn) {
             throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست برگشت متفاوتی استفاده شده است.');
         }
+
+        if ($existing->idempotency_request_hash !== null) {
+            if (! hash_equals($existing->idempotency_request_hash, $requestHash)) {
+                throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست برگشت متفاوتی استفاده شده است.');
+            }
+        } elseif (! hash_equals(
+            IdempotencyHasher::hash('sales.return.draft', $this->persistedDraftPayload($existing)),
+            $requestHash,
+        )) {
+            throw new DomainException('کلید تکرارپذیری قبلاً برای درخواست برگشت متفاوتی استفاده شده است.');
+        }
+
+        return $existing->load('items');
     }
 
     private function assertConfirmedWarehouse(

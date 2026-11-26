@@ -66,19 +66,24 @@ class PurchaseInvoiceController extends Controller
             ->orderByDesc('id')
             ->paginate(15)
             ->withQueryString()
-            ->through(fn (Invoice $invoice): array => [
-                'id' => $invoice->id,
-                'invoice_number' => $invoice->invoice_number,
-                'invoice_date' => $invoice->invoice_date->toDateString(),
-                'due_date' => $invoice->due_date?->toDateString(),
-                'status' => $invoice->status->value,
-                'total' => $invoice->total,
-                'supplier' => [
-                    'name' => $invoice->supplier->party->name,
-                    'code' => $invoice->supplier->party->code,
-                    'phone' => $invoice->supplier->party->phone,
-                ],
-            ]);
+            ->through(function (Invoice $invoice): array {
+                $party = $invoice->partyIdentity();
+
+                return [
+                    'id' => $invoice->id,
+                    'invoice_number' => $invoice->invoice_number,
+                    'invoice_date' => $invoice->invoice_date->toDateString(),
+                    'due_date' => $invoice->due_date?->toDateString(),
+                    'status' => $invoice->status->value,
+                    'total' => $invoice->total,
+                    'supplier' => [
+                        'name' => $party['name'],
+                        'code' => $party['code'],
+                        'phone' => $party['phone'],
+                        'legacy_current' => $party['legacy_current'] ?? false,
+                    ],
+                ];
+            });
 
         return Inertia::render('purchases/Index', [
             'invoices' => $invoices,
@@ -195,6 +200,7 @@ class PurchaseInvoiceController extends Controller
                 ->orderByDesc('id'),
         ]);
         $trace = $traceability->forSource($invoice);
+        $party = $invoice->partyIdentity();
 
         return Inertia::render('purchases/Show', [
             'can_pay' => $request->user()->canManagePayments(),
@@ -222,9 +228,10 @@ class PurchaseInvoiceController extends Controller
                 'notes' => $invoice->notes,
                 'supplier' => [
                     'id' => $invoice->supplier->id,
-                    'name' => $invoice->supplier->party->name,
-                    'code' => $invoice->supplier->party->code,
-                    'phone' => $invoice->supplier->party->phone,
+                    'name' => $party['name'],
+                    'code' => $party['code'],
+                    'phone' => $party['phone'],
+                    'legacy_current' => $party['legacy_current'] ?? false,
                 ],
                 'items' => $invoice->items->map(fn ($item): array => [
                     'id' => $item->id,

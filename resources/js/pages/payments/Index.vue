@@ -32,7 +32,12 @@ const props = defineProps<{
             payment_method: Method;
             status: Status;
             allocations_count: number;
-            supplier: { name: string; code: string; phone: string | null };
+            supplier: {
+                name: string;
+                code: string;
+                phone: string | null;
+                legacy_current: boolean;
+            };
         }>;
         current_page: number;
         last_page: number;
@@ -237,6 +242,12 @@ defineOptions({
                                     class="mt-1 text-[10px] text-muted-foreground"
                                 >
                                     {{ payment.supplier.phone ?? 'بدون تلفن' }}
+                                </p>
+                                <p
+                                    v-if="payment.supplier.legacy_current"
+                                    class="mt-1 text-[9px] text-amber-700 dark:text-amber-300"
+                                >
+                                    هویت جاری (سند قدیمی)
                                 </p>
                             </td>
                             <td class="px-4 py-4 text-[11px]">

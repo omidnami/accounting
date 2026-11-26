@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\Audit\AuditLogService;
 use App\Support\Decimal;
+use App\Support\IdempotencyHasher;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
@@ -78,15 +79,13 @@ class PosSessionService
             throw new AuthorizationException;
         }
 
-        return DB::transaction(function () use ($session, $countedCash, $notes): PosSession {
+        return DB::transaction(function () use ($session, $user, $countedCash, $notes): PosSession {
             $session = PosSession::query()->whereKey($session->id)->lockForUpdate()->firstOrFail();
-            if ($session->closed_at !== null) {
-                if (Decimal::compare($session->counted_cash, $countedCash, 2) !== 0
-                    || trim((string) $session->closing_notes) !== trim((string) $notes)) {
-                    throw new DomainException('این شیفت قبلاً با اطلاعات متفاوتی بسته شده است.');
-                }
+            $requestPayload = $this->closePayload($session, $user, $countedCash, $notes);
+            $requestHash = IdempotencyHasher::hash('pos.session.close', $requestPayload);
 
-                return $session;
+            if ($session->closed_at !== null) {
+                return $this->resolveClosedSession($session, $requestHash);
             }
             $expected = $this->expectedCash($session, true);
             $difference = Decimal::subtract($countedCash, $expected, 2);
@@ -98,6 +97,7 @@ class PosSessionService
                 'counted_cash' => $countedCash,
                 'cash_difference' => $difference,
                 'closing_notes' => $notes,
+                'close_request_hash' => $requestHash,
                 'closed_at' => now(),
                 'active_user_id' => null,
                 'active_cash_account_id' => null,
@@ -106,6 +106,60 @@ class PosSessionService
 
             return $session;
         }, attempts: 3);
+    }
+
+    /** @return array<string, mixed> */
+    private function closePayload(
+        PosSession $session,
+        User $user,
+        string $countedCash,
+        ?string $notes,
+    ): array {
+        return [
+            'session_id' => (int) $session->id,
+            'store_id' => (int) $session->store_id,
+            'branch_id' => (int) $session->branch_id,
+            'session_user_id' => (int) $session->user_id,
+            'actor_id' => (int) $user->id,
+            'counted_cash' => Decimal::normalize($countedCash, Decimal::MONEY_SCALE),
+            'notes' => trim((string) $notes),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function persistedClosePayload(PosSession $session): array
+    {
+        return [
+            'session_id' => (int) $session->id,
+            'store_id' => (int) $session->store_id,
+            'branch_id' => (int) $session->branch_id,
+            'session_user_id' => (int) $session->user_id,
+            'actor_id' => (int) $session->user_id,
+            'counted_cash' => $session->counted_cash === null
+                ? null
+                : Decimal::normalize($session->counted_cash, Decimal::MONEY_SCALE),
+            'notes' => trim((string) $session->closing_notes),
+        ];
+    }
+
+    private function resolveClosedSession(
+        PosSession $session,
+        string $requestHash,
+    ): PosSession {
+        if ($session->close_request_hash !== null) {
+            $matches = hash_equals($session->close_request_hash, $requestHash);
+        } else {
+            $matches = hash_equals(
+                IdempotencyHasher::hash('pos.session.close', $this->persistedClosePayload($session)),
+                $requestHash,
+            );
+        }
+
+        if (! $matches) {
+            throw new DomainException('این شیفت قبلاً با اطلاعات متفاوتی بسته شده است.');
+        }
+
+        return $session;
     }
 
     private function account(int $id, Branch $branch, TreasuryAccountType $type): TreasuryAccount

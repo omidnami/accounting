@@ -315,6 +315,95 @@ it('passes receivable status to the sales invoice page', function () {
             ->where('outstanding', $invoice->total));
 });
 
+it('uses a labelled settlement lookup and prefill for a deactivated customer', function () {
+    $context = receiptUiContext();
+    $invoice = createReceiptTestInvoice($context);
+    $context['customer']->update(['is_active' => false]);
+    $context['party']->update(['is_active' => false]);
+    $otherStore = Store::query()->create(['code' => 'OTHER-RECEIPT', 'name' => 'فروشگاه دیگر']);
+    $otherParty = Party::query()->create([
+        'store_id' => $otherStore->id,
+        'code' => 'RECEIPT-OTHER-CUSTOMER',
+        'name' => 'مشتری فروشگاه دیگر',
+    ]);
+    $otherCustomer = Customer::query()->create([
+        'party_id' => $otherParty->id,
+        'credit_limit' => 0,
+    ]);
+
+    $this->actingAs($context['user'])
+        ->get(route('receipts.create', [
+            'customer_id' => $context['customer']->id,
+            'invoice_id' => $invoice->id,
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('initial_customer.id', $context['customer']->id)
+            ->where('initial_customer.is_active', false)
+            ->where('initial_customer.status_label', 'غیرفعال')
+            ->has('initial_invoices', 1));
+
+    $this->actingAs($context['user'])
+        ->getJson(route('receipts.lookups.customers', ['search' => $context['party']->code]))
+        ->assertOk()
+        ->assertJsonPath('data.0.id', $context['customer']->id)
+        ->assertJsonPath('data.0.is_active', false)
+        ->assertJsonPath('data.0.status_label', 'غیرفعال');
+
+    $this->actingAs($context['user'])
+        ->getJson(route('receipts.lookups.invoices', ['customer_id' => $context['customer']->id]))
+        ->assertOk()
+        ->assertJsonPath('customer.status_label', 'غیرفعال')
+        ->assertJsonCount(1, 'invoices');
+
+    $this->actingAs($context['user'])
+        ->getJson(route('sales.lookups.customers', ['search' => $context['party']->code]))
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
+
+    $this->actingAs($context['user'])
+        ->getJson(route('receipts.lookups.customers', ['search' => $otherParty->code]))
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
+
+    $this->actingAs($context['user'])
+        ->getJson(route('receipts.lookups.invoices', ['customer_id' => $otherCustomer->id]))
+        ->assertNotFound();
+});
+
+it('registers and retries a historical receipt after the customer and party are deactivated', function () {
+    $context = receiptUiContext();
+    $invoice = createReceiptTestInvoice($context);
+    $context['customer']->update(['is_active' => false]);
+    $context['party']->update(['is_active' => false]);
+    $payload = receiptUiPayload($context, $invoice);
+
+    $this->actingAs($context['user'])
+        ->post(route('receipts.store'), $payload)
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $receipt = Receipt::query()->firstOrFail();
+    $entry = JournalEntry::query()
+        ->where('source_type', Receipt::class)
+        ->where('source_id', $receipt->id)
+        ->firstOrFail();
+
+    expect($entry->status->value)->toBe('posted')
+        ->and($entry->lines->firstWhere('party_id', $context['party']->id))->not->toBeNull()
+        ->and($invoice->refresh()->status)->toBe(InvoiceStatus::PartiallyPaid);
+
+    $this->actingAs($context['user'])
+        ->post(route('receipts.store'), $payload)
+        ->assertRedirect();
+
+    $this->actingAs($context['user'])
+        ->post(route('receipts.store'), array_replace($payload, ['reference' => 'CHANGED']))
+        ->assertSessionHasErrors('receipt');
+
+    expect(Receipt::query()->count())->toBe(1);
+});
+
 it('uses a card treasury account for card receipts', function () {
     $context = receiptUiContext();
     $invoice = createReceiptTestInvoice($context);

@@ -9,6 +9,7 @@ use App\Enums\UserRole;
 use App\Models\Check;
 use App\Models\Customer;
 use App\Models\InventoryBalance;
+use App\Models\InventoryMovement;
 use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\Party;
@@ -122,7 +123,7 @@ function concurrencyIntegrationContext(): array
  * @param  callable(string): mixed  $operation
  * @return array<string, array<string, mixed>>
  */
-function runConcurrentScenario(callable $operation): array
+function runConcurrentScenario(callable $operation, bool $outerTransaction = true): array
 {
     $directory = sys_get_temp_dir().'/hsabyar-concurrency-'.bin2hex(random_bytes(8));
     mkdir($directory, 0700, true);
@@ -142,9 +143,12 @@ function runConcurrentScenario(callable $operation): array
             DB::reconnect();
 
             try {
-                DB::statement('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
-                DB::beginTransaction();
-                DB::table('users')->value('id');
+                if ($outerTransaction) {
+                    DB::statement('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');
+                    DB::beginTransaction();
+                    DB::table('users')->value('id');
+                }
+
                 file_put_contents($directory.'/ready-'.$slot, '1');
 
                 while (! file_exists($go)) {
@@ -156,7 +160,11 @@ function runConcurrentScenario(callable $operation): array
                 }
 
                 $value = $operation($slot);
-                DB::commit();
+
+                if ($outerTransaction) {
+                    DB::commit();
+                }
+
                 file_put_contents($directory.'/result-'.$slot, json_encode([
                     'ok' => true,
                     'value' => is_scalar($value) ? $value : null,
@@ -234,6 +242,35 @@ function createConcurrencySale(array $context, string $key): Invoice
                 'discount_amount' => 0,
                 'tax_rate' => 5,
             ]],
+            $key,
+        ),
+        $context['warehouse']->id,
+        $context['manager'],
+    );
+}
+
+function createConcurrencyMultiProductSale(array $context, string $key, array $productIds): Invoice
+{
+    $sales = app(SalesService::class);
+    $items = array_map(fn (int $productId): array => [
+        'product_id' => $productId,
+        'quantity' => 1,
+        'unit_price' => 100,
+        'discount_amount' => 0,
+        'tax_rate' => 5,
+    ], $productIds);
+
+    return $sales->confirm(
+        $sales->createDraft(
+            [
+                'store_id' => $context['store']->id,
+                'branch_id' => $context['branch']->id,
+                'fiscal_year_id' => $context['fiscalYear']->id,
+                'customer_id' => $context['customer']->id,
+                'invoice_date' => $context['date'],
+                'created_by' => $context['manager']->id,
+            ],
+            $items,
             $key,
         ),
         $context['warehouse']->id,
@@ -522,4 +559,65 @@ it('allows only one concurrent registration of an external check identity', func
     expect(collect($results)->where('ok', true)->count())->toBe(1)
         ->and(collect($results)->where('ok', false)->count())->toBe(1)
         ->and(Check::query()->where('check_number', 'CONCURRENT-CHECK')->count())->toBe(1);
+});
+
+it('confirms returns with opposite item order without deadlock or duplicate movements', function () {
+    $context = concurrencyIntegrationContext();
+    $secondProduct = Product::query()->create([
+        'code' => 'CONCURRENCY-PRODUCT-2',
+        'name' => 'کالای دوم هم‌زمانی',
+        'purchase_price' => 100,
+        'sale_price' => 100,
+        'tax_rate' => 5,
+        'is_active' => true,
+    ]);
+    app(InventoryService::class)->receive(
+        warehouseId: $context['warehouse']->id,
+        productId: $secondProduct->id,
+        quantity: 100,
+        unitCost: 100,
+        movementDate: $context['date'],
+        idempotencyKey: 'concurrency-second-opening',
+        movementType: InventoryMovementType::Opening,
+    );
+    $firstSale = createConcurrencyMultiProductSale($context, 'concurrent-return-sale-a', [
+        $context['product']->id,
+        $secondProduct->id,
+    ]);
+    $secondSale = createConcurrencyMultiProductSale($context, 'concurrent-return-sale-b', [
+        $secondProduct->id,
+        $context['product']->id,
+    ]);
+    $returns = app(SalesReturnService::class);
+    $firstReturn = $returns->createDraft(
+        $firstSale,
+        $firstSale->items->sortBy('product_id')->map(fn ($item): array => [
+            'invoice_item_id' => $item->id,
+            'quantity' => 1,
+        ])->values()->all(),
+        $context['date'],
+        $context['manager']->id,
+        'concurrent-return-draft-a',
+    );
+    $secondReturn = $returns->createDraft(
+        $secondSale,
+        $secondSale->items->sortByDesc('product_id')->map(fn ($item): array => [
+            'invoice_item_id' => $item->id,
+            'quantity' => 1,
+        ])->values()->all(),
+        $context['date'],
+        $context['manager']->id,
+        'concurrent-return-draft-b',
+    );
+    $results = runConcurrentScenario(function (string $slot) use ($context, $returns, $firstReturn, $secondReturn): string {
+        $return = $slot === 'a' ? $firstReturn : $secondReturn;
+        $returns->confirm($return, $context['warehouse']->id, $context['manager']);
+
+        return $slot;
+    }, outerTransaction: false);
+
+    expect($results['a']['ok'])->toBeTrue()
+        ->and($results['b']['ok'])->toBeTrue()
+        ->and(Invoice::query()->where('type', InvoiceType::SalesReturn)->count())->toBe(2)
+        ->and(InventoryMovement::query()->where('movement_type', InventoryMovementType::SalesReturn)->count())->toBe(4);
 });
