@@ -34,6 +34,7 @@ use Database\Seeders\AccountingSetupSeeder;
 use Database\Seeders\AccountSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 beforeEach(function () {
     if (! function_exists('pcntl_fork')) {
@@ -514,7 +515,7 @@ it('allows only one concurrent registration of an external check identity', func
             issueDate: $context['date'],
             dueDate: $context['date'],
             creator: $context['manager'],
-            idempotencyKey: 'concurrent-check-'.$slot,
+            idempotencyKey: (string) Str::uuid(),
         )->id;
     });
 

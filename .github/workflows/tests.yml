@@ -12,10 +12,21 @@ permissions:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    name: ci (${{ matrix.database.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        database:
+          - name: mysql
+            image: mysql:8.4
+            driver: mysql
+          - name: mariadb
+            image: mariadb:11.4
+            driver: mariadb
 
     services:
-      mysql:
-        image: mysql:8.4
+      database:
+        image: ${{ matrix.database.image }}
         env:
           MYSQL_ROOT_PASSWORD: password
           MYSQL_ROOT_HOST: '%'
@@ -29,7 +40,7 @@ jobs:
           --health-retries=10
 
     env:
-      DB_CONNECTION: mysql
+      DB_CONNECTION: ${{ matrix.database.driver }}
       DB_HOST: 127.0.0.1
       DB_PORT: 3306
       DB_DATABASE: accounting_system
@@ -58,6 +69,9 @@ jobs:
       - name: Setup Application
         run: composer setup
 
+      - name: Verify database migrations
+        run: php artisan migrate:status
+
       - name: Audit production dependencies
         run: composer audit --locked
 
@@ -67,5 +81,5 @@ jobs:
       - name: Run CI Checks
         run: composer ci:check
 
-      - name: Run MySQL concurrency tests
+      - name: Run database concurrency tests
         run: php artisan test tests/Integration/ConcurrencySafetyTest.php --fail-on-skipped

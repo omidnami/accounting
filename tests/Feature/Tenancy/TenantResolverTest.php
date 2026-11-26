@@ -24,8 +24,9 @@ it('switches to the tenant database before authentication and session middleware
     createTenantSqliteDatabase($database, 'TENANT-STORE');
     config([
         'tenancy.enabled' => true,
+        'tenancy.connection' => 'sqlite',
         'tenancy.central_domains' => ['central.test'],
-        'database.default' => 'sqlite',
+        'database.connections.sqlite.database' => $database,
     ]);
     $tenant = Tenant::query()->create([
         'code' => 'acme',
@@ -55,7 +56,7 @@ it('switches to the tenant database before authentication and session middleware
             ->and(config('session.cookie'))->toBe('tenant_'.$tenant->id.'_session');
     } finally {
         $context->clear();
-        config(['database.default' => $originalDefault]);
+        config(['database.default' => $originalDefault, 'tenancy.connection' => null]);
         DB::purge('tenant');
         File::deleteDirectory($directory);
         File::deleteDirectory(storage_path('tenants/'.$tenant->id));
@@ -63,8 +64,10 @@ it('switches to the tenant database before authentication and session middleware
 });
 
 it('keeps the central database for central domains', function () {
+    $originalDefault = config('database.default');
     config([
         'tenancy.enabled' => true,
+        'tenancy.connection' => null,
         'tenancy.central_domains' => ['central.test'],
     ]);
     $request = Request::create('http://central.test/dashboard');
@@ -76,6 +79,6 @@ it('keeps the central database for central domains', function () {
     );
 
     expect($response->getStatusCode())->toBe(200)
-        ->and($response->getData(true)['connection'])->toBe('sqlite')
+        ->and($response->getData(true)['connection'])->toBe($originalDefault)
         ->and(app(TenantContext::class)->tenant)->toBeNull();
 });

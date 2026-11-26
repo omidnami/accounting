@@ -13,6 +13,7 @@ use App\Services\Treasury\CheckRegistrationService;
 use DomainException;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
+use Ramsey\Uuid\Uuid;
 
 class PosCheckResolutionService
 {
@@ -57,7 +58,7 @@ class PosCheckResolutionService
                 issueDate: $invoice->invoice_date->toDateString(),
                 dueDate: $data['due_date'],
                 creator: $user,
-                idempotencyKey: 'pos:check:'.$tender->id,
+                idempotencyKey: Uuid::uuid5(Uuid::NAMESPACE_URL, 'accounting:pos-check:'.$tender->id)->toString(),
                 description: 'چک فاکتور '.$invoice->invoice_number,
             );
             $receipt = $this->receipts->receive(

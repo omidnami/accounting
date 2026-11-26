@@ -35,7 +35,7 @@ class ResolveTenant
             ->first();
 
         abort_if($tenant === null, 404);
-        $baseConnection = (string) config('database.default');
+        $baseConnection = (string) (config('tenancy.connection') ?: config('database.default'));
         $base = (array) config("database.connections.{$baseConnection}");
         $base['database'] = $tenant->database_name;
         config(['database.connections.tenant' => $base]);

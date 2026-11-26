@@ -195,7 +195,7 @@ it('rejects a second registration of the same external check identity', function
         issueDate: '2026-05-02',
         dueDate: '2026-06-02',
         creator: $context['manager'],
-        idempotencyKey: 'external-check-first',
+        idempotencyKey: fake()->uuid(),
     );
 
     expect(fn () => $registration->register(
@@ -211,7 +211,7 @@ it('rejects a second registration of the same external check identity', function
         issueDate: '2026-05-02',
         dueDate: '2026-06-02',
         creator: $context['manager'],
-        idempotencyKey: 'external-check-second',
+        idempotencyKey: fake()->uuid(),
     ))->toThrow(DomainException::class, 'قبلاً با همان بانک و شماره ثبت شده');
 
     expect(Check::query()->count())->toBe(1);

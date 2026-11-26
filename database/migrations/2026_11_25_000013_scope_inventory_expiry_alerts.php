@@ -10,20 +10,20 @@ return new class extends Migration
     {
         Schema::table('inventory_alerts', function (Blueprint $table): void {
             $table->foreignId('warehouse_id')->nullable()->after('branch_id')->constrained()->nullOnDelete();
-            $table->dropUnique('inventory_alerts_product_batch_id_type_unique');
             $table->unique(
                 ['product_batch_id', 'type', 'branch_id', 'warehouse_id'],
                 'inventory_alerts_scope_unique',
             );
+            $table->dropUnique('inventory_alerts_product_batch_id_type_unique');
         });
     }
 
     public function down(): void
     {
         Schema::table('inventory_alerts', function (Blueprint $table): void {
+            $table->unique(['product_batch_id', 'type'], 'inventory_alerts_product_batch_id_type_unique');
             $table->dropUnique('inventory_alerts_scope_unique');
             $table->dropConstrainedForeignId('warehouse_id');
-            $table->unique(['product_batch_id', 'type'], 'inventory_alerts_product_batch_id_type_unique');
         });
     }
 };

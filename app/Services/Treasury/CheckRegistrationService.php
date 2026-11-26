@@ -91,7 +91,10 @@ class CheckRegistrationService
                     return $existing;
                 }
 
-                $branch = Branch::query()->findOrFail($branchId);
+                $branch = Branch::query()
+                    ->whereKey($branchId)
+                    ->lockForUpdate()
+                    ->firstOrFail();
 
                 if ((int) $branch->store_id !== $storeId || ! $branch->is_active) {
                     throw new DomainException('شعبه چک باید فعال و متعلق به فروشگاه باشد.');
