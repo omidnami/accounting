@@ -90,8 +90,12 @@ it('blocks party snapshot rollback while final identity snapshots exist', functi
 
     expect(fn () => $migration->down())
         ->toThrow(RuntimeException::class, 'invoices contains final party identity snapshots')
-        ->and(DB::table('invoices')->where('invoice_number', 'SNAPSHOT-INVOICE')->value('party_snapshot'))
-        ->toBe($snapshot);
+        ->and(json_decode(
+            (string) DB::table('invoices')->where('invoice_number', 'SNAPSHOT-INVOICE')->value('party_snapshot'),
+            true,
+            512,
+            JSON_THROW_ON_ERROR,
+        ))->toBe(json_decode($snapshot, true, 512, JSON_THROW_ON_ERROR));
 });
 
 it('makes tracking migration retry-safe and blocks destructive rollback', function () {
