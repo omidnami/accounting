@@ -403,6 +403,8 @@ it('exports every financial and operational report as CSV', function () {
         'balance' => ['header' => 'مبلغ', 'summary' => 'جمع حقوق صاحبان سهام'],
         'journal' => ['header' => 'شماره سند', 'summary' => 'جمع کل'],
         'ledger' => ['header' => 'مانده', 'summary' => 'مانده اول دوره'],
+        'general' => ['header' => 'کد حساب', 'summary' => 'جمع کل'],
+        'cashflow' => ['header' => 'تغییر خالص', 'summary' => 'مانده پایان دوره'],
     ];
 
     foreach ($financialReports as $report => $expected) {

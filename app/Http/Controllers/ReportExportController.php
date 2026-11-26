@@ -28,7 +28,7 @@ class ReportExportController extends Controller
         $validated = $request->validate([
             'report' => [
                 'required',
-                Rule::in(['trial', 'income', 'balance', 'journal', 'ledger']),
+                Rule::in(['trial', 'income', 'balance', 'journal', 'ledger', 'general', 'cashflow']),
             ],
             'format' => ['nullable', Rule::in(['csv', 'xlsx', 'pdf'])],
             'account_id' => [

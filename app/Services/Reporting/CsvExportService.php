@@ -8,7 +8,7 @@ class CsvExportService
 {
     /**
      * @param  array<int, string>  $headers
-     * @param  iterable<int, array<int, string|int|float|null>>  $rows
+     * @param  iterable<int, array<mixed>>  $rows
      */
     public function download(
         string $filename,
@@ -40,7 +40,7 @@ class CsvExportService
 
     /**
      * @param  resource  $output
-     * @param  array<int, string|int|float|null>  $row
+     * @param  array<mixed>  $row
      */
     private function writeRow($output, array $row): void
     {

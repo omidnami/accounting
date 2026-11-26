@@ -4,17 +4,12 @@ namespace App\Services\Reporting;
 
 use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
-use App\Enums\TreasuryDocumentStatus;
-use App\Models\Invoice;
-use App\Models\Payment;
-use App\Models\Receipt;
 use App\Support\Decimal;
-use App\Support\PaginationPayload;
 use App\Support\ReportDateRange;
-use Carbon\CarbonImmutable;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\LazyCollection;
 
 class AgingReportService
 {
@@ -26,49 +21,7 @@ class AgingReportService
         string $asOf,
         ?int $branchId = null,
     ): array {
-        $invoices = $this->invoiceQuery(
-            storeId: $storeId,
-            type: InvoiceType::Sales,
-            asOf: ReportDateRange::through($asOf),
-            branchId: $branchId,
-        )->with([
-            'customer.party',
-            'receiptAllocations.receipt.check.bounceEntry',
-            'childInvoices',
-        ])->get();
-
-        return $this->build(
-            invoices: $invoices,
-            asOf: ReportDateRange::through($asOf),
-            outstanding: function (Invoice $invoice) use ($asOf): string {
-                $received = '0.00';
-
-                foreach ($invoice->receiptAllocations as $allocation) {
-                    if ($this->wasConfirmedAt($allocation->receipt, $asOf)) {
-                        $received = Decimal::add($received, $allocation->amount, 2);
-                    }
-                }
-
-                $returned = '0.00';
-
-                foreach ($invoice->childInvoices as $return) {
-                    if ($return->type === InvoiceType::SalesReturn
-                        && $return->status === InvoiceStatus::Confirmed
-                        && $return->invoice_date->toDateString() <= $asOf) {
-                        $returned = Decimal::add($returned, $return->total, 2);
-                    }
-                }
-
-                $remaining = Decimal::subtract($invoice->total, $received, 2);
-
-                return Decimal::subtract($remaining, $returned, 2);
-            },
-            party: fn (Invoice $invoice): ?array => $invoice->customer?->party ? [
-                'id' => $invoice->customer->party->id,
-                'code' => $invoice->customer->party->code,
-                'name' => $invoice->customer->party->name,
-            ] : null,
-        );
+        return $this->report($storeId, InvoiceType::Sales, $asOf, $branchId);
     }
 
     /**
@@ -79,215 +32,266 @@ class AgingReportService
         string $asOf,
         ?int $branchId = null,
     ): array {
-        $invoices = $this->invoiceQuery(
-            storeId: $storeId,
-            type: InvoiceType::Purchase,
-            asOf: ReportDateRange::through($asOf),
-            branchId: $branchId,
-        )->with([
-            'supplier.party',
-            'paymentAllocations.payment.check.bounceEntry',
-            'childInvoices',
-        ])->get();
-
-        return $this->build(
-            invoices: $invoices,
-            asOf: ReportDateRange::through($asOf),
-            outstanding: function (Invoice $invoice) use ($asOf): string {
-                $paid = '0.00';
-
-                foreach ($invoice->paymentAllocations as $allocation) {
-                    if ($this->wasConfirmedAt($allocation->payment, $asOf)) {
-                        $paid = Decimal::add($paid, $allocation->amount, 2);
-                    }
-                }
-
-                $returned = '0.00';
-
-                foreach ($invoice->childInvoices as $return) {
-                    if ($return->type === InvoiceType::PurchaseReturn
-                        && $return->status === InvoiceStatus::Confirmed
-                        && $return->invoice_date->toDateString() <= $asOf) {
-                        $returned = Decimal::add($returned, $return->total, 2);
-                    }
-                }
-
-                $remaining = Decimal::subtract($invoice->total, $paid, 2);
-
-                return Decimal::subtract($remaining, $returned, 2);
-            },
-            party: fn (Invoice $invoice): ?array => $invoice->supplier?->party ? [
-                'id' => $invoice->supplier->party->id,
-                'code' => $invoice->supplier->party->code,
-                'name' => $invoice->supplier->party->name,
-            ] : null,
-        );
+        return $this->report($storeId, InvoiceType::Purchase, $asOf, $branchId);
     }
 
-    /**
-     * @return array<string, mixed>
-     */
+    /** @return LazyCollection<int, array<string, mixed>> */
+    public function receivableRows(
+        int $storeId,
+        string $asOf,
+        ?int $branchId = null,
+    ): LazyCollection {
+        return $this->rows($storeId, InvoiceType::Sales, $asOf, $branchId);
+    }
+
+    /** @return LazyCollection<int, array<string, mixed>> */
+    public function payableRows(
+        int $storeId,
+        string $asOf,
+        ?int $branchId = null,
+    ): LazyCollection {
+        return $this->rows($storeId, InvoiceType::Purchase, $asOf, $branchId);
+    }
+
+    /** @return array<string, mixed> */
     public function receivablesPage(
         int $storeId,
         string $asOf,
         ?int $branchId,
         int $page,
     ): array {
-        $build = fn (): array => $this->receivables($storeId, $asOf, $branchId);
-        $data = app()->environment('testing')
-            ? $build()
-            : Cache::remember(
-                "aging-receivables:{$storeId}:{$branchId}:{$asOf}",
-                now()->addMinute(),
-                $build,
-            );
-
-        return [
-            ...$data,
-            'rows' => PaginationPayload::from($data['rows'], $page),
-        ];
+        return $this->pageReport($storeId, InvoiceType::Sales, $asOf, $branchId, $page, 'aging-receivables');
     }
 
-    /**
-     * @return array<string, mixed>
-     */
+    /** @return array<string, mixed> */
     public function payablesPage(
         int $storeId,
         string $asOf,
         ?int $branchId,
         int $page,
     ): array {
-        $build = fn (): array => $this->payables($storeId, $asOf, $branchId);
-        $data = app()->environment('testing')
-            ? $build()
-            : Cache::remember(
-                "aging-payables:{$storeId}:{$branchId}:{$asOf}",
-                now()->addMinute(),
-                $build,
-            );
-
-        return [
-            ...$data,
-            'rows' => PaginationPayload::from($data['rows'], $page),
-        ];
+        return $this->pageReport($storeId, InvoiceType::Purchase, $asOf, $branchId, $page, 'aging-payables');
     }
 
     /**
-     * @return Builder<Invoice>
+     * @return array{rows: array<int, array<string, mixed>>, buckets: array<string, string>, total: string}
      */
-    private function invoiceQuery(
+    private function report(
+        int $storeId,
+        InvoiceType $type,
+        string $asOf,
+        ?int $branchId,
+    ): array {
+        $asOf = ReportDateRange::through($asOf);
+
+        return [
+            ...$this->summary($storeId, $type, $asOf, $branchId),
+            'rows' => $this->rows($storeId, $type, $asOf, $branchId)->all(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function pageReport(
+        int $storeId,
+        InvoiceType $type,
+        string $asOf,
+        ?int $branchId,
+        int $page,
+        string $cachePrefix,
+    ): array {
+        $asOf = ReportDateRange::through($asOf);
+        $summary = app()->environment('testing')
+            ? $this->summary($storeId, $type, $asOf, $branchId)
+            : Cache::remember(
+                "{$cachePrefix}:v2:{$storeId}:{$branchId}:{$asOf}",
+                now()->addMinute(),
+                fn (): array => $this->summary($storeId, $type, $asOf, $branchId),
+            );
+        $lines = $this->agingQuery($storeId, $type, $asOf, $branchId)
+            ->paginate(50, ['*'], 'aging_page', max(1, $page))
+            ->withQueryString();
+
+        return [
+            ...$summary,
+            'rows' => [
+                'data' => $lines->getCollection()
+                    ->map(fn (object $row): array => $this->row((array) $row))
+                    ->values()
+                    ->all(),
+                'current_page' => $lines->currentPage(),
+                'last_page' => $lines->lastPage(),
+                'per_page' => $lines->perPage(),
+                'from' => $lines->firstItem(),
+                'to' => $lines->lastItem(),
+                'total' => $lines->total(),
+                'prev_page_url' => $lines->previousPageUrl(),
+                'next_page_url' => $lines->nextPageUrl(),
+            ],
+        ];
+    }
+
+    /** @return LazyCollection<int, array<string, mixed>> */
+    private function rows(
+        int $storeId,
+        InvoiceType $type,
+        string $asOf,
+        ?int $branchId,
+    ): LazyCollection {
+        return $this->agingQuery($storeId, $type, $asOf, $branchId)
+            ->lazy(500)
+            ->map(fn (object $row): array => $this->row((array) $row));
+    }
+
+    /** @return array{buckets: array<string, string>, total: string} */
+    public function summary(
+        int $storeId,
+        InvoiceType $type,
+        string $asOf,
+        ?int $branchId,
+    ): array {
+        $totals = DB::query()
+            ->fromSub($this->agingQuery($storeId, $type, $asOf, $branchId)->reorder(), 'aging_summary')
+            ->selectRaw('COALESCE(SUM(outstanding), 0) AS total')
+            ->selectRaw("COALESCE(SUM(CASE WHEN bucket = 'current' THEN outstanding ELSE 0 END), 0) AS current")
+            ->selectRaw("COALESCE(SUM(CASE WHEN bucket = 'days_1_30' THEN outstanding ELSE 0 END), 0) AS days_1_30")
+            ->selectRaw("COALESCE(SUM(CASE WHEN bucket = 'days_31_60' THEN outstanding ELSE 0 END), 0) AS days_31_60")
+            ->selectRaw("COALESCE(SUM(CASE WHEN bucket = 'days_61_90' THEN outstanding ELSE 0 END), 0) AS days_61_90")
+            ->selectRaw("COALESCE(SUM(CASE WHEN bucket = 'over_90' THEN outstanding ELSE 0 END), 0) AS over_90")
+            ->first();
+
+        return [
+            'total' => Decimal::normalize((string) ($totals->total ?? 0), 2),
+            'buckets' => [
+                'current' => Decimal::normalize((string) ($totals->current ?? 0), 2),
+                'days_1_30' => Decimal::normalize((string) ($totals->days_1_30 ?? 0), 2),
+                'days_31_60' => Decimal::normalize((string) ($totals->days_31_60 ?? 0), 2),
+                'days_61_90' => Decimal::normalize((string) ($totals->days_61_90 ?? 0), 2),
+                'over_90' => Decimal::normalize((string) ($totals->over_90 ?? 0), 2),
+            ],
+        ];
+    }
+
+    private function agingQuery(
         int $storeId,
         InvoiceType $type,
         string $asOf,
         ?int $branchId,
     ): Builder {
-        return Invoice::query()
-            ->where('store_id', $storeId)
-            ->where('type', $type)
-            ->whereIn('status', [
-                InvoiceStatus::Confirmed,
-                InvoiceStatus::PartiallyPaid,
-                InvoiceStatus::Paid,
-                InvoiceStatus::Reversed,
+        $isReceivable = $type === InvoiceType::Sales;
+        $allocations = $isReceivable ? 'receipt_allocations' : 'payment_allocations';
+        $documents = $isReceivable ? 'receipts' : 'payments';
+        $documentDate = $isReceivable ? 'receipt_date' : 'payment_date';
+        $documentId = $isReceivable ? 'receipt_id' : 'payment_id';
+        $returnType = $isReceivable ? InvoiceType::SalesReturn : InvoiceType::PurchaseReturn;
+
+        $settled = DB::table($allocations)
+            ->join($documents, "{$documents}.id", '=', "{$allocations}.{$documentId}")
+            ->leftJoin('checks', 'checks.id', '=', "{$documents}.check_id")
+            ->leftJoin('journal_entries as bounce_entries', 'bounce_entries.id', '=', 'checks.bounce_entry_id')
+            ->whereColumn("{$allocations}.invoice_id", 'invoices.id')
+            ->whereDate("{$documents}.{$documentDate}", '<=', $asOf)
+            ->where(function (Builder $query) use ($documents, $asOf): void {
+                $query->where("{$documents}.status", 'confirmed')
+                    ->orWhere(function (Builder $query) use ($documents, $asOf): void {
+                        $query->where("{$documents}.status", 'bounced')
+                            ->whereDate('bounce_entries.entry_date', '>', $asOf);
+                    });
+            })
+            ->selectRaw("COALESCE(SUM({$allocations}.amount), 0)");
+        $returned = DB::table('invoices as return_invoices')
+            ->whereColumn('return_invoices.parent_invoice_id', 'invoices.id')
+            ->where('return_invoices.type', $returnType->value)
+            ->where('return_invoices.status', InvoiceStatus::Confirmed->value)
+            ->whereDate('return_invoices.invoice_date', '<=', $asOf)
+            ->selectRaw('COALESCE(SUM(return_invoices.total), 0)');
+        $base = DB::table('invoices')
+            ->leftJoin('customers', 'customers.id', '=', 'invoices.customer_id')
+            ->leftJoin('suppliers', 'suppliers.id', '=', 'invoices.supplier_id')
+            ->leftJoin(
+                'parties',
+                'parties.id',
+                '=',
+                $isReceivable ? 'customers.party_id' : 'suppliers.party_id',
+            )
+            ->where('invoices.store_id', $storeId)
+            ->where('invoices.type', $type->value)
+            ->whereNotNull('parties.id')
+            ->whereIn('invoices.status', [
+                InvoiceStatus::Confirmed->value,
+                InvoiceStatus::PartiallyPaid->value,
+                InvoiceStatus::Paid->value,
+                InvoiceStatus::Reversed->value,
             ])
-            ->whereDate('invoice_date', '<=', $asOf)
-            ->when($branchId !== null, fn ($query) => $query->where('branch_id', $branchId))
-            ->orderBy('invoice_date')
-            ->orderBy('id');
-    }
+            ->whereDate('invoices.invoice_date', '<=', $asOf)
+            ->when($branchId !== null, fn (Builder $query) => $query->where('invoices.branch_id', $branchId))
+            ->select([
+                'invoices.id as invoice_id',
+                'invoices.invoice_number',
+                'invoices.invoice_date',
+                'invoices.due_date',
+                'invoices.total',
+                'parties.id as party_id',
+                'parties.code as party_code',
+                'parties.name as party_name',
+            ])
+            ->selectSub($settled, 'received')
+            ->selectSub($returned, 'returned');
+        $outstandingValues = DB::query()
+            ->fromSub($base, 'aging_base')
+            ->select('*')
+            ->selectRaw('(total - COALESCE(received, 0) - COALESCE(returned, 0)) AS outstanding');
+        $outstanding = DB::query()
+            ->fromSub($outstandingValues, 'aging_calculated')
+            ->select('*')
+            ->where('outstanding', '>', 0);
+        $isSqlite = DB::connection()->getDriverName() === 'sqlite';
+        $daysExpression = $isSqlite
+            ? 'julianday(?) - julianday(COALESCE(due_date, invoice_date))'
+            : 'DATEDIFF(?, COALESCE(due_date, invoice_date))';
+        $days = DB::query()
+            ->fromSub($outstanding, 'aging_outstanding')
+            ->select('*')
+            ->selectRaw(
+                $isSqlite
+                    ? "MAX(0, CAST({$daysExpression} AS INTEGER)) AS days_overdue"
+                    : "GREATEST(0, {$daysExpression}) AS days_overdue",
+                [$asOf],
+            );
 
-    private function wasConfirmedAt(Receipt|Payment|null $document, string $asOf): bool
-    {
-        if ($document === null) {
-            return false;
-        }
-
-        $documentDate = $document instanceof Receipt
-            ? $document->receipt_date
-            : $document->payment_date;
-
-        if ($documentDate->toDateString() > $asOf) {
-            return false;
-        }
-
-        if ($document->status === TreasuryDocumentStatus::Confirmed) {
-            return true;
-        }
-
-        if ($document->status !== TreasuryDocumentStatus::Bounced) {
-            return false;
-        }
-
-        $bounceDate = $document->check?->bounceEntry?->entry_date?->toDateString();
-
-        return $bounceDate !== null && $bounceDate > $asOf;
+        return DB::query()
+            ->fromSub($days, 'aging_days')
+            ->select('*')
+            ->selectRaw("CASE
+                WHEN days_overdue = 0 THEN 'current'
+                WHEN days_overdue <= 30 THEN 'days_1_30'
+                WHEN days_overdue <= 60 THEN 'days_31_60'
+                WHEN days_overdue <= 90 THEN 'days_61_90'
+                ELSE 'over_90'
+            END AS bucket")
+            ->orderByDesc('days_overdue')
+            ->orderBy('due_date')
+            ->orderBy('invoice_id');
     }
 
     /**
-     * @param  Collection<int, Invoice>  $invoices
-     * @param  callable(Invoice): string  $outstanding
-     * @param  callable(Invoice): (?array{id: int, code: string, name: string})  $party
-     * @return array{rows: array<int, array<string, mixed>>, buckets: array<string, string>, total: string}
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
      */
-    private function build(
-        Collection $invoices,
-        string $asOf,
-        callable $outstanding,
-        callable $party,
-    ): array {
-        $asOfDate = CarbonImmutable::parse($asOf)->startOfDay();
-        $buckets = [
-            'current' => '0.00',
-            'days_1_30' => '0.00',
-            'days_31_60' => '0.00',
-            'days_61_90' => '0.00',
-            'over_90' => '0.00',
-        ];
-        $total = '0.00';
-        $rows = [];
-
-        foreach ($invoices as $invoice) {
-            $remaining = $outstanding($invoice);
-
-            if (! Decimal::isPositive($remaining)) {
-                continue;
-            }
-
-            $partyData = $party($invoice);
-
-            if (! $partyData) {
-                continue;
-            }
-
-            $dueDate = $invoice->due_date ?? $invoice->invoice_date;
-            $daysOverdue = max(0, (int) $dueDate->startOfDay()->diffInDays($asOfDate, false));
-            $bucket = match (true) {
-                $daysOverdue === 0 => 'current',
-                $daysOverdue <= 30 => 'days_1_30',
-                $daysOverdue <= 60 => 'days_31_60',
-                $daysOverdue <= 90 => 'days_61_90',
-                default => 'over_90',
-            };
-            $buckets[$bucket] = Decimal::add($buckets[$bucket], $remaining, 2);
-            $total = Decimal::add($total, $remaining, 2);
-            $rows[] = [
-                'invoice_id' => $invoice->id,
-                'invoice_number' => $invoice->invoice_number,
-                'invoice_date' => $invoice->invoice_date->toDateString(),
-                'due_date' => $dueDate->toDateString(),
-                'party' => $partyData,
-                'outstanding' => $remaining,
-                'days_overdue' => $daysOverdue,
-                'bucket' => $bucket,
-            ];
-        }
-
-        usort($rows, fn (array $left, array $right): int => $right['days_overdue'] <=> $left['days_overdue']);
-
+    private function row(array $row): array
+    {
         return [
-            'rows' => $rows,
-            'buckets' => $buckets,
-            'total' => $total,
+            'invoice_id' => (int) $row['invoice_id'],
+            'invoice_number' => $row['invoice_number'],
+            'invoice_date' => substr((string) $row['invoice_date'], 0, 10),
+            'due_date' => substr((string) ($row['due_date'] ?? $row['invoice_date']), 0, 10),
+            'party' => [
+                'id' => (int) $row['party_id'],
+                'code' => $row['party_code'],
+                'name' => $row['party_name'],
+            ],
+            'outstanding' => Decimal::normalize($row['outstanding'], 2),
+            'days_overdue' => (int) $row['days_overdue'],
+            'bucket' => $row['bucket'],
         ];
     }
 }

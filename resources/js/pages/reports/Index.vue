@@ -10,6 +10,7 @@ import {
     Printer,
     ReceiptText,
     Scale,
+    WalletCards,
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import { Button } from '@/components/ui/button';
@@ -104,6 +105,43 @@ type Props = {
             next_page_url: string | null;
         };
     } | null;
+    generalLedger: {
+        debit_total: string;
+        credit_total: string;
+        rows: {
+            data: Array<{
+                id: number;
+                entry_id: number;
+                entry_number: string;
+                account_code: string;
+                account_name: string;
+                date: string;
+                description: string;
+                debit: string;
+                credit: string;
+            }>;
+            current_page: number;
+            last_page: number;
+            from: number | null;
+            to: number | null;
+            total: number;
+            prev_page_url: string | null;
+            next_page_url: string | null;
+        };
+    };
+    cashFlow: {
+        opening_balance: string;
+        inflow_total: string;
+        outflow_total: string;
+        net_change: string;
+        closing_balance: string;
+        rows: Array<{
+            period: string;
+            inflow: string;
+            outflow: string;
+            net: string;
+        }>;
+    };
     journal: {
         data: Array<{
             id: number;
@@ -134,7 +172,9 @@ const tabs = [
     { key: 'income', label: 'سود و زیان', icon: BarChart3 },
     { key: 'balance', label: 'ترازنامه', icon: Landmark },
     { key: 'journal', label: 'دفتر روزنامه', icon: BookOpen },
+    { key: 'general', label: 'دفتر کل', icon: BookText },
     { key: 'ledger', label: 'دفتر معین', icon: BookText },
+    { key: 'cashflow', label: 'جریان نقد و بانک', icon: WalletCards },
 ] as const;
 const activeTab = ref<(typeof tabs)[number]['key']>('trial');
 const from = ref(props.filters.from);
@@ -176,7 +216,9 @@ const printedPage = computed(() =>
         ? props.journal
         : activeTab.value === 'ledger'
           ? props.accountLedger?.rows
-          : null,
+          : activeTab.value === 'general'
+            ? props.generalLedger.rows
+            : null,
 );
 const printLabel = computed(() =>
     printedPage.value && printedPage.value.last_page > 1
@@ -219,6 +261,7 @@ const changeJournalPage = (page: number) => {
             account_id: props.filters.account_id ?? undefined,
             page,
             ledger_page: props.accountLedger?.rows.current_page,
+            gl_page: props.generalLedger.rows.current_page,
         },
         {
             preserveState: true,
@@ -237,6 +280,26 @@ const changeLedgerPage = (page: number) => {
             account_id: props.filters.account_id ?? undefined,
             page: props.journal.current_page,
             ledger_page: page,
+            gl_page: props.generalLedger.rows.current_page,
+        },
+        {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+        },
+    );
+};
+
+const changeGeneralLedgerPage = (page: number) => {
+    router.get(
+        reports(),
+        {
+            from: props.filters.from,
+            to: props.filters.to,
+            account_id: props.filters.account_id ?? undefined,
+            page: props.journal.current_page,
+            ledger_page: props.accountLedger?.rows.current_page,
+            gl_page: page,
         },
         {
             preserveState: true,
@@ -781,6 +844,186 @@ defineOptions({
                         >
                     </div>
                 </div>
+            </section>
+        </template>
+
+        <template v-else-if="activeTab === 'general'">
+            <section class="grid gap-4 sm:grid-cols-2">
+                <article class="rounded-2xl border bg-card p-4">
+                    <p class="text-xs text-muted-foreground">جمع بدهکار</p>
+                    <p class="mt-2 text-lg font-black">
+                        {{ format(generalLedger.debit_total) }}
+                    </p>
+                </article>
+                <article class="rounded-2xl border bg-card p-4">
+                    <p class="text-xs text-muted-foreground">جمع بستانکار</p>
+                    <p class="mt-2 text-lg font-black">
+                        {{ format(generalLedger.credit_total) }}
+                    </p>
+                </article>
+            </section>
+            <section class="overflow-hidden rounded-2xl border bg-card">
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[900px] text-right text-sm">
+                        <thead
+                            class="bg-muted/35 text-xs text-muted-foreground"
+                        >
+                            <tr>
+                                <th class="px-4 py-3">تاریخ</th>
+                                <th class="px-4 py-3">سند</th>
+                                <th class="px-4 py-3">شرح</th>
+                                <th class="px-4 py-3">حساب</th>
+                                <th class="px-4 py-3">بدهکار</th>
+                                <th class="px-5 py-3">بستانکار</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">
+                            <tr
+                                v-for="row in generalLedger.rows.data"
+                                :key="row.id"
+                            >
+                                <td class="px-4 py-3 text-xs">
+                                    {{ row.date }}
+                                </td>
+                                <td class="px-4 py-3 font-mono text-xs">
+                                    {{ row.entry_number }}
+                                </td>
+                                <td
+                                    class="max-w-72 px-4 py-3 text-xs text-muted-foreground"
+                                >
+                                    {{ row.description }}
+                                </td>
+                                <td class="px-4 py-3 text-xs">
+                                    {{ row.account_code }} —
+                                    {{ row.account_name }}
+                                </td>
+                                <td class="px-4 py-3 text-xs tabular-nums">
+                                    {{ format(row.debit) }}
+                                </td>
+                                <td class="px-5 py-3 text-xs tabular-nums">
+                                    {{ format(row.credit) }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p
+                    v-if="!generalLedger.rows.data.length"
+                    class="py-14 text-center text-sm text-muted-foreground"
+                >
+                    گردشی در دفتر کل وجود ندارد.
+                </p>
+                <div
+                    v-if="generalLedger.rows.last_page > 1"
+                    class="flex items-center justify-between border-t px-4 py-3 text-sm print:hidden"
+                >
+                    <span class="text-muted-foreground">
+                        {{ generalLedger.rows.from ?? 0 }} تا
+                        {{ generalLedger.rows.to ?? 0 }} از
+                        {{ generalLedger.rows.total }}
+                    </span>
+                    <div class="flex gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            :disabled="!generalLedger.rows.prev_page_url"
+                            @click="
+                                changeGeneralLedgerPage(
+                                    generalLedger.rows.current_page - 1,
+                                )
+                            "
+                            >قبلی</Button
+                        >
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            :disabled="!generalLedger.rows.next_page_url"
+                            @click="
+                                changeGeneralLedgerPage(
+                                    generalLedger.rows.current_page + 1,
+                                )
+                            "
+                            >بعدی</Button
+                        >
+                    </div>
+                </div>
+            </section>
+        </template>
+
+        <template v-else-if="activeTab === 'cashflow'">
+            <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                <article class="rounded-2xl border bg-card p-4">
+                    <p class="text-xs text-muted-foreground">مانده اول دوره</p>
+                    <p class="mt-2 text-lg font-black">
+                        {{ format(cashFlow.opening_balance) }}
+                    </p>
+                </article>
+                <article class="rounded-2xl border bg-card p-4">
+                    <p class="text-xs text-muted-foreground">ورود نقد و بانک</p>
+                    <p class="mt-2 text-lg font-black text-emerald-600">
+                        {{ format(cashFlow.inflow_total) }}
+                    </p>
+                </article>
+                <article class="rounded-2xl border bg-card p-4">
+                    <p class="text-xs text-muted-foreground">خروج نقد و بانک</p>
+                    <p class="mt-2 text-lg font-black text-red-600">
+                        {{ format(cashFlow.outflow_total) }}
+                    </p>
+                </article>
+                <article class="rounded-2xl border bg-card p-4">
+                    <p class="text-xs text-muted-foreground">تغییر خالص</p>
+                    <p class="mt-2 text-lg font-black">
+                        {{ format(cashFlow.net_change) }}
+                    </p>
+                </article>
+                <article
+                    class="rounded-2xl border border-primary/20 bg-primary/5 p-4"
+                >
+                    <p class="text-xs text-muted-foreground">
+                        مانده پایان دوره
+                    </p>
+                    <p class="mt-2 text-lg font-black text-primary">
+                        {{ format(cashFlow.closing_balance) }}
+                    </p>
+                </article>
+            </section>
+            <section class="overflow-hidden rounded-2xl border bg-card">
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[620px] text-right text-sm">
+                        <thead
+                            class="bg-muted/35 text-xs text-muted-foreground"
+                        >
+                            <tr>
+                                <th class="px-5 py-3">دوره</th>
+                                <th class="px-4 py-3">ورود</th>
+                                <th class="px-4 py-3">خروج</th>
+                                <th class="px-5 py-3">تغییر خالص</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y">
+                            <tr v-for="row in cashFlow.rows" :key="row.period">
+                                <td class="px-5 py-3 font-mono text-xs">
+                                    {{ row.period }}
+                                </td>
+                                <td class="px-4 py-3 tabular-nums">
+                                    {{ format(row.inflow) }}
+                                </td>
+                                <td class="px-4 py-3 tabular-nums">
+                                    {{ format(row.outflow) }}
+                                </td>
+                                <td class="px-5 py-3 font-bold tabular-nums">
+                                    {{ format(row.net) }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p
+                    v-if="!cashFlow.rows.length"
+                    class="py-14 text-center text-sm text-muted-foreground"
+                >
+                    گردش نقد یا بانکی در این بازه وجود ندارد.
+                </p>
             </section>
         </template>
 

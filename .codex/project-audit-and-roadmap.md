@@ -25,8 +25,8 @@
 
 ## وضعیت اجرای اصلاحات — ۲۰۲۶-۱۱-۲۶
 
-اجرای درخواست‌شده برای بخش ۱ در کامیت‌های `3ce7364` تا `8e90b9c` انجام شد.
-علائم: ✅ اصلاح‌شده، 🟡 پایه‌گذاری/اصلاح جزئی، ⬜ باقی‌مانده.
+اجرای درخواست‌شده برای بخش ۱ در کامیت‌های `3ce7364` تا `c0df773` و ادامهٔ
+B19/B46 انجام شد. علائم: ✅ اصلاح‌شده، 🟡 پایه‌گذاری/اصلاح جزئی، ⬜ باقی‌مانده.
 
 ### P1
 
@@ -40,7 +40,7 @@
 
 ### P2
 
-- ✅ B01، B03–B05، B07–B08، B10–B22، B24–B26، B28–B29، B31–B37، B40–B45.
+- ✅ B01، B03–B05، B07–B08، B10–B18، B20–B22، B24–B26، B28–B29، B31–B37، B40–B46.
 - 🟡 B02: lock order یکدست شد؛ retry اختصاصی deadlock هنوز اضافه نشده است.
 - 🟡 B06: اصلاح تاریخی مرجوعی با کالا/طرف‌حساب غیرفعال باز شد؛ همهٔ مسیرهای
   دریافت/پرداخت تاریخی پوشش داده نشدند.
@@ -51,13 +51,13 @@
 - 🟡 B33: hash مرجوعی‌ها اصلاح شد؛ canonical hash سراسری هنوز یکپارچه نشده است.
 - 🟡 B38: code/type/store طرف‌حساب قفل شد؛ snapshot کامل هویت حقوقی در همهٔ اسناد نه.
 - 🟡 B39: tracking rows append-only و مثبت شدند؛ کنترل جمع دقیق allocationها نه.
-- ⬜ B19: XLSX و چند گزارش همچنان داده را در RAM می‌خوانند.
-- ⬜ B46: گزارش دفتر کل و جریان نقد هنوز اضافه نشده است.
 
 ### شواهد اجرایی جدید
 
-- `php artisan test --exclude-testsuite=Integration`: ۴۱۰ تست موفق، ۳۱۸۵ assertion.
-- Pint، PHPStan، TypeScript، POS/calendar tests و build موفق.
+- `php artisan test --exclude-testsuite=Integration`: ۴۱۳ تست موفق، ۳۲۲۶ assertion
+  هم روی SQLite و هم روی MariaDB 10.11 محلی.
+- تست‌های متمرکز B19/B46: ۳۷ تست موفق و ۳۱۴ assertion روی هر دو دیتابیس.
+- Pint، PHPStan، TypeScript، `npm run check` و build موفق‌اند.
 - `composer audit --locked` و `npm audit --omit=dev`: بدون advisory.
 - `composer ci:check` سبز است.
 - migration کامل روی MariaDB 10.11 محلی موفق بود.

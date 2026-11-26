@@ -8,7 +8,9 @@ use App\Models\FiscalYear;
 use App\Models\Store;
 use App\Services\Branches\BranchContextService;
 use App\Services\Reporting\AccountLedgerReportService;
+use App\Services\Reporting\CashFlowReportService;
 use App\Services\Reporting\FinancialStatementReportService;
+use App\Services\Reporting\GeneralLedgerReportService;
 use App\Services\Reporting\JournalReportService;
 use App\Services\Reporting\TrialBalanceReportService;
 use App\Support\ReportDateRange;
@@ -25,6 +27,8 @@ class FinancialReportsController extends Controller
         TrialBalanceReportService $trialBalance,
         FinancialStatementReportService $statements,
         AccountLedgerReportService $ledgers,
+        GeneralLedgerReportService $generalLedger,
+        CashFlowReportService $cashFlow,
         BranchContextService $branches,
     ): Response {
         abort_unless($request->user()?->canViewFinancialReports(), 403);
@@ -39,6 +43,7 @@ class FinancialReportsController extends Controller
             'to' => ['nullable', 'date', 'after_or_equal:from'],
             'page' => ['nullable', 'integer', 'min:1'],
             'ledger_page' => ['nullable', 'integer', 'min:1'],
+            'gl_page' => ['nullable', 'integer', 'min:1'],
             'account_id' => ['nullable', 'integer', 'exists:accounts,id'],
         ]);
         $from = $validated['from'] ?? $fiscalYear->starts_on->toDateString();
@@ -84,6 +89,14 @@ class FinancialReportsController extends Controller
                     (int) ($validated['ledger_page'] ?? 1),
                 )
                 : null,
+            'generalLedger' => $generalLedger->pageReport(
+                $store->id,
+                $from,
+                $to,
+                $branchId,
+                (int) ($validated['gl_page'] ?? 1),
+            ),
+            'cashFlow' => $cashFlow->report($store->id, $from, $to, $branchId),
             'journal' => $journals->paginate(
                 $store->id,
                 $from,

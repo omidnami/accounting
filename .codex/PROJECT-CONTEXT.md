@@ -10,16 +10,17 @@
 ### وضعیت تحویل
 
 - مخزن: `omidnami/accounting`، شاخهٔ `main`.
-- آخرین کامیت کد: `fa3bab0` — health-check اختصاصی MySQL/MariaDB در CI.
-  کامیت به‌روزرسانی همین مستند بعد از آن قرار می‌گیرد.
+- آخرین کامیت کد: `B19/B46` — streaming گزارش‌ها، دفتر کل و جریان نقد.
 - ممیزی عمیق بخش ۱ در `.codex/project-audit-and-roadmap.md` با وضعیت اجرا به‌روز شد.
 - P1 اصلی، First-run، backup/restore، خدمت/غیرانباری، موجودی افتتاحیه، refund،
   tenant resolver، module registry و outbox پیاده‌سازی شدند.
-- P2 بیشتر موارد اصلاح شد؛ موارد باقی‌مانده B19 و B46 و اصلاحات جزئی
-  B02، B06، B09، B23، B27، B30، B33، B38 و B39 هنوز باز هستند.
-- ۴۱۰ تست موفق با ۳۱۸۵ assertion؛ Pint، PHPStan، TypeScript و build سبزند.
-- migration و کل تست‌ها روی MariaDB 10.11 محلی سبزند.
-- CI روی MySQL 8.4 و MariaDB 11.4 با ۸ تست هم‌زمانی سبز است.
+- B19 و B46 تکمیل شدند: XLSX و خروجی گزارش‌ها streaming هستند، صورتحساب و
+  aging صفحه‌بندی/SQL aggregation دارند، دفتر کل و جریان نقد با UI و export اضافه شدند.
+- موارد باقی‌ماندهٔ بخش ۱ فقط اصلاحات جزئی B02، B06، B09، B23، B27، B30، B33،
+  B38 و B39 هستند.
+- ۴۱۳ تست موفق با ۳۲۲۶ assertion هم روی SQLite و هم روی MariaDB 10.11؛
+  Pint، PHPStan، TypeScript، `npm run check` و build سبزند.
+- CI پیش از این تغییرات روی MySQL 8.4 و MariaDB 11.4 با ۸ تست هم‌زمانی سبز بود.
 - backup/restore واقعی روی MariaDB با marker داده تأیید شد.
 - MVP هنوز برای تگ نسخهٔ ۱ تأیید نشده است؛ بدون درخواست صریح کاربر تگ نزن.
 - آزمون production راست‌چین، چاپگر واقعی و Firefox هنوز انجام نشده است.
@@ -71,6 +72,14 @@
      `menu_layout` و روشن/تاریک با `appearance` است. رنگ بین دستگاه‌ها
      از دیتابیس همگام نمی‌شود. این مرحله جدول یا migration ندارد.
 
+7. B19: نوشتن worksheet XLSX به فایل موقت و افزودن به ZIP بدون نگه‌داشتن کل
+   XML در RAM؛ صورتحساب طرف‌حساب و aging به کوئری صفحه‌بندی‌شده، خلاصهٔ SQL و
+   خروجی lazy منتقل شدند. رفتار مانده‌ها و export کامل حفظ شد.
+8. B46: دفتر کل صفحه‌بندی‌شده و جریان نقد/بانک ماهانه با ماندهٔ اول/پایان،
+   فیلتر شعبه و خروجی CSV/XLSX/PDF اضافه شد. منبع حساب‌های نقد و بانک همان
+   `accounting.treasury_account_gl_codes` است. ناسازگاری‌های MySQL/MariaDB
+   در aggregate دفتر کل و محاسبهٔ aging نیز رفع و روی هر دو دیتابیس تست شدند.
+
 ### ادامهٔ موردنظر کاربر
 
 ظاهر و فعالیت شخصی انجام شده‌اند. ادامهٔ گفتگو روی تکمیل و پولیش مدیریت
@@ -95,6 +104,10 @@
 - تست فعالیت شخصی: `tests/Feature/Settings/PersonalActivityTest.php`
 - دفتر معین: `AccountLedgerReportService.php`، `FinancialReportsController.php`
   و `resources/js/pages/reports/Index.vue`
+- B19: `NativeXlsxExportService.php`، `PartyStatementReportService.php`،
+  `AgingReportService.php` و `ReportExportService.php`
+- B46: `GeneralLedgerReportService.php`، `CashFlowReportService.php`،
+  `FinancialReportsController.php` و `resources/js/pages/reports/Index.vue`
 
 ### فرمان دریافت تغییرات کد
 
@@ -106,7 +119,7 @@ composer ci:check
 ```
 
 Build پیش از CI، مسیرهای تولیدشدهٔ Wayfinder و manifest صفحه‌های تازه را نیز
-آماده می‌کند. برای تغییرات اخیر appearance و activity اجرای migration لازم نیست.
+آماده می‌کند. برای تغییرات appearance/activity و B19/B46 اجرای migration لازم نیست.
 برای commit صرفاً مستند، pull کافی است.
 
 ## هدف این سند
@@ -362,24 +375,19 @@ Business logic باید در Service بماند. برای تغییرات درخ�
 ## وضعیت Git و کیفیت
 
 - شاخهٔ مرجع: `main` در `omidnami/accounting`.
-- آخرین commit کد: `be4c4e9b30a50ab71af9c6759d99220c02b59d98`.
+- آخرین commit کد: `B19/B46` — streaming گزارش‌ها، دفتر کل و جریان نقد.
 - commit و push این تغییرات با مجوز کاربر انجام شده‌اند؛ مجوز برای تغییرات
   درخواستی برقرار است. برای کار خارج از دامنه، از روی نقشهٔ راه اقدام نکن.
-- آخرین CI گیت‌هاب همین کامیت موفق است:
-  [Run 40194821343](https://github.com/omidnami/accounting/actions/runs/40194821343).
-  مرحله‌های `Run CI Checks` و `Run MySQL concurrency tests` هر دو موفق‌اند.
-  این وضعیت در پایان جلسه از GitHub خوانده شد.
+- CI GitHub برای این کامیت پس از push بررسی می‌شود؛ نتیجهٔ نهایی در پایان جلسه
+  جداگانه ثبت خواهد شد.
 
-آخرین اجرای محلی تأییدشده در این جلسه:
+آخرین اجرای محلی تأییدشده:
 
-- مجموعهٔ پیش‌فرض روی SQLite ایزوله: ۳۵۰ تست، ۳۴۹ موفق،
-  ۲۹۴۲ assertion و یک skip برای تست اختیاری PDF وابسته به Chrome.
-- Pint، PHPStan با صفر خطا، lint، Vue type-check و Build موفق.
-- تست‌های Node: ۴ تقویم و ۱۰ صندوق موفق.
-- تست مرورگر Chromium روی دیتابیس مجزا: لینک‌های حساب در هر دو چیدمان،
-  خروج و بسته‌شدن نشست، جداسازی فعالیت شخصی، سقف ۵۰ و دو صفحهٔ ۲۵تایی،
-  جزئیات امن، هر ۱۰ رنگ در روشن/تاریک، حفظ رنگ و چیدمان پس از reload،
-  رنگ نامعتبر با بازگشت به سبز پیش‌فرض و نبودن سرریز افقی در موبایل ۳۹۰ پیکسل.
+- کل مجموعهٔ غیر Integration روی SQLite و MariaDB 10.11: ۴۱۳ تست موفق و
+  ۳۲۲۶ assertion در هر دو دیتابیس.
+- تست‌های متمرکز B19/B46: ۳۷ تست و ۳۱۴ assertion روی هر دو دیتابیس.
+- Pint، PHPStan با صفر خطا، lint، Vue type-check، Build و `composer ci:check` موفق.
+- تست‌های Node: ۴ تقویم و ۱۱ صندوق/POS موفق.
 - این شواهد تأیید کامل همهٔ UIها، Firefox، چاپگر واقعی یا محیط مشتری نیستند.
 
 فرمان‌های کیفیت:

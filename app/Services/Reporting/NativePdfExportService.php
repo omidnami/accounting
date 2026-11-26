@@ -10,7 +10,7 @@ class NativePdfExportService
 {
     /**
      * @param  array<int, string>  $headers
-     * @param  iterable<int, array<int, string|int|float|null>>  $rows
+     * @param  iterable<int, array<mixed>>  $rows
      */
     public function download(
         string $filename,
@@ -69,7 +69,7 @@ class NativePdfExportService
 
     /**
      * @param  array<int, string>  $headers
-     * @param  iterable<int, array<int, string|int|float|null>>  $rows
+     * @param  iterable<int, array<mixed>>  $rows
      */
     private function html(
         string $title,

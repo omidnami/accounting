@@ -5,6 +5,7 @@ namespace App\Services\Reporting;
 use App\Enums\AccountLevel;
 use App\Enums\InventoryDirection;
 use App\Enums\InventoryMovementType;
+use App\Enums\InvoiceType;
 use App\Models\Account;
 use App\Models\Party;
 use App\Models\Product;
@@ -23,6 +24,8 @@ class ReportExportService
         private readonly FinancialStatementReportService $statements,
         private readonly JournalReportService $journals,
         private readonly AccountLedgerReportService $ledgers,
+        private readonly GeneralLedgerReportService $generalLedger,
+        private readonly CashFlowReportService $cashFlow,
         private readonly PartyStatementReportService $partyStatements,
         private readonly AgingReportService $aging,
         private readonly SalesOperationsReportService $sales,
@@ -145,6 +148,22 @@ class ReportExportService
             ], $rows);
         }
 
+        if ($report === 'general') {
+            $rows = $this->generalLedger->exportRows($store->id, $from, $to, $branchId);
+
+            return $this->download($format, 'general-ledger-'.$from.'-'.$to, 'دفتر کل', [
+                'تاریخ', 'شماره سند', 'شرح', 'کد حساب', 'حساب', 'بدهکار', 'بستانکار',
+            ], $rows);
+        }
+
+        if ($report === 'cashflow') {
+            $rows = $this->cashFlow->exportRows($store->id, $from, $to, $branchId);
+
+            return $this->download($format, 'cash-flow-'.$from.'-'.$to, 'جریان نقد و بانک', [
+                'دوره', 'ورود', 'خروج', 'تغییر خالص',
+            ], $rows);
+        }
+
         $account = Account::query()
             ->where('store_id', $store->id)
             ->where('level', AccountLevel::Subsidiary)
@@ -206,37 +225,13 @@ class ReportExportService
                 ->when($partyId !== null, fn ($query) => $query->whereKey($partyId))
                 ->orderBy('name')
                 ->firstOrFail();
-            $data = $this->partyStatements->report($party, $store->id, $from, $to, $branchId);
-            $rows = $data['rows']->map(fn (array $row): array => [
-                $row['date'],
-                $row['entry_number'],
-                $row['description'],
-                $row['account_code'],
-                $row['account_name'],
-                $row['debit'],
-                $row['credit'],
-                $row['balance'],
-            ]);
-            $rows->push([
-                '',
-                '',
-                'مانده اول دوره',
-                '',
-                '',
-                '',
-                '',
-                $data['opening_balance'],
-            ]);
-            $rows->push([
-                '',
-                '',
-                'جمع گردش و مانده پایان',
-                '',
-                '',
-                $data['debit_total'],
-                $data['credit_total'],
-                $data['closing_balance'],
-            ]);
+            $rows = $this->partyStatements->exportRows(
+                $party,
+                $store->id,
+                $from,
+                $to,
+                $branchId,
+            );
 
             return $this->download($format, 'statement-'.$party->code.'-'.$from.'-'.$to, 'صورتحساب طرف‌حساب', [
                 'تاریخ', 'شماره سند', 'شرح', 'کد حساب', 'حساب', 'بدهکار', 'بستانکار', 'مانده',
@@ -245,20 +240,31 @@ class ReportExportService
 
         if (str_starts_with($report, 'aging_')) {
             $isReceivable = $report === 'aging_receivable';
-            $data = $isReceivable
-                ? $this->aging->receivables($store->id, $to, $branchId)
-                : $this->aging->payables($store->id, $to, $branchId);
-            $rows = collect($data['rows'])->map(fn (array $row): array => [
-                $row['party']['name'],
-                $row['party']['code'],
-                $row['invoice_number'],
-                $row['invoice_date'],
-                $row['due_date'],
-                $row['outstanding'],
-                $row['days_overdue'],
-                $row['bucket'],
-            ]);
-            $rows->push(['جمع کل', '', '', '', '', $data['total'], '', '']);
+            $summary = $this->aging->summary(
+                $store->id,
+                $isReceivable ? InvoiceType::Sales : InvoiceType::Purchase,
+                $to,
+                $branchId,
+            );
+            $details = $isReceivable
+                ? $this->aging->receivableRows($store->id, $to, $branchId)
+                : $this->aging->payableRows($store->id, $to, $branchId);
+            $rows = LazyCollection::make(function () use ($details, $summary): \Generator {
+                foreach ($details as $row) {
+                    yield [
+                        $row['party']['name'],
+                        $row['party']['code'],
+                        $row['invoice_number'],
+                        $row['invoice_date'],
+                        $row['due_date'],
+                        $row['outstanding'],
+                        $row['days_overdue'],
+                        $row['bucket'],
+                    ];
+                }
+
+                yield ['جمع کل', '', '', '', '', $summary['total'], '', ''];
+            });
 
             return $this->download($format, ($isReceivable ? 'receivables' : 'payables').'-aging-'.$to, 'Aging مطالبات و بدهی‌ها', [
                 'طرف‌حساب', 'کد طرف‌حساب', 'فاکتور', 'تاریخ', 'سررسید', 'مانده', 'روز تأخیر', 'بازه',
@@ -402,7 +408,7 @@ class ReportExportService
 
     /**
      * @param  array<int, string>  $headers
-     * @param  iterable<int, array<int, string|int|float|null>>  $rows
+     * @param  iterable<int, array<mixed>>  $rows
      */
     private function download(
         string $format,

@@ -8,10 +8,13 @@ use App\Models\User;
 use App\Services\Accounting\FiscalYearSetupService;
 use App\Services\Accounting\PostingService;
 use App\Services\Reporting\AccountLedgerReportService;
+use App\Services\Reporting\CashFlowReportService;
 use App\Services\Reporting\FinancialStatementReportService;
+use App\Services\Reporting\GeneralLedgerReportService;
 use App\Services\Reporting\JournalReportService;
 use App\Services\Reporting\TrialBalanceReportService;
 use Database\Seeders\AccountSeeder;
+use Inertia\Testing\AssertableInertia;
 
 function createReportContext(): array
 {
@@ -171,6 +174,70 @@ it('builds income statement and balanced balance sheet', function () {
         ->and($balance['total_assets'])->toBe('1300.00')
         ->and($balance['total_equity'])->toBe('1300.00')
         ->and($balance['balanced'])->toBeTrue();
+});
+
+it('paginates the general ledger and totals all posted lines', function () {
+    $context = createReportContext();
+    $service = app(GeneralLedgerReportService::class);
+    $first = $service->pageReport(
+        $context['store']->id,
+        '2026-05-01',
+        '2026-05-31',
+        $context['branch']->id,
+        1,
+        4,
+    );
+    $second = $service->pageReport(
+        $context['store']->id,
+        '2026-05-01',
+        '2026-05-31',
+        $context['branch']->id,
+        2,
+        4,
+    );
+
+    expect($first['debit_total'])->toBe('1700.00')
+        ->and($first['credit_total'])->toBe('1700.00')
+        ->and($first['rows']['total'])->toBe(6)
+        ->and($first['rows']['data'])->toHaveCount(4)
+        ->and($second['rows']['data'])->toHaveCount(2)
+        ->and($second['rows']['current_page'])->toBe(2);
+});
+
+it('builds cash flow from cash and bank accounts with opening and closing balances', function () {
+    $context = createReportContext();
+    $cashFlow = app(CashFlowReportService::class)->report(
+        $context['store']->id,
+        '2026-05-10',
+        '2026-05-31',
+        $context['branch']->id,
+    );
+
+    expect($cashFlow['opening_balance'])->toBe('1500.00')
+        ->and($cashFlow['inflow_total'])->toBe('0.00')
+        ->and($cashFlow['outflow_total'])->toBe('200.00')
+        ->and($cashFlow['net_change'])->toBe('-200.00')
+        ->and($cashFlow['closing_balance'])->toBe('1300.00')
+        ->and($cashFlow['rows'][0]['period'])->toBe('2026-05')
+        ->and($cashFlow['rows'][0]['net'])->toBe('-200.00');
+});
+
+it('exposes general ledger and cash flow on the financial reports page', function () {
+    $context = createReportContext();
+
+    $this->actingAs(User::factory()->create(['role' => UserRole::Manager]))
+        ->get(route('reports.index', [
+            'from' => '2026-05-01',
+            'to' => '2026-05-31',
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('reports/Index')
+            ->where('generalLedger.debit_total', '1700.00')
+            ->where('generalLedger.rows.total', 6)
+            ->where('cashFlow.opening_balance', '0.00')
+            ->where('cashFlow.net_change', '1300.00')
+            ->where('cashFlow.closing_balance', '1300.00'));
 });
 
 it('rejects invalid date ranges in financial reports', function () {
