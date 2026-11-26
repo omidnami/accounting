@@ -62,7 +62,8 @@ B19/B46 انجام شد. علائم: ✅ اصلاح‌شده، 🟡 پایه‌�
 - `composer ci:check` سبز است.
 - migration کامل روی MariaDB 10.11 محلی موفق بود.
 - کل ۴۱۰ تست روی MariaDB و ۸ تست هم‌زمانی موفق بودند.
-- CI سبز روی MySQL 8.4 و MariaDB 11.4: run `45734264445`.
+- CI سبز روی MySQL 8.4 و MariaDB 11.4 برای `a6236b1`:
+  [Run 45787454869](https://github.com/omidnami/accounting/actions/runs/45787454869).
 - backup/restore واقعی دیتابیس روی MariaDB با marker داده موفق بود.
 
 ---

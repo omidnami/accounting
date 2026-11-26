@@ -10,7 +10,7 @@
 ### وضعیت تحویل
 
 - مخزن: `omidnami/accounting`، شاخهٔ `main`.
-- آخرین کامیت کد: `B19/B46` — streaming گزارش‌ها، دفتر کل و جریان نقد.
+- آخرین کامیت کد: `a6236b1` — streaming گزارش‌ها، دفتر کل و جریان نقد.
 - ممیزی عمیق بخش ۱ در `.codex/project-audit-and-roadmap.md` با وضعیت اجرا به‌روز شد.
 - P1 اصلی، First-run، backup/restore، خدمت/غیرانباری، موجودی افتتاحیه، refund،
   tenant resolver، module registry و outbox پیاده‌سازی شدند.
@@ -20,7 +20,8 @@
   B38 و B39 هستند.
 - ۴۱۳ تست موفق با ۳۲۲۶ assertion هم روی SQLite و هم روی MariaDB 10.11؛
   Pint، PHPStan، TypeScript، `npm run check` و build سبزند.
-- CI پیش از این تغییرات روی MySQL 8.4 و MariaDB 11.4 با ۸ تست هم‌زمانی سبز بود.
+- CI همین کامیت روی MySQL 8.4 و MariaDB 11.4 با migrations و ۸ تست هم‌زمانی
+  سبز است: [Run 45787454869](https://github.com/omidnami/accounting/actions/runs/45787454869).
 - backup/restore واقعی روی MariaDB با marker داده تأیید شد.
 - MVP هنوز برای تگ نسخهٔ ۱ تأیید نشده است؛ بدون درخواست صریح کاربر تگ نزن.
 - آزمون production راست‌چین، چاپگر واقعی و Firefox هنوز انجام نشده است.
@@ -375,11 +376,13 @@ Business logic باید در Service بماند. برای تغییرات درخ�
 ## وضعیت Git و کیفیت
 
 - شاخهٔ مرجع: `main` در `omidnami/accounting`.
-- آخرین commit کد: `B19/B46` — streaming گزارش‌ها، دفتر کل و جریان نقد.
+- آخرین commit کد: `a6236b1` — streaming گزارش‌ها، دفتر کل و جریان نقد.
 - commit و push این تغییرات با مجوز کاربر انجام شده‌اند؛ مجوز برای تغییرات
   درخواستی برقرار است. برای کار خارج از دامنه، از روی نقشهٔ راه اقدام نکن.
-- CI GitHub برای این کامیت پس از push بررسی می‌شود؛ نتیجهٔ نهایی در پایان جلسه
-  جداگانه ثبت خواهد شد.
+- CI GitHub برای این کامیت موفق است:
+  [Run 45787454869](https://github.com/omidnami/accounting/actions/runs/45787454869).
+  هر دو job مربوط به MySQL و MariaDB، migrations، `composer ci:check` و
+  تست‌های هم‌زمانی را موفق اجرا کردند.
 
 آخرین اجرای محلی تأییدشده:
 
