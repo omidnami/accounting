@@ -95,7 +95,7 @@ it('blocks party snapshot rollback while final identity snapshots exist', functi
             true,
             512,
             JSON_THROW_ON_ERROR,
-        ))->toBe(json_decode($snapshot, true, 512, JSON_THROW_ON_ERROR));
+        ))->toEqual(json_decode($snapshot, true, 512, JSON_THROW_ON_ERROR));
 });
 
 it('makes tracking migration retry-safe and blocks destructive rollback', function () {
