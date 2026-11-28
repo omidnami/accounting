@@ -62,7 +62,7 @@
 
 | ID | تسک | وضعیت | وابستگی | معیار پذیرش | کامیت |
 |---|---|---|---|---|---|
-| P0-01 | نهایی‌سازی ERD و مدل دامنه | ✅ | — | ERD شامل Currency، Account، Dimension، Party Role، Treasury، Opening Balance و Module | در حال ثبت |
+| P0-01 | نهایی‌سازی ERD و مدل دامنه | ✅ | — | ERD شامل Currency، Account، Dimension، Party Role، Treasury، Opening Balance و Module | `7d5e21b` |
 | P0-02 | نهایی‌سازی Coding، Account Pack و ماتریس ثبت | ⬜ | P0-01 | برای هر عملیات مالی، حساب بدهکار/بستانکار و GL mapping مشخص باشد |
 | P0-03 | نهایی‌سازی مدل تفصیلی و نقش طرف‌حساب | ⬜ | P0-01 | ابعاد و نقش‌ها بدون hard-code قابل توسعه باشند |
 | P0-04 | نهایی‌سازی قرارداد ماژول، مجوز و منو | ⬜ | P0-01 | manifest، provider، permission و menu contract تأیید شود |
@@ -176,7 +176,7 @@
 | ۲۰۲۶-۱۱-۲۸ | D01/D02 | ویرایش پیش‌نویس فروش و خرید | ۶۱۱ تست، CI سبز | `4c52a57` |
 | ۲۰۲۶-۱۱-۲۸ | اصلاح snapshot و backfill | POS/فروش یکسان، backfill امن فاکتور قدیمی | MariaDB/SQLite/CI سبز | `4d7c92a` |
 | ۲۰۲۶-۱۱-۲۸ | مستند MVP | ایجاد این برنامهٔ اجرایی | — | `b8ee4d1` |
-| ۲۰۲۶-۱۱-۲۸ | P0-01 | مدل دامنه و ERD هدف | `.codex/MVP-DOMAIN-MODEL-AND-ERD.md` | در حال ثبت |
+| ۲۰۲۶-۱۱-۲۸ | P0-01 | مدل دامنه و ERD هدف | `.codex/MVP-DOMAIN-MODEL-AND-ERD.md` | `7d5e21b` |
 
 ---
 
