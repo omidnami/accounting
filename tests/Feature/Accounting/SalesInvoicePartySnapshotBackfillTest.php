@@ -292,11 +292,16 @@ it('reports invalid and different existing snapshots without overwriting them', 
         ->expectsOutputToContain('[invalid_snapshot] LEGACY-MALFORMED-SNAPSHOT')
         ->assertSuccessful();
 
-    expect(DB::table('invoices')->where('id', $invalid->id)->value('party_snapshot'))
-        ->toBe(json_encode(['schema_version' => 1], JSON_THROW_ON_ERROR))
-        ->and(DB::table('invoices')->where('id', $different->id)->value('party_snapshot'))
-        ->toBe(json_encode($differentSnapshot, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR))
-        ->and(DB::table('invoices')->where('id', $malformed->id)->value('party_snapshot'))->toBe('null')
+    $decodeSnapshot = fn (Invoice $invoice): mixed => json_decode(
+        (string) DB::table('invoices')->where('id', $invoice->id)->value('party_snapshot'),
+        true,
+        512,
+        JSON_THROW_ON_ERROR,
+    );
+
+    expect($decodeSnapshot($invalid))->toEqual(['schema_version' => 1])
+        ->and($decodeSnapshot($different))->toEqual($differentSnapshot)
+        ->and($decodeSnapshot($malformed))->toBeNull()
         ->and(AuditLog::query()->where('event', 'sales_snapshot_backfilled')->count())->toBe(0);
 });
 
