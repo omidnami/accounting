@@ -14,9 +14,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+    edit as editProduct,
     index as productsIndex,
     tracking as trackingProduct,
-    update as updateProduct,
 } from '@/routes/products';
 import tracking from '@/routes/products/tracking';
 
@@ -147,7 +147,7 @@ defineOptions({
             </div>
             <div class="flex gap-2">
                 <Button as-child variant="outline" class="rounded-xl">
-                    <Link :href="updateProduct(product.id)">
+                    <Link :href="editProduct(product.id)">
                         <ArrowRight class="size-4" /> ویرایش کالا
                     </Link>
                 </Button>

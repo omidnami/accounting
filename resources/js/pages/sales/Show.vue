@@ -7,6 +7,7 @@ import {
     CircleAlert,
     CircleCheck,
     FileText,
+    PencilLine,
     Printer,
     ShoppingCart,
     Trash2,
@@ -36,6 +37,7 @@ import {
     confirm as confirmSaleRoute,
     create as createSale,
     destroy as destroySale,
+    edit as editSale,
     index as salesIndex,
 } from '@/routes/sales';
 import { create as createReceipt } from '@/routes/receipts';
@@ -102,6 +104,7 @@ type Props = {
         };
         items: Array<{
             id: number;
+            product_id: number;
             product_code: string | null;
             product_name: string;
             unit: string;
@@ -431,6 +434,17 @@ defineOptions({
                     >
                         <Link :href="createRefund(invoice.id)">
                             ثبت refund مشتری
+                        </Link>
+                    </Button>
+                    <Button
+                        v-if="isDraft"
+                        as-child
+                        variant="outline"
+                        class="rounded-xl"
+                    >
+                        <Link :href="editSale(invoice.id)">
+                            <PencilLine class="size-4" />
+                            ویرایش پیش‌نویس
                         </Link>
                     </Button>
                     <Button as-child variant="outline" class="rounded-xl">

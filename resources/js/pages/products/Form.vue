@@ -22,6 +22,7 @@ import { Spinner } from '@/components/ui/spinner';
 import { normalizeNumber } from '@/lib/number';
 import {
     create as createProduct,
+    edit as editProduct,
     index as productsIndex,
     store as storeProduct,
     update as updateProduct,
@@ -361,7 +362,7 @@ defineOptions({
                             <InputError :message="form.errors.variant_color" />
                         </div>
                         <div class="grid gap-2">
-                            <Label for="variant_size">اندازه</Label>
+                            <Label for="variant_size">سایز</Label>
                             <Input
                                 id="variant_size"
                                 v-model="form.variant_size"
@@ -657,7 +658,7 @@ defineOptions({
                         variant="outline"
                         class="mt-2 h-9 w-full rounded-xl"
                     >
-                        <Link :href="updateProduct(product.id).url">
+                        <Link :href="editProduct(product.id).url">
                             بارگذاری اطلاعات تازه
                         </Link>
                     </Button>

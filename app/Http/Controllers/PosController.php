@@ -131,18 +131,24 @@ class PosController extends Controller
             ? PosTender::query()->where('method', 'check')->whereNull('resolved_at')
                 ->whereHas('sale.session', fn ($query) => $query->where('store_id', $storeId))
                 ->with(['sale.invoice.customer.party', 'sale.session.user'])->orderBy('id')->limit(100)->get()
-                ->map(fn (PosTender $tender): array => [
-                    'id' => $tender->id,
-                    'amount' => $tender->amount,
-                    'check_received' => $tender->check_received,
-                    'check_number' => $tender->check_number,
-                    'bank_name' => $tender->bank_name,
-                    'due_date' => $tender->due_date?->toDateString(),
-                    'notes' => $tender->notes,
-                    'invoice_number' => $tender->sale->invoice->invoice_number,
-                    'customer_name' => $tender->sale->invoice->customer->party->name,
-                    'cashier_name' => $tender->sale->session->user->name,
-                ])->all()
+                ->map(function (PosTender $tender): array {
+                    $invoice = $tender->sale->invoice;
+                    $party = $invoice->partyIdentity();
+
+                    return [
+                        'id' => $tender->id,
+                        'amount' => $tender->amount,
+                        'check_received' => $tender->check_received,
+                        'check_number' => $tender->check_number,
+                        'bank_name' => $tender->bank_name,
+                        'due_date' => $tender->due_date?->toDateString(),
+                        'notes' => $tender->notes,
+                        'invoice_number' => $invoice->invoice_number,
+                        'customer_name' => $party['name'],
+                        'customer_legacy_current' => $party['legacy_current'] ?? false,
+                        'cashier_name' => $tender->sale->session->user->name,
+                    ];
+                })->all()
             : [];
 
         return response()->json([
@@ -191,12 +197,14 @@ class PosController extends Controller
     private function saleData(PosSale $sale): array
     {
         $invoice = $sale->invoice;
+        $party = $invoice->partyIdentity();
 
         return [
             'id' => $sale->id,
             'invoice_id' => $invoice->id,
             'invoice_number' => $invoice->invoice_number,
-            'customer_name' => $invoice->customer->party->name,
+            'customer_name' => $party['name'],
+            'customer_legacy_current' => $party['legacy_current'] ?? false,
             'total' => $invoice->total,
             'status' => $invoice->status->value,
             'outstanding' => app(CustomerReceivableService::class)->outstandingForInvoice($invoice),

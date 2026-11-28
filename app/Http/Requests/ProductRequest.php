@@ -117,6 +117,17 @@ class ProductRequest extends FormRequest
     /**
      * @return array<string, string>
      */
+    public function attributes(): array
+    {
+        return [
+            'variant_color' => 'رنگ',
+            'variant_size' => 'سایز',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
     public function messages(): array
     {
         return [

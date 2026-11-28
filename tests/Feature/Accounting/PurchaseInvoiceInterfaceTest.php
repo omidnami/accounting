@@ -5,8 +5,10 @@ use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Enums\UserRole;
 use App\Models\AccountingPeriod;
+use App\Models\Customer;
 use App\Models\FiscalYear;
 use App\Models\InventoryBalance;
+use App\Models\InventoryMovement;
 use App\Models\Invoice;
 use App\Models\JournalEntry;
 use App\Models\Party;
@@ -17,6 +19,7 @@ use App\Models\User;
 use App\Services\Accounting\FiscalYearSetupService;
 use App\Services\Accounting\JalaliDateService;
 use App\Services\Accounting\PeriodClosingService;
+use App\Services\Purchasing\PurchaseService;
 use Database\Seeders\AccountSeeder;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -304,4 +307,189 @@ it('renders the purchase index', function () {
             ->where('summary.total', 1)
             ->where('summary.draft', 1)
             ->has('invoices.data', 1));
+});
+
+it('renders a populated purchase edit form and updates the draft through the interface', function () {
+    $context = purchaseUiContext();
+    $createPayload = purchaseUiPayload($context, [
+        'additional_costs' => [
+            ['description' => 'حمل اولیه', 'amount' => '30'],
+        ],
+    ]);
+
+    $this->actingAs($context['user'])
+        ->post(route('purchases.store'), $createPayload)
+        ->assertRedirect();
+
+    $invoice = Invoice::query()->firstOrFail();
+    $originalHash = $invoice->idempotency_request_hash;
+
+    $this->actingAs($context['user'])
+        ->get(route('purchases.edit', $invoice))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('purchases/Create')
+            ->where('invoice.id', $invoice->id)
+            ->where('invoice.invoice_number', $invoice->invoice_number)
+            ->where('invoice.supplier.id', $context['supplier']->id)
+            ->where('invoice.items.0.product_id', $context['product']->id)
+            ->where('invoice.items.0.quantity', '2.000')
+            ->where('invoice.additional_costs.0.description', 'حمل اولیه')
+            ->where('defaults.invoice_date', $context['date']));
+
+    $updatePayload = purchaseUiPayload($context, [
+        'notes' => 'خرید ویرایش‌شده رابط',
+        'items' => [[
+            'product_id' => $context['product']->id,
+            'quantity' => '3',
+            'unit_price' => '250',
+            'discount_amount' => '10',
+            'tax_rate' => '10',
+        ]],
+        'additional_costs' => [
+            ['description' => 'حمل ویرایش‌شده', 'amount' => '30'],
+        ],
+    ]);
+    unset($updatePayload['submission_token']);
+
+    $this->actingAs($context['user'])
+        ->put(route('purchases.update', $invoice), $updatePayload)
+        ->assertRedirect(route('purchases.show', $invoice));
+
+    $updated = $invoice->refresh();
+
+    expect($updated->id)->toBe($invoice->id)
+        ->and($updated->invoice_number)->toBe($invoice->invoice_number)
+        ->and($updated->idempotency_key)->toBe($createPayload['submission_token'])
+        ->and($updated->idempotency_request_hash)->not->toBe($originalHash)
+        ->and($updated->status)->toBe(InvoiceStatus::Draft)
+        ->and($updated->notes)->toBe('خرید ویرایش‌شده رابط')
+        ->and($updated->subtotal)->toBe('750.00')
+        ->and($updated->discount_total)->toBe('10.00')
+        ->and($updated->tax_total)->toBe('74.00')
+        ->and($updated->additional_cost_total)->toBe('30.00')
+        ->and($updated->total)->toBe('844.00')
+        ->and($updated->items)->toHaveCount(1)
+        ->and($updated->items->first()->quantity)->toBe('3.000')
+        ->and($updated->additionalCosts)->toHaveCount(1)
+        ->and($updated->additionalCosts->first()->description)->toBe('حمل ویرایش‌شده')
+        ->and(InventoryMovement::query()->count())->toBe(0)
+        ->and(JournalEntry::query()->count())->toBe(0);
+});
+
+it('rejects purchase edit and update routes for confirmed invoices', function () {
+    $context = purchaseUiContext();
+
+    $this->actingAs($context['user'])
+        ->post(route('purchases.store'), purchaseUiPayload($context));
+
+    $invoice = Invoice::query()->firstOrFail();
+    $this->actingAs($context['user'])
+        ->post(route('purchases.confirm', $invoice), [
+            'warehouse_id' => $context['warehouse']->id,
+        ]);
+
+    $updatePayload = purchaseUiPayload($context);
+    unset($updatePayload['submission_token']);
+
+    $this->actingAs($context['user'])
+        ->get(route('purchases.edit', $invoice))
+        ->assertNotFound();
+    $this->actingAs($context['user'])
+        ->put(route('purchases.update', $invoice), $updatePayload)
+        ->assertNotFound();
+
+    expect($invoice->refresh()->status)->toBe(InvoiceStatus::Confirmed)
+        ->and($invoice->refresh()->total)->toBe('440.00')
+        ->and(InventoryMovement::query()->count())->toBe(1)
+        ->and(JournalEntry::query()->count())->toBe(1);
+});
+
+it('rejects purchase edit and update routes outside the active scope or invoice type', function () {
+    $context = purchaseUiContext();
+    $otherStore = Store::query()->create([
+        'code' => 'OTHER-PURCHASE-EDIT-STORE',
+        'name' => 'فروشگاه خارج از scope',
+    ]);
+    $otherBranch = $otherStore->branches()->create([
+        'code' => 'OTHER-EDIT-BRANCH',
+        'name' => 'شعبه خارج از scope',
+    ]);
+    $otherYear = app(FiscalYearSetupService::class)->setupJalaliYear($otherStore, 1405);
+    $otherParty = Party::query()->create([
+        'store_id' => $otherStore->id,
+        'code' => 'OTHER-EDIT-SUPPLIER',
+        'name' => 'تأمین‌کننده خارج از scope',
+    ]);
+    $otherSupplier = Supplier::query()->create(['party_id' => $otherParty->id]);
+    $foreignInvoice = app(PurchaseService::class)->createDraft(
+        [
+            'store_id' => $otherStore->id,
+            'branch_id' => $otherBranch->id,
+            'fiscal_year_id' => $otherYear->id,
+            'supplier_id' => $otherSupplier->id,
+            'invoice_date' => $otherYear->starts_on->toDateString(),
+        ],
+        [[
+            'product_id' => $context['product']->id,
+            'quantity' => 1,
+            'unit_price' => 200,
+            'tax_rate' => 10,
+        ]],
+    );
+    $customerParty = Party::query()->create([
+        'store_id' => $context['store']->id,
+        'code' => 'PURCHASE-EDIT-CUSTOMER',
+        'name' => 'مشتری آزمون scope خرید',
+    ]);
+    $customer = Customer::query()->create(['party_id' => $customerParty->id]);
+    $salesInvoice = Invoice::query()->create([
+        'store_id' => $context['store']->id,
+        'branch_id' => $context['branch']->id,
+        'fiscal_year_id' => $context['fiscalYear']->id,
+        'invoice_number' => 'SALES-PURCHASE-EDIT-SCOPE',
+        'type' => InvoiceType::Sales,
+        'invoice_date' => $context['date'],
+        'customer_id' => $customer->id,
+        'supplier_id' => null,
+    ]);
+    $updatePayload = purchaseUiPayload($context);
+    unset($updatePayload['submission_token']);
+
+    foreach ([$foreignInvoice, $salesInvoice] as $invoice) {
+        $this->actingAs($context['user'])
+            ->get(route('purchases.edit', $invoice))
+            ->assertNotFound();
+        $this->actingAs($context['user'])
+            ->put(route('purchases.update', $invoice), $updatePayload)
+            ->assertNotFound();
+    }
+
+    expect($foreignInvoice->fresh()->status)->toBe(InvoiceStatus::Draft)
+        ->and($foreignInvoice->fresh()->total)->toBe('220.00')
+        ->and($salesInvoice->fresh()->type)->toBe(InvoiceType::Sales);
+});
+
+it('converts purchase draft update service failures into validation errors', function () {
+    $context = purchaseUiContext();
+
+    $this->actingAs($context['user'])
+        ->post(route('purchases.store'), purchaseUiPayload($context));
+
+    $invoice = Invoice::query()->firstOrFail();
+    $context['supplier']->update(['is_active' => false]);
+    $updatePayload = purchaseUiPayload($context, [
+        'notes' => 'نباید ذخیره شود',
+    ]);
+    unset($updatePayload['submission_token']);
+
+    $this->actingAs($context['user'])
+        ->put(route('purchases.update', $invoice), $updatePayload)
+        ->assertSessionHasErrors('purchase');
+
+    expect($invoice->refresh()->status)->toBe(InvoiceStatus::Draft)
+        ->and($invoice->refresh()->notes)->toBe('خرید آزمایشی رابط')
+        ->and($invoice->refresh()->total)->toBe('440.00')
+        ->and(InventoryMovement::query()->count())->toBe(0)
+        ->and(JournalEntry::query()->count())->toBe(0);
 });

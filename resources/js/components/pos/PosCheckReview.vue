@@ -79,6 +79,12 @@ async function resolve() {
                         <p class="mt-1 text-sm">
                             فاکتور {{ selected.invoice_number }}
                         </p>
+                        <p
+                            v-if="selected.customer_legacy_current"
+                            class="mt-1 text-[10px] text-amber-700 dark:text-amber-300"
+                        >
+                            هویت جاری (سند قدیمی)
+                        </p>
                     </div>
                     <strong>{{ money(selected.amount) }} ریال</strong>
                 </div>
@@ -150,6 +156,12 @@ async function resolve() {
                         <p class="mt-1 text-xs text-slate-500">
                             {{ check.invoice_number }} ·
                             {{ check.cashier_name }}
+                        </p>
+                        <p
+                            v-if="check.customer_legacy_current"
+                            class="mt-1 text-[10px] text-amber-700 dark:text-amber-300"
+                        >
+                            هویت جاری (سند قدیمی)
                         </p>
                         <p
                             v-if="check.notes"

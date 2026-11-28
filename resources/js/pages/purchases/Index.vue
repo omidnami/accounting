@@ -8,6 +8,7 @@ import {
     FileClock,
     FileText,
     FilterX,
+    PencilLine,
     Plus,
     Search,
     ShoppingBag,
@@ -16,6 +17,7 @@ import { reactive } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
     create as createPurchase,
+    edit as editPurchase,
     index as purchasesIndex,
     show as showPurchase,
 } from '@/routes/purchases';
@@ -301,11 +303,26 @@ defineOptions({
                                 >
                             </td>
                             <td class="px-5 py-4 text-left">
-                                <Button as-child variant="ghost" size="sm">
-                                    <Link :href="showPurchase(invoice.id)">
-                                        مشاهده <ChevronLeft class="size-4" />
-                                    </Link>
-                                </Button>
+                                <div
+                                    class="flex items-center justify-end gap-1"
+                                >
+                                    <Button
+                                        v-if="invoice.status === 'draft'"
+                                        as-child
+                                        variant="ghost"
+                                        size="sm"
+                                    >
+                                        <Link :href="editPurchase(invoice.id)">
+                                            <PencilLine class="size-4" /> ویرایش
+                                        </Link>
+                                    </Button>
+                                    <Button as-child variant="ghost" size="sm">
+                                        <Link :href="showPurchase(invoice.id)">
+                                            مشاهده
+                                            <ChevronLeft class="size-4" />
+                                        </Link>
+                                    </Button>
+                                </div>
                             </td>
                         </tr>
                     </tbody>

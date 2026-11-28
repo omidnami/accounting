@@ -19,6 +19,7 @@ use App\Services\Inventory\InventoryService;
 use App\Services\Reporting\FinancialStatementReportService;
 use App\Services\Sales\CustomerReceiptService;
 use App\Services\Sales\SalesService;
+use App\Support\BusinessClock;
 use Database\Seeders\AccountSeeder;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -59,11 +60,12 @@ function dashboardAnalyticsContext(): array
         'reorder_level' => 5,
         'is_active' => true,
     ]);
-    $date = today()->toDateString();
+    $today = app(BusinessClock::class)->today($store);
+    $date = $today->toDateString();
     $batch = ProductBatch::query()->create([
         'product_id' => $product->id,
         'batch_number' => 'DASHBOARD-BATCH',
-        'expiry_date' => today()->addDays(5)->toDateString(),
+        'expiry_date' => $today->addDays(5)->toDateString(),
     ]);
     InventoryAlert::query()->create([
         'store_id' => $store->id,
@@ -120,7 +122,7 @@ function dashboardAnalyticsContext(): array
         'check_number' => 'DASH-1',
         'bank_name' => 'بانک داشبورد',
         'amount' => '100.00',
-        'due_date' => today()->subDay()->toDateString(),
+        'due_date' => $today->subDay()->toDateString(),
         'type' => 'receivable',
         'customer_id' => $customer->id,
         'created_by' => $owner->id,
@@ -132,7 +134,7 @@ function dashboardAnalyticsContext(): array
         'check_number' => 'DASH-2',
         'bank_name' => 'بانک داشبورد',
         'amount' => '100.00',
-        'due_date' => today()->addDays(3)->toDateString(),
+        'due_date' => $today->addDays(3)->toDateString(),
         'type' => 'receivable',
         'customer_id' => $customer->id,
         'created_by' => $owner->id,
@@ -144,7 +146,7 @@ function dashboardAnalyticsContext(): array
         'check_number' => 'DASH-3',
         'bank_name' => 'بانک داشبورد',
         'amount' => '100.00',
-        'due_date' => today()->addDays(30)->toDateString(),
+        'due_date' => $today->addDays(30)->toDateString(),
         'type' => 'receivable',
         'customer_id' => $customer->id,
         'created_by' => $owner->id,
@@ -211,7 +213,7 @@ it('shows real financial metrics to managers and accountants', function (UserRol
         ->incomeStatement(
             $context['store']->id,
             $context['fiscalYear']->starts_on->toDateString(),
-            today()->toDateString(),
+            app(BusinessClock::class)->today($context['store'])->toDateString(),
             $context['branch']->id,
         )['net_profit'];
 

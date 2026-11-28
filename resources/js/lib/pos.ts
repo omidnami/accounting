@@ -43,6 +43,7 @@ export type PosSale = {
     invoice_id: number;
     invoice_number: string;
     customer_name: string;
+    customer_legacy_current: boolean;
     total: string;
     status: string;
     outstanding: string;
@@ -69,6 +70,7 @@ export type PendingCheck = {
     notes: string | null;
     invoice_number: string;
     customer_name: string;
+    customer_legacy_current: boolean;
     cashier_name: string;
 };
 

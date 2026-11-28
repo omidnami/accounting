@@ -215,6 +215,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('purchases', [PurchaseInvoiceController::class, 'index'])->name('purchases.index');
     Route::get('purchases/create', [PurchaseInvoiceController::class, 'create'])->name('purchases.create');
     Route::post('purchases', [PurchaseInvoiceController::class, 'store'])->name('purchases.store');
+    Route::get('purchases/{invoice}/edit', [PurchaseInvoiceController::class, 'edit'])
+        ->name('purchases.edit');
+    Route::put('purchases/{invoice}', [PurchaseInvoiceController::class, 'update'])
+        ->name('purchases.update');
     Route::get('purchases/{invoice}', [PurchaseInvoiceController::class, 'show'])->name('purchases.show');
     Route::post('purchases/{invoice}/confirm', [PurchaseInvoiceController::class, 'confirm'])
         ->name('purchases.confirm');
@@ -231,6 +235,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('sales', [SalesInvoiceController::class, 'index'])->name('sales.index');
     Route::get('sales/create', [SalesInvoiceController::class, 'create'])->name('sales.create');
     Route::post('sales', [SalesInvoiceController::class, 'store'])->name('sales.store');
+    Route::get('sales/{invoice}/edit', [SalesInvoiceController::class, 'edit'])
+        ->name('sales.edit');
+    Route::put('sales/{invoice}', [SalesInvoiceController::class, 'update'])
+        ->name('sales.update');
     Route::get('sales/{invoice}', [SalesInvoiceController::class, 'show'])->name('sales.show');
     Route::post('sales/{invoice}/confirm', [SalesInvoiceController::class, 'confirm'])
         ->name('sales.confirm');

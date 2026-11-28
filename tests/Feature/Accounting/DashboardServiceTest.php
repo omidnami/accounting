@@ -11,6 +11,7 @@ use App\Models\Store;
 use App\Models\User;
 use App\Models\Warehouse;
 use App\Services\Dashboard\DashboardService;
+use App\Support\BusinessClock;
 use Database\Seeders\AccountingSetupSeeder;
 use Database\Seeders\AccountSeeder;
 use Illuminate\Support\Facades\DB;
@@ -28,7 +29,7 @@ function dashboardServiceContext(): array
     $warehouse = $branch->warehouses()->where('is_default', true)->firstOrFail();
     $fiscalYear = $store->fiscalYears()->where('is_current', true)->firstOrFail();
     $manager = User::factory()->create(['role' => UserRole::Manager]);
-    $date = today()->toDateString();
+    $date = app(BusinessClock::class)->today($store)->toDateString();
     $period = $fiscalYear->periods()
         ->where('starts_on', '<=', $date)
         ->where('ends_on', '>=', $date)

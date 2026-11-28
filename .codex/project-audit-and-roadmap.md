@@ -1,6 +1,6 @@
 # گزارش ممیزی عمیق پروژه و اولویت کارها
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۱-۲۵
+آخرین به‌روزرسانی: ۲۰۲۶-۱۱-۲۸
 
 کامیت مبنا: `28a8c28` — `docs: define base accounting scope and gaps`
 
@@ -23,7 +23,7 @@
 
 این سند مجوز پیاده‌سازی نیست؛ فقط فهرست اولویت‌بندی‌شده است.
 
-## وضعیت اجرای اصلاحات — ۲۰۲۶-۱۱-۲۶
+## وضعیت اجرای اصلاحات — ۲۰۲۶-۱۱-۲۸
 
 اجرای درخواست‌شده برای بخش ۱ در کامیت‌های `3ce7364` تا `c0df773` و ادامه‌های
 B19/B46 و بستن کامل P2 انجام شد. علائم: ✅ اصلاح‌شده، 🟡 پایه‌گذاری/اصلاح جزئی، ⬜ باقی‌مانده.
@@ -45,11 +45,14 @@ B19/B46 و بستن کامل P2 انجام شد. علائم: ✅ اصلاح‌ش
   retry/lock order، اصلاح تاریخی، یکتایی شناسهٔ کالا، lifecycle چک و Print Station،
   قرارداد مستقیم سرویس‌ها، canonical idempotency، snapshot هویت طرف‌حساب و
   invariant دقیق allocationهای Batch/Serial.
+- ✅ باگهای گزارش‌شدهٔ کاربر نیز رفع شدند: واژه‌گذاری رنگ/سایز، لینک ویرایش
+  کالا، پیام صریح نبود موجودی، ویرایش پیش‌نویس فروش/خرید و یکسان‌سازی snapshot
+  مشتری در POS و فروش عادی با backfill امن از Audit.
 
 ### شواهد اجرایی جدید
 
-- `php artisan test --exclude-testsuite=Integration`: SQLite با ۵۸۲ تست موفق و
-  ۵۰۶۵ assertion؛ MariaDB 10.11 با ۵۸۱ تست موفق، ۵۰۵۸ assertion و یک skip
+- `php artisan test --exclude-testsuite=Integration`: SQLite با ۶۱۱ تست موفق و
+  ۵۴۲۲ assertion؛ MariaDB 10.11 با ۶۱۰ تست موفق، ۵۴۱۵ assertion و یک skip
   مربوط به trigger مخصوص SQLite.
 - `tests/Integration/ConcurrencySafetyTest.php --fail-on-skipped`: ۹ تست موفق و
   ۳۵ assertion، شامل سناریوی جدید مرجوعی هم‌زمان با ترتیب اقلام مخالف.
@@ -58,9 +61,9 @@ B19/B46 و بستن کامل P2 انجام شد. علائم: ✅ اصلاح‌ش
 - `composer audit --locked` و `npm audit --omit=dev`: بدون advisory.
 - `composer ci:check` سبز است.
 - migration کامل روی MariaDB 10.11 محلی موفق بود.
-- CI نهایی روی MySQL 8.4 و MariaDB 11.4 برای `c026f7b`:
+- CI پایهٔ `c026f7b` روی MySQL 8.4 و MariaDB 11.4 موفق بود:
   [Run 45814039151](https://github.com/omidnami/accounting/actions/runs/45814039151).
-  هر دو job، migrations، `composer ci:check` و ۹ تست هم‌زمانی را موفق اجرا کردند.
+  CI این اصلاحات پس از push نهایی بررسی می‌شود.
 - backup/restore واقعی دیتابیس روی MariaDB با marker داده موفق بود.
 
 ---

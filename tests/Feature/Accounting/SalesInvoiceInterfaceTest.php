@@ -17,6 +17,7 @@ use App\Services\Accounting\PeriodClosingService;
 use App\Services\Inventory\InventoryService;
 use Database\Seeders\AccountingSetupSeeder;
 use Database\Seeders\AccountSeeder;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 
 function salesUiContext(UserRole $role = UserRole::Manager): array
@@ -230,6 +231,111 @@ it('creates a sales draft and makes repeated submission idempotent', function ()
     expect(Invoice::query()->count())->toBe(1);
 });
 
+it('prefills and updates a sales draft through the shared create and edit form', function () {
+    $context = salesUiContext();
+    $createdPayload = salesInvoicePayload($context);
+
+    $this->actingAs($context['user'])
+        ->post(route('sales.store'), $createdPayload)
+        ->assertRedirect();
+
+    $invoice = Invoice::query()->firstOrFail();
+    $invoiceNumber = $invoice->invoice_number;
+    $creationSnapshot = $invoice->party_snapshot;
+    $originalHash = $invoice->idempotency_request_hash;
+
+    $this->actingAs($context['user'])
+        ->get(route('sales.edit', $invoice))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('sales/Create')
+            ->where('invoice.id', $invoice->id)
+            ->where('invoice.invoice_number', $invoice->invoice_number)
+            ->where('invoice.customer.id', $context['customer']->id)
+            ->where('invoice.items.0.product_id', $context['product']->id)
+            ->where('invoice.items.0.item_type', 'stock')
+            ->where('invoice.items.0.stock_quantity', '10.000')
+            ->where('defaults.invoice_date', $invoice->invoice_date->toDateString()));
+
+    $payload = salesInvoicePayload($context, [
+        'notes' => 'ویرایش از رابط مشترک فروش',
+        'items' => [[
+            'product_id' => $context['product']->id,
+            'quantity' => '3',
+            'unit_price' => '250',
+            'discount_amount' => '30',
+            'tax_rate' => '10',
+        ]],
+    ]);
+    unset($payload['submission_token']);
+
+    $this->actingAs($context['user'])
+        ->put(route('sales.update', $invoice), $payload)
+        ->assertRedirect(route('sales.show', $invoice));
+
+    expect($invoice->refresh()->status)->toBe(InvoiceStatus::Draft)
+        ->and($invoice->invoice_number)->toBe($invoiceNumber)
+        ->and($invoice->idempotency_key)->toBe($createdPayload['submission_token'])
+        ->and($invoice->idempotency_request_hash)->not->toBe($originalHash)
+        ->and($invoice->party_snapshot)->toBe($creationSnapshot)
+        ->and($invoice->subtotal)->toBe('750.00')
+        ->and($invoice->discount_total)->toBe('30.00')
+        ->and($invoice->tax_total)->toBe('72.00')
+        ->and($invoice->total)->toBe('792.00')
+        ->and($invoice->items)->toHaveCount(1)
+        ->and($invoice->items->first()->product_id)->toBe($context['product']->id)
+        ->and(Invoice::query()->count())->toBe(1);
+
+    $this->actingAs($context['user'])
+        ->get(route('sales.edit', $invoice))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('sales/Create')
+            ->where('invoice.items.0.product_id', $context['product']->id)
+            ->where('invoice.items.0.quantity', '3.000')
+            ->where('invoice.items.0.unit_price', '250.00'));
+
+    $this->actingAs($context['user'])
+        ->get(route('sales.show', $invoice))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('sales/Show')
+            ->where('invoice.items.0.product_id', $context['product']->id)
+            ->where('invoice.total', '792.00'));
+});
+
+it('does not expose edit or update routes for confirmed sales invoices', function () {
+    $context = salesUiContext();
+
+    $this->actingAs($context['user'])
+        ->post(route('sales.store'), salesInvoicePayload($context))
+        ->assertRedirect();
+
+    $invoice = Invoice::query()->firstOrFail();
+    $this->actingAs($context['user'])
+        ->post(route('sales.confirm', $invoice), [
+            'warehouse_id' => $context['warehouse']->id,
+        ])
+        ->assertRedirect();
+
+    $payload = salesInvoicePayload($context, [
+        'notes' => 'ویرایش غیرمجاز فاکتور تأییدشده',
+    ]);
+    unset($payload['submission_token']);
+
+    $this->actingAs($context['user'])
+        ->get(route('sales.edit', $invoice))
+        ->assertNotFound();
+
+    $this->actingAs($context['user'])
+        ->put(route('sales.update', $invoice), $payload)
+        ->assertNotFound();
+
+    expect($invoice->refresh()->status)->toBe(InvoiceStatus::Confirmed)
+        ->and($invoice->total)->toBe('440.00')
+        ->and($invoice->notes)->toBe('فاکتور آزمایشی رابط فروش');
+});
+
 it('reports item-level validation errors for invalid sales lines', function () {
     $context = salesUiContext();
 
@@ -390,4 +496,30 @@ it('renders sales index and filters by status', function () {
             ->where('summary.draft', 1)
             ->has('invoices.data', 1)
             ->where('invoices.data.0.status', 'draft'));
+});
+
+it('loads every Party field needed by the sales index legacy fallback', function () {
+    $context = salesUiContext();
+
+    $this->actingAs($context['user'])->post(route('sales.store'), salesInvoicePayload($context));
+    $invoice = Invoice::query()->firstOrFail();
+    DB::table('invoices')->where('id', $invoice->id)->update(['party_snapshot' => null]);
+    $context['party']->update([
+        'name' => 'مشتری جاری فهرست فروش',
+        'phone' => '09121111111',
+        'email' => 'sales-legacy@example.test',
+        'national_id' => '1000000009',
+        'tax_id' => '2000000009',
+        'address' => 'آدرس مشتری جاری',
+        'version' => 1,
+    ]);
+
+    $this->actingAs($context['user'])
+        ->get(route('sales.index'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('sales/Index')
+            ->where('invoices.data.0.customer.name', 'مشتری جاری فهرست فروش')
+            ->where('invoices.data.0.customer.phone', '09121111111')
+            ->where('invoices.data.0.customer.legacy_current', true));
 });

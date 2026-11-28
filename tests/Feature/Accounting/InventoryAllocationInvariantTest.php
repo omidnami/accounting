@@ -206,6 +206,38 @@ it('rejects duplicate batch allocations and allocations for non tracked products
     ))->toThrow(DomainException::class, 'کالای بدون ردیابی سری ساخت');
 });
 
+it('reports zero stock explicitly and shows available stock for shortages', function () {
+    $context = inventoryAllocationInvariantContext();
+    $inventory = app(InventoryService::class);
+
+    expect(fn () => $inventory->issue(
+        warehouseId: $context['warehouse']->id,
+        productId: $context['product']->id,
+        quantity: 1,
+        movementDate: now()->toDateString(),
+        idempotencyKey: 'allocation-zero-stock',
+    ))->toThrow(DomainException::class, 'کالا در انبار موجود نیست');
+
+    $inventory->receive(
+        warehouseId: $context['warehouse']->id,
+        productId: $context['product']->id,
+        quantity: 1,
+        unitCost: 100,
+        movementDate: now()->toDateString(),
+        idempotencyKey: 'allocation-shortage-opening',
+        movementType: InventoryMovementType::Opening,
+        productBatchId: $context['batches'][0]->id,
+    );
+
+    expect(fn () => $inventory->issue(
+        warehouseId: $context['warehouse']->id,
+        productId: $context['product']->id,
+        quantity: 2,
+        movementDate: now()->toDateString(),
+        idempotencyKey: 'allocation-shortage-issue',
+    ))->toThrow(DomainException::class, 'موجودی قابل استفاده: 1.000');
+});
+
 it('rejects duplicate serial ids before creating inventory tracking rows', function () {
     $context = inventoryAllocationInvariantContext(true);
     $batch = $context['batches'][0];

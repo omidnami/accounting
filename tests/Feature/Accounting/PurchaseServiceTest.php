@@ -5,6 +5,7 @@ use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Enums\UserRole;
 use App\Models\Account;
+use App\Models\Customer;
 use App\Models\InventoryBalance;
 use App\Models\InventoryMovement;
 use App\Models\Invoice;
@@ -309,4 +310,332 @@ it('capitalizes additional purchase costs into inventory by item value', functio
         ->and($inventoryLine->debit)->toBe('360.00')
         ->and($journal->totalDebit())->toBe('360.00')
         ->and($journal->totalCredit())->toBe('360.00');
+});
+
+it('updates purchase draft items and totals while preserving document identity', function () {
+    $context = createPurchaseContext();
+    $manager = purchaseUser(UserRole::Manager);
+    $original = Product::query()->create([
+        'code' => 'PURCHASE-EDIT-OLD',
+        'name' => 'کالای قبل از ویرایش',
+        'unit' => 'عدد',
+        'purchase_price' => 100,
+        'sale_price' => 150,
+        'tax_rate' => 10,
+    ]);
+    $replacement = Product::query()->create([
+        'code' => 'PURCHASE-EDIT-NEW',
+        'name' => 'کالای پس از ویرایش',
+        'unit' => 'عدد',
+        'purchase_price' => 200,
+        'sale_price' => 300,
+        'tax_rate' => 9,
+    ]);
+    $service = app(PurchaseService::class);
+    $invoice = $service->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_number' => 'PUR-DRAFT-EDIT-001',
+            'invoice_date' => '2026-05-01',
+            'created_by' => $manager->id,
+        ],
+        [[
+            'product_id' => $original->id,
+            'quantity' => 2,
+            'unit_price' => 100,
+            'tax_rate' => 10,
+        ]],
+        'purchase-draft-edit-key',
+    );
+    $originalHash = $invoice->idempotency_request_hash;
+
+    $updated = $service->updateDraft(
+        $invoice,
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_number' => 'MUST-NOT-CHANGE',
+            'idempotency_key' => 'must-not-change',
+            'invoice_date' => '2026-05-03',
+            'due_date' => '2026-05-20',
+            'notes' => 'پیش‌نویس ویرایش‌شده',
+            'created_by' => $manager->id,
+        ],
+        [[
+            'product_id' => $replacement->id,
+            'quantity' => 3,
+            'unit_price' => 200,
+            'discount_amount' => 20,
+            'tax_rate' => 9,
+        ]],
+    );
+
+    expect($updated->id)->toBe($invoice->id)
+        ->and($updated->invoice_number)->toBe('PUR-DRAFT-EDIT-001')
+        ->and($updated->idempotency_key)->toBe('purchase-draft-edit-key')
+        ->and($updated->idempotency_request_hash)->not->toBe($originalHash)
+        ->and($updated->invoice_date->toDateString())->toBe('2026-05-03')
+        ->and($updated->due_date?->toDateString())->toBe('2026-05-20')
+        ->and($updated->notes)->toBe('پیش‌نویس ویرایش‌شده')
+        ->and($updated->status)->toBe(InvoiceStatus::Draft)
+        ->and($updated->type)->toBe(InvoiceType::Purchase)
+        ->and($updated->subtotal)->toBe('600.00')
+        ->and($updated->discount_total)->toBe('20.00')
+        ->and($updated->tax_total)->toBe('52.20')
+        ->and($updated->additional_cost_total)->toBe('0.00')
+        ->and($updated->total)->toBe('632.20')
+        ->and($updated->items)->toHaveCount(1)
+        ->and($updated->items->first()->product_id)->toBe($replacement->id)
+        ->and($updated->items->first()->line_total)->toBe('632.20')
+        ->and(Invoice::query()->count())->toBe(1)
+        ->and(InventoryMovement::query()->count())->toBe(0)
+        ->and(JournalEntry::query()->count())->toBe(0);
+
+    $replayed = $service->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_number' => 'PUR-DRAFT-EDIT-001',
+            'invoice_date' => '2026-05-03',
+            'due_date' => '2026-05-20',
+            'notes' => 'پیش‌نویس ویرایش‌شده',
+            'created_by' => $manager->id,
+        ],
+        [[
+            'product_id' => $replacement->id,
+            'quantity' => 3,
+            'unit_price' => 200,
+            'discount_amount' => 20,
+            'tax_rate' => 9,
+        ]],
+        'purchase-draft-edit-key',
+    );
+
+    expect($replayed->is($updated))->toBeTrue()
+        ->and(fn () => $service->createDraft(
+            [
+                'store_id' => $context['store']->id,
+                'branch_id' => $context['branch']->id,
+                'fiscal_year_id' => $context['fiscalYear']->id,
+                'supplier_id' => $context['supplier']->id,
+                'invoice_number' => 'PUR-DRAFT-EDIT-001',
+                'invoice_date' => '2026-05-01',
+                'created_by' => $manager->id,
+            ],
+            [[
+                'product_id' => $original->id,
+                'quantity' => 2,
+                'unit_price' => 100,
+                'tax_rate' => 10,
+            ]],
+            'purchase-draft-edit-key',
+        ))->toThrow(DomainException::class);
+});
+
+it('replaces additional costs and recalculates the edited purchase total', function () {
+    $context = createPurchaseContext();
+    $product = Product::query()->create([
+        'code' => 'PURCHASE-EDIT-COSTS',
+        'name' => 'کالای ویرایش هزینه‌ها',
+        'unit' => 'عدد',
+        'purchase_price' => 120,
+        'sale_price' => 180,
+        'tax_rate' => 10,
+    ]);
+    $service = app(PurchaseService::class);
+    $invoice = $service->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_date' => '2026-05-01',
+        ],
+        [[
+            'product_id' => $product->id,
+            'quantity' => 2,
+            'unit_price' => 100,
+            'tax_rate' => 10,
+        ]],
+        null,
+        [['description' => 'حمل قبلی', 'amount' => 15]],
+    );
+
+    $updated = $service->updateDraft(
+        $invoice,
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_date' => '2026-05-02',
+        ],
+        [[
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'unit_price' => 120,
+            'tax_rate' => 10,
+        ]],
+        [
+            ['description' => 'حمل جدید', 'amount' => 30],
+            ['description' => 'بیمه', 'amount' => 20],
+        ],
+    );
+
+    expect($updated->subtotal)->toBe('120.00')
+        ->and($updated->tax_total)->toBe('12.00')
+        ->and($updated->additional_cost_total)->toBe('50.00')
+        ->and($updated->total)->toBe('182.00')
+        ->and($updated->additionalCosts)->toHaveCount(2)
+        ->and($updated->additionalCosts[0]->description)->toBe('حمل جدید')
+        ->and($updated->additionalCosts[0]->sort_order)->toBe(1)
+        ->and($updated->additionalCosts[1]->description)->toBe('بیمه')
+        ->and($updated->additionalCosts[1]->sort_order)->toBe(2)
+        ->and(PurchaseAdditionalCost::query()->where('invoice_id', $invoice->id)->count())->toBe(2);
+});
+
+it('rejects editing a confirmed purchase or an invoice of another type', function () {
+    $context = createPurchaseContext();
+    $manager = purchaseUser(UserRole::Manager);
+    $product = Product::query()->create([
+        'code' => 'PURCHASE-EDIT-REJECT',
+        'name' => 'کالای رد ویرایش',
+        'unit' => 'عدد',
+        'purchase_price' => 100,
+        'sale_price' => 150,
+        'tax_rate' => 10,
+    ]);
+    $service = app(PurchaseService::class);
+    $invoice = $service->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_date' => '2026-05-01',
+            'created_by' => $manager->id,
+        ],
+        [[
+            'product_id' => $product->id,
+            'quantity' => 2,
+            'unit_price' => 100,
+            'tax_rate' => 10,
+        ]],
+    );
+    $service->confirm($invoice, $context['warehouse']->id, $manager);
+    $attributes = [
+        'store_id' => $context['store']->id,
+        'branch_id' => $context['branch']->id,
+        'fiscal_year_id' => $context['fiscalYear']->id,
+        'supplier_id' => $context['supplier']->id,
+        'invoice_date' => '2026-05-02',
+    ];
+    $items = [[
+        'product_id' => $product->id,
+        'quantity' => 1,
+        'unit_price' => 100,
+        'tax_rate' => 10,
+    ]];
+    $confirmedItemId = $invoice->items->firstOrFail()->id;
+
+    expect(fn () => $service->updateDraft($invoice, $attributes, $items))
+        ->toThrow(DomainException::class);
+
+    expect($invoice->fresh()->status)->toBe(InvoiceStatus::Confirmed)
+        ->and($invoice->fresh()->total)->toBe('220.00')
+        ->and($invoice->fresh()->items->firstOrFail()->id)->toBe($confirmedItemId)
+        ->and(InventoryMovement::query()->count())->toBe(1)
+        ->and(JournalEntry::query()->count())->toBe(1);
+
+    $customerParty = Party::query()->create([
+        'store_id' => $context['store']->id,
+        'code' => 'EDIT-CUSTOMER-PARTY',
+        'name' => 'مشتری آزمون نوع فاکتور',
+    ]);
+    $customer = Customer::query()->create(['party_id' => $customerParty->id]);
+    $salesInvoice = Invoice::query()->create([
+        'store_id' => $context['store']->id,
+        'branch_id' => $context['branch']->id,
+        'fiscal_year_id' => $context['fiscalYear']->id,
+        'invoice_number' => 'SALES-NOT-PURCHASE',
+        'type' => InvoiceType::Sales,
+        'invoice_date' => '2026-05-01',
+        'customer_id' => $customer->id,
+        'supplier_id' => null,
+    ]);
+
+    expect(fn () => $service->updateDraft($salesInvoice, $attributes, $items))
+        ->toThrow(DomainException::class);
+});
+
+it('rolls back an invalid purchase draft edit including replaced lines and costs', function () {
+    $context = createPurchaseContext();
+    $active = Product::query()->create([
+        'code' => 'PURCHASE-EDIT-ACTIVE',
+        'name' => 'کالای فعال ویرایش',
+        'unit' => 'عدد',
+        'purchase_price' => 100,
+        'sale_price' => 150,
+    ]);
+    $inactive = Product::query()->create([
+        'code' => 'PURCHASE-EDIT-INACTIVE',
+        'name' => 'کالای غیرفعال ویرایش',
+        'unit' => 'عدد',
+        'purchase_price' => 100,
+        'sale_price' => 150,
+        'is_active' => false,
+    ]);
+    $service = app(PurchaseService::class);
+    $invoice = $service->createDraft(
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_date' => '2026-05-01',
+        ],
+        [[
+            'product_id' => $active->id,
+            'quantity' => 1,
+            'unit_price' => 100,
+            'tax_rate' => 10,
+        ]],
+        null,
+        [['description' => 'حمل اصلی', 'amount' => 10]],
+    );
+    $originalHash = $invoice->idempotency_request_hash;
+    $originalItemId = $invoice->items->firstOrFail()->id;
+
+    expect(fn () => $service->updateDraft(
+        $invoice,
+        [
+            'store_id' => $context['store']->id,
+            'branch_id' => $context['branch']->id,
+            'fiscal_year_id' => $context['fiscalYear']->id,
+            'supplier_id' => $context['supplier']->id,
+            'invoice_date' => '2026-05-02',
+        ],
+        [[
+            'product_id' => $inactive->id,
+            'quantity' => 2,
+            'unit_price' => 100,
+            'tax_rate' => 10,
+        ]],
+        [['description' => 'حمل نامعتبر', 'amount' => 20]],
+    ))->toThrow(DomainException::class);
+
+    $fresh = $invoice->fresh();
+
+    expect($fresh->total)->toBe('120.00')
+        ->and($fresh->additional_cost_total)->toBe('10.00')
+        ->and($fresh->idempotency_request_hash)->toBe($originalHash)
+        ->and($fresh->items->firstOrFail()->id)->toBe($originalItemId)
+        ->and($fresh->additionalCosts->firstOrFail()->description)->toBe('حمل اصلی');
 });

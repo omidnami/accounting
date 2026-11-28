@@ -1129,7 +1129,13 @@ class InventoryService
     private function calculateOutbound(InventoryBalance $balance, string $quantity): array
     {
         if (! $balance->isAvailable($quantity)) {
-            throw new DomainException('موجودی کافی نیست؛ موجودی منفی مجاز نیست.');
+            if (Decimal::compare($balance->quantity, '0', Decimal::QUANTITY_SCALE) <= 0) {
+                throw new DomainException('کالا در انبار موجود نیست.');
+            }
+
+            throw new DomainException(
+                'موجودی کافی نیست؛ موجودی قابل استفاده: '.Decimal::normalize($balance->quantity, Decimal::QUANTITY_SCALE).'.',
+            );
         }
 
         $quantityAfter = Decimal::subtract(

@@ -24,7 +24,11 @@ import { Spinner } from '@/components/ui/spinner';
 import { normalizeNumber, parseNumber } from '@/lib/number';
 import { amountNumber, cents, grossCents, taxCents } from '@/lib/decimal';
 import lookups from '@/routes/sales/lookups';
-import { index as salesIndex, store as storeSale } from '@/routes/sales';
+import {
+    index as salesIndex,
+    store as storeSale,
+    update as updateSale,
+} from '@/routes/sales';
 
 type CustomerOption = {
     id: number;
@@ -43,6 +47,7 @@ type ProductOption = {
     unit: string;
     sale_price: string;
     tax_rate: string;
+    item_type: 'stock' | 'non_stock' | 'service';
     stock_quantity: string;
 };
 
@@ -57,9 +62,35 @@ type SaleLine = {
     unit_price: string;
     discount_amount: string;
     tax_rate: string;
+    item_type: 'stock' | 'non_stock' | 'service';
+};
+
+type SaleInvoiceItem = {
+    id: number;
+    product_id: number;
+    code: string | null;
+    name: string;
+    unit: string;
+    stock_quantity: string;
+    quantity: string;
+    unit_price: string;
+    discount_amount: string;
+    tax_rate: string;
+    item_type: 'stock' | 'non_stock' | 'service';
+};
+
+type SaleInvoice = {
+    id: number;
+    invoice_number: string;
+    invoice_date: string;
+    due_date: string | null;
+    notes: string | null;
+    customer: CustomerOption;
+    items: SaleInvoiceItem[];
 };
 
 const props = defineProps<{
+    invoice: SaleInvoice | null;
     defaults: {
         invoice_date: string;
         due_date: string;
@@ -78,13 +109,28 @@ const props = defineProps<{
     }>;
 }>();
 
+const isEditing = computed(() => props.invoice !== null);
+const lineFromInvoice = (item: SaleInvoiceItem): SaleLine => ({
+    row_id: `invoice-item-${item.id}`,
+    product_id: item.product_id,
+    code: item.code ?? '',
+    name: item.name,
+    unit: item.unit,
+    stock_quantity: item.stock_quantity,
+    quantity: item.quantity,
+    unit_price: item.unit_price,
+    discount_amount: item.discount_amount,
+    tax_rate: item.tax_rate,
+    item_type: item.item_type,
+});
+
 const form = useForm({
     submission_token: props.defaults.submission_token,
-    customer_id: '',
+    customer_id: props.invoice?.customer.id.toString() ?? '',
     invoice_date: props.defaults.invoice_date,
     due_date: props.defaults.due_date,
-    notes: '',
-    items: [] as SaleLine[],
+    notes: props.invoice?.notes ?? '',
+    items: props.invoice?.items.map(lineFromInvoice) ?? [],
 });
 watch(
     () => form.invoice_date,
@@ -95,7 +141,9 @@ watch(
     },
 );
 const selectedWarehouseId = ref(props.defaults.warehouse_id?.toString() ?? '');
-const selectedCustomer = ref<CustomerOption | null>(null);
+const selectedCustomer = ref<CustomerOption | null>(
+    props.invoice?.customer ?? null,
+);
 const customerSearch = ref('');
 const customerResults = ref<CustomerOption[]>([]);
 const customerLoading = ref(false);
@@ -157,7 +205,7 @@ const totals = computed(() => {
 const invalidStockLine = computed(() =>
     form.items.find(
         (line) =>
-            parseNumber(line.quantity) <= 0 ||
+            line.item_type === 'stock' &&
             parseNumber(line.quantity) > parseNumber(line.stock_quantity),
     ),
 );
@@ -296,6 +344,7 @@ const addProduct = (product: ProductOption) => {
         name: product.name,
         unit: product.unit,
         stock_quantity: product.stock_quantity,
+        item_type: product.item_type,
         quantity: '1',
         unit_price: product.sale_price,
         discount_amount: '0',
@@ -338,15 +387,28 @@ const submit = () => {
         return;
     }
 
+    const invalidQuantity = form.items.find(
+        (line) => parseNumber(line.quantity) <= 0,
+    );
+
+    if (invalidQuantity) {
+        clientError.value = `مقدار «${invalidQuantity.name}» باید بزرگ‌تر از صفر باشد.`;
+        return;
+    }
+
     const invalid = invalidStockLine.value;
 
     if (invalid) {
-        clientError.value = `مقدار «${invalid.name}» باید بیش از صفر و حداکثر ${quantity.format(parseNumber(invalid.stock_quantity))} ${invalid.unit} باشد.`;
+        clientError.value =
+            parseNumber(invalid.stock_quantity) <= 0
+                ? `کالای «${invalid.name}» در انبار موجود نیست.`
+                : `موجودی «${invalid.name}» کافی نیست؛ حداکثر ${quantity.format(parseNumber(invalid.stock_quantity))} ${invalid.unit}.`;
         return;
     }
 
     form.transform((data) => ({
         ...data,
+        submission_token: props.invoice ? undefined : data.submission_token,
         items: data.items.map((line) => ({
             product_id: line.product_id,
             quantity: normalizeNumber(line.quantity),
@@ -354,9 +416,17 @@ const submit = () => {
             discount_amount: normalizeNumber(line.discount_amount || '0'),
             tax_rate: normalizeNumber(line.tax_rate || '0'),
         })),
-    })).post(storeSale().url, {
-        preserveScroll: true,
-    });
+    }));
+
+    if (props.invoice) {
+        form.put(updateSale(props.invoice.id).url, {
+            preserveScroll: true,
+        });
+    } else {
+        form.post(storeSale().url, {
+            preserveScroll: true,
+        });
+    }
 };
 
 defineOptions({
@@ -367,8 +437,8 @@ defineOptions({
                 href: salesIndex(),
             },
             {
-                title: 'فروش جدید',
-                href: '/sales/create',
+                title: 'فاکتور فروش',
+                href: salesIndex(),
             },
         ],
     },
@@ -376,7 +446,11 @@ defineOptions({
 </script>
 
 <template>
-    <Head title="فروش جدید" />
+    <Head
+        :title="
+            invoice ? `ویرایش پیش‌نویس ${invoice.invoice_number}` : 'فروش جدید'
+        "
+    />
 
     <div class="mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
         <section
@@ -391,8 +465,19 @@ defineOptions({
                         <span class="text-xs font-bold">صندوق فروش</span>
                     </div>
                     <h1 class="text-2xl font-black tracking-tight sm:text-3xl">
-                        ساخت پیش‌نویس فاکتور فروش
+                        {{
+                            isEditing
+                                ? 'ویرایش پیش‌نویس فاکتور فروش'
+                                : 'ساخت پیش‌نویس فاکتور فروش'
+                        }}
                     </h1>
+                    <p
+                        v-if="invoice"
+                        dir="ltr"
+                        class="mt-2 text-right font-mono text-xs text-muted-foreground"
+                    >
+                        {{ invoice.invoice_number }}
+                    </p>
                     <p
                         class="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground"
                     >
@@ -934,7 +1019,11 @@ defineOptions({
                     >
                         <Spinner v-if="form.processing" />
                         <ShoppingCart v-else class="size-4" />
-                        ثبت پیش‌نویس فروش
+                        {{
+                            isEditing
+                                ? 'ذخیره تغییرات فروش'
+                                : 'ثبت پیش‌نویس فروش'
+                        }}
                     </Button>
                 </section>
 

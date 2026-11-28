@@ -30,6 +30,7 @@ use Carbon\CarbonImmutable;
 use Database\Seeders\AccountingSetupSeeder;
 use Database\Seeders\AccountSeeder;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 
 function posContext(): array
@@ -400,4 +401,67 @@ it('does not let POS authorization post arbitrary or already completed source do
     expect((new PosPostingContext($sale->id))->allows($entry, $context['user']))->toBeFalse();
     expect(fn () => app(PostingService::class)->approveAndPost($entry, $context['user'], new PosPostingContext($sale->id)))
         ->toThrow(AuthorizationException::class);
+});
+
+it('uses the invoice party snapshot for POS sale and pending check display', function () {
+    $context = posContext();
+    $payload = posPayload($context, [
+        'due_date' => '2026-06-01',
+        'tenders' => [['method' => 'check', 'amount' => '440', 'check_received' => false]],
+    ]);
+
+    $this->actingAs($context['user'])
+        ->postJson(route('pos.checkout'), $payload)
+        ->assertOk()
+        ->assertJsonPath('sale.customer_name', 'مشتری صندوق')
+        ->assertJsonPath('sale.customer_legacy_current', false);
+
+    $context['customer']->party()->update(['name' => 'نام فعلی مشتری']);
+
+    $this->getJson(route('pos.attempt', ['token' => $payload['submission_token']]))
+        ->assertOk()
+        ->assertJsonPath('sale.customer_name', 'مشتری صندوق')
+        ->assertJsonPath('sale.customer_legacy_current', false);
+
+    $this->getJson(route('pos.activity'))
+        ->assertOk()
+        ->assertJsonPath('recent_sales.0.customer_name', 'مشتری صندوق')
+        ->assertJsonPath('recent_sales.0.customer_legacy_current', false);
+
+    $this->actingAs($context['manager'])
+        ->getJson(route('pos.activity'))
+        ->assertOk()
+        ->assertJsonPath('pending_checks.0.customer_name', 'مشتری صندوق')
+        ->assertJsonPath('pending_checks.0.customer_legacy_current', false);
+});
+
+it('labels current Party fallback for legacy POS invoices and pending checks', function () {
+    $context = posContext();
+    $payload = posPayload($context, [
+        'due_date' => '2026-06-01',
+        'tenders' => [['method' => 'check', 'amount' => '440', 'check_received' => false]],
+    ]);
+
+    $this->actingAs($context['user'])->postJson(route('pos.checkout'), $payload)->assertOk();
+    $invoice = Invoice::query()->firstOrFail();
+    DB::table('invoices')->where('id', $invoice->id)->update(['party_snapshot' => null]);
+    $context['customer']->party()->update([
+        'name' => 'مشتری جاری سند قدیمی',
+        'phone' => '09120000000',
+        'email' => 'legacy@example.test',
+        'national_id' => '1000000001',
+        'tax_id' => '2000000001',
+        'address' => 'آدرس مشتری جاری',
+    ]);
+
+    $this->getJson(route('pos.activity'))
+        ->assertOk()
+        ->assertJsonPath('recent_sales.0.customer_name', 'مشتری جاری سند قدیمی')
+        ->assertJsonPath('recent_sales.0.customer_legacy_current', true);
+
+    $this->actingAs($context['manager'])
+        ->getJson(route('pos.activity'))
+        ->assertOk()
+        ->assertJsonPath('pending_checks.0.customer_name', 'مشتری جاری سند قدیمی')
+        ->assertJsonPath('pending_checks.0.customer_legacy_current', true);
 });

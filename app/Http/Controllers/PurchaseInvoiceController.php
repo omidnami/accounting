@@ -6,6 +6,7 @@ use App\Enums\InvoiceStatus;
 use App\Enums\InvoiceType;
 use App\Http\Requests\ConfirmPurchaseInvoiceRequest;
 use App\Http\Requests\PurchaseInvoiceRequest;
+use App\Http\Requests\UpdatePurchaseInvoiceRequest;
 use App\Models\Branch;
 use App\Models\FiscalYear;
 use App\Models\Invoice;
@@ -111,38 +112,15 @@ class PurchaseInvoiceController extends Controller
     {
         abort_unless($request->user()?->canManagePurchases(), 403);
 
-        $store = $this->mainStore();
-        $branch = $this->defaultBranch($store);
-        $fiscalYear = $this->currentFiscalYear($store);
-        $invoiceDate = max(
-            $fiscalYear->starts_on->toDateString(),
-            min(
-                $fiscalYear->ends_on->toDateString(),
-                $clock->today($store)->toDateString(),
-            ),
-        );
+        return $this->renderPurchaseForm(null, $clock);
+    }
 
-        return Inertia::render('purchases/Create', [
-            'defaults' => [
-                'invoice_date' => $invoiceDate,
-                'due_date' => '',
-                'warehouse_id' => $branch->warehouses()
-                    ->where('is_active', true)
-                    ->where('is_default', true)
-                    ->value('id'),
-                'submission_token' => (string) Str::uuid(),
-                'fiscal_year' => [
-                    'title' => $fiscalYear->title,
-                    'starts_on' => $fiscalYear->starts_on->toDateString(),
-                    'ends_on' => $fiscalYear->ends_on->toDateString(),
-                ],
-            ],
-            'warehouses' => $branch->warehouses()
-                ->where('is_active', true)
-                ->orderByDesc('is_default')
-                ->orderBy('name')
-                ->get(['id', 'name', 'is_default']),
-        ]);
+    public function edit(Request $request, Invoice $invoice): Response
+    {
+        abort_unless($request->user()?->canManagePurchases(), 403);
+        $this->assertDraftPurchaseInvoice($invoice);
+
+        return $this->renderPurchaseForm($invoice, app(BusinessClock::class));
     }
 
     public function store(PurchaseInvoiceRequest $request, PurchaseService $purchases): RedirectResponse
@@ -180,6 +158,44 @@ class PurchaseInvoiceController extends Controller
         ]);
 
         return to_route('purchases.show', $invoice);
+    }
+
+    public function update(
+        UpdatePurchaseInvoiceRequest $request,
+        Invoice $invoice,
+        PurchaseService $purchases,
+    ): RedirectResponse {
+        $this->assertDraftPurchaseInvoice($invoice);
+        $data = $request->validated();
+
+        try {
+            $updated = $purchases->updateDraft(
+                $invoice,
+                [
+                    'store_id' => $invoice->store_id,
+                    'branch_id' => $invoice->branch_id,
+                    'fiscal_year_id' => $invoice->fiscal_year_id,
+                    'supplier_id' => (int) $data['supplier_id'],
+                    'invoice_date' => $data['invoice_date'],
+                    'due_date' => $data['due_date'] ?? null,
+                    'notes' => $data['notes'] ?? null,
+                    'created_by' => $invoice->created_by,
+                ],
+                $data['items'],
+                $data['additional_costs'] ?? [],
+            );
+        } catch (DomainException $exception) {
+            throw ValidationException::withMessages([
+                'purchase' => $exception->getMessage(),
+            ]);
+        }
+
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => "پیش‌نویس خرید {$updated->invoice_number} ذخیره شد.",
+        ]);
+
+        return to_route('purchases.show', $updated);
     }
 
     public function show(
@@ -318,14 +334,99 @@ class PurchaseInvoiceController extends Controller
         return to_route('purchases.index');
     }
 
+    private function renderPurchaseForm(?Invoice $invoice, BusinessClock $clock): Response
+    {
+        $store = $this->mainStore();
+        $branch = $this->defaultBranch($store);
+        $fiscalYear = $invoice !== null
+            ? $invoice->fiscalYear
+            : $this->currentFiscalYear($store);
+        $invoiceDate = $invoice?->invoice_date->toDateString() ?? max(
+            $fiscalYear->starts_on->toDateString(),
+            min(
+                $fiscalYear->ends_on->toDateString(),
+                $clock->today($store)->toDateString(),
+            ),
+        );
+        $warehouses = $branch->warehouses()
+            ->where('is_active', true)
+            ->orderByDesc('is_default')
+            ->orderBy('name')
+            ->get(['id', 'name', 'is_default']);
+        $defaultWarehouse = $warehouses->firstWhere('is_default', true);
+
+        if ($defaultWarehouse === null) {
+            $defaultWarehouse = $warehouses->first();
+        }
+
+        $invoice?->load(['supplier.party', 'items.product', 'additionalCosts']);
+        $party = $invoice === null ? null : $invoice->partyIdentity();
+
+        return Inertia::render('purchases/Create', [
+            'invoice' => $invoice === null ? null : [
+                'id' => $invoice->id,
+                'invoice_number' => $invoice->invoice_number,
+                'invoice_date' => $invoice->invoice_date->toDateString(),
+                'due_date' => $invoice->due_date?->toDateString(),
+                'notes' => $invoice->notes,
+                'supplier' => [
+                    'id' => $invoice->supplier->id,
+                    'code' => $party['code'],
+                    'name' => $party['name'],
+                    'phone' => $party['phone'],
+                    'payment_terms' => $invoice->supplier->payment_terms,
+                    'lead_time_days' => $invoice->supplier->lead_time_days,
+                ],
+                'items' => $invoice->items->map(fn ($item): array => [
+                    'id' => $item->id,
+                    'product_id' => (int) $item->product_id,
+                    'code' => $item->product_code,
+                    'name' => $item->product_name,
+                    'unit' => $item->unit,
+                    'quantity' => $item->quantity,
+                    'unit_price' => $item->unit_price,
+                    'discount_amount' => $item->discount_amount,
+                    'tax_rate' => $item->tax_rate,
+                    'track_batches' => (bool) $item->product?->track_batches,
+                    'track_serials' => (bool) $item->product?->track_serials,
+                    'batch_number' => $item->purchase_batch_number,
+                    'expiry_date' => $item->purchase_expiry_date?->toDateString(),
+                    'serial_numbers' => $item->purchase_serial_numbers ?? [],
+                ])->values()->all(),
+                'additional_costs' => $invoice->additionalCosts->map(fn ($cost): array => [
+                    'description' => $cost->description,
+                    'amount' => $cost->amount,
+                ])->values()->all(),
+            ],
+            'defaults' => [
+                'invoice_date' => $invoiceDate,
+                'due_date' => $invoice?->due_date?->toDateString() ?? '',
+                'warehouse_id' => $defaultWarehouse?->id,
+                'submission_token' => (string) Str::uuid(),
+                'fiscal_year' => [
+                    'title' => $fiscalYear->title,
+                    'starts_on' => $fiscalYear->starts_on->toDateString(),
+                    'ends_on' => $fiscalYear->ends_on->toDateString(),
+                ],
+            ],
+            'warehouses' => $warehouses,
+        ]);
+    }
+
     private function assertPurchaseInvoice(Invoice $invoice): void
     {
         abort_unless(
             $invoice->type === InvoiceType::Purchase
-            && $invoice->store_id === $this->mainStore()->id
-            && $invoice->branch_id === $this->defaultBranch($this->mainStore())->id,
+            && (int) $invoice->store_id === (int) $this->mainStore()->id
+            && (int) $invoice->branch_id === (int) $this->defaultBranch($this->mainStore())->id,
             404,
         );
+    }
+
+    private function assertDraftPurchaseInvoice(Invoice $invoice): void
+    {
+        $this->assertPurchaseInvoice($invoice);
+        abort_unless($invoice->status === InvoiceStatus::Draft, 404);
     }
 
     private function mainStore(): Store

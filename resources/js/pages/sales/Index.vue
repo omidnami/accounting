@@ -7,6 +7,7 @@ import {
     FileClock,
     FileText,
     FilterX,
+    PencilLine,
     Plus,
     Search,
     ShoppingCart,
@@ -15,6 +16,7 @@ import { reactive } from 'vue';
 import { Button } from '@/components/ui/button';
 import {
     create as createSale,
+    edit as editSale,
     index as salesIndex,
     show as showSale,
 } from '@/routes/sales';
@@ -369,17 +371,33 @@ defineOptions({
                                 </span>
                             </td>
                             <td class="px-5 py-4 text-left">
-                                <Button
-                                    as-child
-                                    variant="ghost"
-                                    size="sm"
-                                    class="rounded-lg"
+                                <div
+                                    class="flex items-center justify-end gap-1"
                                 >
-                                    <Link :href="showSale(invoice.id)">
-                                        مشاهده
-                                        <ChevronLeft class="size-4" />
-                                    </Link>
-                                </Button>
+                                    <Button
+                                        as-child
+                                        variant="ghost"
+                                        size="sm"
+                                        class="rounded-lg"
+                                    >
+                                        <Link :href="showSale(invoice.id)">
+                                            مشاهده
+                                            <ChevronLeft class="size-4" />
+                                        </Link>
+                                    </Button>
+                                    <Button
+                                        v-if="invoice.status === 'draft'"
+                                        as-child
+                                        variant="ghost"
+                                        size="sm"
+                                        class="rounded-lg"
+                                    >
+                                        <Link :href="editSale(invoice.id)">
+                                            <PencilLine class="size-4" />
+                                            ویرایش
+                                        </Link>
+                                    </Button>
+                                </div>
                             </td>
                         </tr>
                     </tbody>

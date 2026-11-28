@@ -7,6 +7,7 @@ import {
     Check,
     CircleAlert,
     FileText,
+    PencilLine,
     Printer,
     Trash2,
     Warehouse,
@@ -19,6 +20,7 @@ import {
     confirm as confirmPurchase,
     create as createPurchase,
     destroy as destroyPurchase,
+    edit as editPurchase,
     index as purchasesIndex,
 } from '@/routes/purchases';
 import { create as createPayment } from '@/routes/payments';
@@ -174,7 +176,12 @@ defineOptions({
                         }}
                     </p>
                 </div>
-                <div class="flex gap-2 print:hidden">
+                <div class="flex flex-wrap gap-2 print:hidden">
+                    <Button v-if="isDraft" as-child variant="outline">
+                        <Link :href="editPurchase(invoice.id)">
+                            <PencilLine class="size-4" /> ویرایش پیش‌نویس
+                        </Link>
+                    </Button>
                     <Button variant="outline" @click="printInvoice">
                         <Printer class="size-4" /> چاپ
                     </Button>

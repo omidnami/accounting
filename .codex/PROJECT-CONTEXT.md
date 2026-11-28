@@ -1,8 +1,8 @@
 # حساب‌یار - مستند مرجع پروژه
 
-آخرین به‌روزرسانی: ۲۰۲۶-۱۱-۲۶
+آخرین به‌روزرسانی: ۲۰۲۶-۱۱-۲۸
 
-## نقطهٔ ادامهٔ جلسهٔ بعد — پایان کار ۲۰۲۶-۱۱-۲۶
+## نقطهٔ ادامهٔ جلسهٔ بعد — پایان کار ۲۰۲۶-۱۱-۲۸
 
 این بخش آخرین تصمیم‌های کاربر و نقطهٔ شروع چت بعدی است. بخش‌های نقشهٔ راه
 پایین سند، مجوز شروع خودکار توسعه نیستند.
@@ -10,7 +10,8 @@
 ### وضعیت تحویل
 
 - مخزن: `omidnami/accounting`، شاخهٔ `main`.
-- آخرین کامیت کد/تست: `c026f7b` — بستن کامل B02، B06، B09، B23، B27، B30، B33، B38 و B39.
+- آخرین تغییر کد/تست: رفع باگهای گزارش‌شدهٔ کالا، موجودی، ویرایش پیش‌نویس
+  فروش/خرید و یکسان‌سازی snapshot مشتری POS/فروش.
 - ممیزی عمیق بخش ۱ در `.codex/project-audit-and-roadmap.md` با وضعیت اجرا به‌روز شد.
 - P1 اصلی، First-run، backup/restore، خدمت/غیرانباری، موجودی افتتاحیه، refund،
   tenant resolver، module registry و outbox پیاده‌سازی شدند.
@@ -18,11 +19,14 @@
   aging صفحه‌بندی/SQL aggregation دارند، دفتر کل و جریان نقد با UI و export اضافه شدند.
 - همهٔ موارد P2 بخش ۱ (B01–B46) بسته شدند؛ B30 اکنون برای هر ۷۲ سرویس
   ارجاع تست مستقیم دارد.
-- SQLite: ۵۸۲ تست موفق و ۵۰۶۵ assertion. MariaDB 10.11: ۵۸۱ موفق،
-  ۵۰۵۸ assertion و یک skip مخصوص SQLite. ۹ تست هم‌زمانی با ۳۵ assertion سبز است.
+- باگهای گزارش‌شده نیز رفع شدند: برچسب رنگ/سایز و لینک ویرایش کالا، پیام
+  صریح نبود موجودی، ویرایش پیش‌نویس فروش/خرید و snapshot creation-time مشتری
+  در POS و فروش عادی. backfill امن فاکتورهای قدیمی از Audit اضافه شد.
+- SQLite: ۶۱۱ تست موفق و ۵۴۲۲ assertion. MariaDB 10.11: ۶۱۰ موفق،
+  ۵۴۱۵ assertion و یک skip مخصوص SQLite. ۹ تست هم‌زمانی با ۳۵ assertion سبز است.
 - Pint، PHPStan، TypeScript، `npm run check` و build سبزند.
-- CI نهایی روی MySQL 8.4 و MariaDB 11.4 با migrations و ۹ تست هم‌زمانی سبز است:
-  [Run 45814039151](https://github.com/omidnami/accounting/actions/runs/45814039151).
+- CI پایهٔ قبلی روی MySQL 8.4 و MariaDB 11.4 سبز بود؛ CI این اصلاحات پس از
+  push نهایی بررسی می‌شود.
 - backup/restore واقعی روی MariaDB با marker داده تأیید شد.
 - MVP هنوز برای تگ نسخهٔ ۱ تأیید نشده است؛ بدون درخواست صریح کاربر تگ نزن.
 - آزمون production راست‌چین و چاپگر واقعی هنوز انجام نشده است؛ تست دستی
@@ -88,12 +92,17 @@
    طرف‌حساب در اسناد نهایی و تطبیق دقیق allocationهای Batch/Serial.
 10. migrationهای `000002`، `000003`، `000010` و `000011` روی SQLite و MariaDB
     آزموده شدند؛ rollback snapshotها هنگام وجود داده نهایی مسدود است.
+11. باگهای گزارش کاربر رفع شدند: «سایز» و لینک edit کالا، پیام صریح نبود
+    موجودی، ویرایش پیش‌نویس فروش/خرید، snapshot نام مشتری در زمان ایجاد فاکتور،
+    نمایش یکسان در POS و command `sales:backfill-party-snapshots` با dry-run/apply.
+    روی دادهٔ محلی، سه فاکتور قدیمی POS-CASH با Audit به نام «مشتری نقدی صندوق»
+    backfill شدند و اجرای دوم هیچ تغییری ایجاد نکرد.
 
 ### ادامهٔ موردنظر کاربر
 
-همهٔ اصلاحات خواسته‌شدهٔ بخش ۱ انجام شده است. مرحلهٔ بعد پذیرش دستی کاربر در
-Chrome و Firefox است؛ checklist در `README.md` قرار دارد. قابلیت جدید یا ممیزی
-خودکار شروع نشود و تا تأیید دستی، تگ نسخهٔ ۱ زده نمی‌شود.
+همهٔ اصلاحات خواسته‌شده انجام شده است. کاربر ابتدا همین باگها را در Chrome و
+Firefox دوباره تست می‌کند؛ checklist در `README.md` قرار دارد. قابلیت جدید یا
+ممیزی خودکار شروع نشود و تا تأیید دستی، تگ نسخهٔ ۱ زده نمی‌شود.
 
 مارکت‌پلیس، چندشعبه‌ای و امکانات نسخه‌های بعدی فعلاً شروع نشوند. هزینه‌های
 عمومی در MVP با سند دستی `/journals/create` ثبت می‌شوند. دریافت فاکتور فروش
@@ -123,6 +132,9 @@ Chrome و Firefox است؛ checklist در `README.md` قرار دارد. قاب�
   `PrintStationService.php` و `resources/js/components/settings/PrintStations.vue`
 - B30/B38/B39: تست‌های `tests/Feature/Accounting/*Service*Test.php`،
   `PartySnapshotService.php` و `InventoryService.php`
+- باگهای گزارش‌شده: `SalesService::updateDraft`، `PurchaseService::updateDraft`،
+  `UpdateSalesInvoiceRequest.php`، `UpdatePurchaseInvoiceRequest.php`،
+  `PosController.php` و `BackfillSalesInvoicePartySnapshots.php`
 
 ### فرمان دریافت تغییرات کد
 
@@ -392,18 +404,17 @@ Business logic باید در Service بماند. برای تغییرات درخ�
 ## وضعیت Git و کیفیت
 
 - شاخهٔ مرجع: `main` در `omidnami/accounting`.
-- آخرین کامیت کد/تست: `c026f7b` — بستن کامل B02/B06/B09/B23/B27/B30/B33/B38/B39.
+- آخرین تغییر کد/تست: رفع باگهای کالا/موجودی/پیش‌نویس و snapshot POS/فروش.
 - commit و push این تغییرات با مجوز کاربر انجام شده‌اند؛ مجوز برای تغییرات
   درخواستی برقرار است. برای کار خارج از دامنه، از روی نقشهٔ راه اقدام نکن.
-- CI نهایی برای `c026f7b` موفق است:
+- CI پایهٔ `c026f7b` موفق بود:
   [Run 45814039151](https://github.com/omidnami/accounting/actions/runs/45814039151).
-  هر دو job مربوط به MySQL و MariaDB، migrations، `composer ci:check` و
-  ۹ تست هم‌زمانی را موفق اجرا کردند.
+  CI این اصلاحات پس از push نهایی بررسی می‌شود.
 
 آخرین اجرای محلی تأییدشده:
 
-- SQLite: ۵۸۲ تست موفق و ۵۰۶۵ assertion.
-- MariaDB 10.11: ۵۸۱ تست موفق، ۵۰۵۸ assertion و یک skip مخصوص SQLite.
+- SQLite: ۶۱۱ تست موفق و ۵۴۲۲ assertion.
+- MariaDB 10.11: ۶۱۰ تست موفق، ۵۴۱۵ assertion و یک skip مخصوص SQLite.
 - Integration: ۹ تست هم‌زمانی و ۳۵ assertion روی MariaDB.
 - Pint، PHPStan با صفر خطا، lint، Vue type-check و Build موفق.
 - تست‌های Node: ۴ تقویم و ۱۱ صندوق/POS موفق.

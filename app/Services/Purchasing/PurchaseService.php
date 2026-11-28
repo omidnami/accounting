@@ -123,125 +123,9 @@ class PurchaseService
                     'total' => '0.00',
                 ]);
 
-                $subtotal = '0.00';
-                $discountTotal = '0.00';
-                $taxTotal = '0.00';
-                $total = '0.00';
-                $normalizedAdditionalCosts = $this->normalizedAdditionalCosts($additionalCosts);
-
-                foreach ($normalizedAdditionalCosts as $index => $cost) {
-                    $invoice->additionalCosts()->create([
-                        'description' => $cost['description'],
-                        'amount' => $cost['amount'],
-                        'sort_order' => $index + 1,
-                    ]);
-                }
-
-                foreach (array_values($items) as $index => $item) {
-                    $product = Product::query()->findOrFail((int) $item['product_id']);
-
-                    if (! $product->is_active) {
-                        throw new DomainException('کالای انتخاب‌شده غیرفعال است.');
-                    }
-
-                    if ($product->variants()->exists()) {
-                        throw new DomainException('کالای والد تنوع موجودی مستقل ندارد؛ یکی از تنوع‌ها را انتخاب کنید.');
-                    }
-
-                    $quantity = Decimal::normalize($item['quantity'], Decimal::QUANTITY_SCALE);
-
-                    if (! Decimal::isPositive($quantity)) {
-                        throw new DomainException('مقدار هر قلم خرید باید بزرگ‌تر از صفر باشد.');
-                    }
-
-                    $unitPrice = Decimal::normalize($item['unit_price'], Decimal::MONEY_SCALE);
-
-                    if (! Decimal::isPositive($unitPrice)) {
-                        throw new DomainException('قیمت واحد هر قلم خرید باید بزرگ‌تر از صفر باشد.');
-                    }
-
-                    $gross = Decimal::multiply($quantity, $unitPrice, Decimal::MONEY_SCALE);
-                    $discount = Decimal::normalize(
-                        $item['discount_amount'] ?? 0,
-                        Decimal::MONEY_SCALE,
-                    );
-
-                    if (Decimal::compare($discount, '0', Decimal::MONEY_SCALE) < 0) {
-                        throw new DomainException('تخفیف ردیف نمی‌تواند منفی باشد.');
-                    }
-
-                    if (Decimal::compare($discount, $gross, Decimal::MONEY_SCALE) > 0) {
-                        throw new DomainException('تخفیف ردیف نمی‌تواند از مبلغ ردیف بیشتر باشد.');
-                    }
-
-                    $taxRate = Decimal::normalize(
-                        $item['tax_rate'] ?? $product->tax_rate,
-                        Decimal::MONEY_SCALE,
-                    );
-
-                    if (Decimal::compare($taxRate, '0', Decimal::MONEY_SCALE) < 0
-                        || Decimal::compare($taxRate, '100', Decimal::MONEY_SCALE) > 0) {
-                        throw new DomainException('نرخ مالیات باید بین صفر و صد درصد باشد.');
-                    }
-
-                    $taxable = Decimal::subtract($gross, $discount, Decimal::MONEY_SCALE);
-                    $taxAmount = Decimal::divide(
-                        Decimal::multiply($taxable, $taxRate, 4),
-                        '100',
-                        Decimal::MONEY_SCALE,
-                    );
-                    $lineTotal = Decimal::add($taxable, $taxAmount, Decimal::MONEY_SCALE);
-
-                    $invoice->items()->create([
-                        'product_id' => $product->id,
-                        'product_code' => $product->code,
-                        'product_name' => $product->name,
-                        'unit' => $product->unit,
-                        'quantity' => $quantity,
-                        'unit_price' => $unitPrice,
-                        'discount_amount' => $discount,
-                        'tax_rate' => $taxRate,
-                        'tax_amount' => $taxAmount,
-                        'line_total' => $lineTotal,
-                        'sort_order' => $index + 1,
-                        'purchase_batch_number' => $item['batch_number'] ?? null,
-                        'purchase_expiry_date' => $item['expiry_date'] ?? null,
-                        'purchase_serial_numbers' => $item['serial_numbers'] ?? null,
-                    ]);
-
-                    $subtotal = Decimal::add($subtotal, $gross, Decimal::MONEY_SCALE);
-                    $discountTotal = Decimal::add($discountTotal, $discount, Decimal::MONEY_SCALE);
-                    $taxTotal = Decimal::add($taxTotal, $taxAmount, Decimal::MONEY_SCALE);
-                    $total = Decimal::add($total, $lineTotal, Decimal::MONEY_SCALE);
-                }
-
-                $invoice->forceFill([
-                    'subtotal' => $subtotal,
-                    'discount_total' => $discountTotal,
-                    'tax_total' => $taxTotal,
-                    'additional_cost_total' => array_reduce(
-                        $normalizedAdditionalCosts,
-                        fn (string $sum, array $cost): string => Decimal::add(
-                            $sum,
-                            $cost['amount'],
-                            Decimal::MONEY_SCALE,
-                        ),
-                        '0.00',
-                    ),
-                    'total' => Decimal::add(
-                        $total,
-                        array_reduce(
-                            $normalizedAdditionalCosts,
-                            fn (string $sum, array $cost): string => Decimal::add(
-                                $sum,
-                                $cost['amount'],
-                                Decimal::MONEY_SCALE,
-                            ),
-                            '0.00',
-                        ),
-                        Decimal::MONEY_SCALE,
-                    ),
-                ])->save();
+                $invoice->forceFill(
+                    $this->replaceDraftContents($invoice, $items, $additionalCosts),
+                )->save();
 
                 return $invoice->refresh()->load(['items', 'additionalCosts']);
             }, attempts: 3);
@@ -258,6 +142,85 @@ class PurchaseService
 
             throw $exception;
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     * @param  array<int, array<string, mixed>>  $items
+     * @param  array<int, mixed>  $additionalCosts
+     */
+    public function updateDraft(
+        Invoice $purchaseInvoice,
+        array $attributes,
+        array $items,
+        array $additionalCosts = [],
+    ): Invoice {
+        if ($items === []) {
+            throw new DomainException('فاکتور خرید باید حداقل یک قلم داشته باشد.');
+        }
+
+        return DB::transaction(function () use (
+            $purchaseInvoice,
+            $attributes,
+            $items,
+            $additionalCosts,
+        ): Invoice {
+            $invoice = Invoice::query()
+                ->whereKey($purchaseInvoice->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            if ($invoice->type !== InvoiceType::Purchase
+                || $invoice->status !== InvoiceStatus::Draft) {
+                throw new DomainException('فقط پیش‌نویس فاکتور خرید قابل ویرایش است.');
+            }
+
+            $supplier = Supplier::query()
+                ->with('party')
+                ->findOrFail((int) $attributes['supplier_id']);
+
+            if (! $supplier->is_active || ! $supplier->party?->is_active) {
+                throw new DomainException('تأمین‌کننده انتخاب‌شده فعال نیست.');
+            }
+
+            if ((int) $supplier->party->store_id !== (int) $invoice->store_id) {
+                throw new DomainException('تأمین‌کننده باید متعلق به فروشگاه فاکتور باشد.');
+            }
+
+            $this->periods->lockOpenPeriod(
+                (int) $invoice->store_id,
+                (int) $invoice->branch_id,
+                (int) $invoice->fiscal_year_id,
+                (string) $attributes['invoice_date'],
+            );
+
+            $updatedAttributes = [
+                'store_id' => (int) $invoice->store_id,
+                'branch_id' => (int) $invoice->branch_id,
+                'fiscal_year_id' => (int) $invoice->fiscal_year_id,
+                'supplier_id' => $supplier->id,
+                'invoice_number' => $invoice->invoice_number,
+                'parent_invoice_id' => $invoice->parent_invoice_id,
+                'invoice_date' => (string) $attributes['invoice_date'],
+                'due_date' => $attributes['due_date'] ?? null,
+                'notes' => $attributes['notes'] ?? null,
+                'created_by' => $invoice->created_by,
+            ];
+            $requestHash = IdempotencyHasher::hash('purchase.draft', $this->draftRequestPayload(
+                $updatedAttributes,
+                $items,
+                $additionalCosts,
+            ));
+            $totals = $this->replaceDraftContents($invoice, $items, $additionalCosts);
+
+            $invoice->forceFill([
+                ...$updatedAttributes,
+                ...$totals,
+                'idempotency_request_hash' => $requestHash,
+            ])->save();
+
+            return $invoice->refresh()->load(['items', 'additionalCosts']);
+        }, attempts: 3);
     }
 
     public function confirm(Invoice $invoice, int $warehouseId, User $approver): Invoice
@@ -503,6 +466,134 @@ class PurchaseService
 
             return $lockedInvoice->refresh()->load(['items', 'additionalCosts', 'supplier.party']);
         }, attempts: 3);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     * @param  array<int, mixed>  $additionalCosts
+     * @return array{subtotal: string, discount_total: string, tax_total: string, additional_cost_total: string, total: string}
+     */
+    private function replaceDraftContents(
+        Invoice $invoice,
+        array $items,
+        array $additionalCosts,
+    ): array {
+        if ($items === []) {
+            throw new DomainException('فاکتور خرید باید حداقل یک قلم داشته باشد.');
+        }
+
+        $invoice->items()->delete();
+        $invoice->additionalCosts()->delete();
+
+        $subtotal = '0.00';
+        $discountTotal = '0.00';
+        $taxTotal = '0.00';
+        $total = '0.00';
+        $normalizedAdditionalCosts = $this->normalizedAdditionalCosts($additionalCosts);
+
+        foreach ($normalizedAdditionalCosts as $index => $cost) {
+            $invoice->additionalCosts()->create([
+                'description' => $cost['description'],
+                'amount' => $cost['amount'],
+                'sort_order' => $index + 1,
+            ]);
+        }
+
+        foreach (array_values($items) as $index => $item) {
+            $product = Product::query()->findOrFail((int) $item['product_id']);
+
+            if (! $product->is_active) {
+                throw new DomainException('کالای انتخاب‌شده غیرفعال است.');
+            }
+
+            if ($product->variants()->exists()) {
+                throw new DomainException('کالای والد تنوع موجودی مستقل ندارد؛ یکی از تنوع‌ها را انتخاب کنید.');
+            }
+
+            $quantity = Decimal::normalize($item['quantity'], Decimal::QUANTITY_SCALE);
+
+            if (! Decimal::isPositive($quantity)) {
+                throw new DomainException('مقدار هر قلم خرید باید بزرگ‌تر از صفر باشد.');
+            }
+
+            $unitPrice = Decimal::normalize($item['unit_price'], Decimal::MONEY_SCALE);
+
+            if (! Decimal::isPositive($unitPrice)) {
+                throw new DomainException('قیمت واحد هر قلم خرید باید بزرگ‌تر از صفر باشد.');
+            }
+
+            $gross = Decimal::multiply($quantity, $unitPrice, Decimal::MONEY_SCALE);
+            $discount = Decimal::normalize(
+                $item['discount_amount'] ?? 0,
+                Decimal::MONEY_SCALE,
+            );
+
+            if (Decimal::compare($discount, '0', Decimal::MONEY_SCALE) < 0) {
+                throw new DomainException('تخفیف ردیف نمی‌تواند منفی باشد.');
+            }
+
+            if (Decimal::compare($discount, $gross, Decimal::MONEY_SCALE) > 0) {
+                throw new DomainException('تخفیف ردیف نمی‌تواند از مبلغ ردیف بیشتر باشد.');
+            }
+
+            $taxRate = Decimal::normalize(
+                $item['tax_rate'] ?? $product->tax_rate,
+                Decimal::MONEY_SCALE,
+            );
+
+            if (Decimal::compare($taxRate, '0', Decimal::MONEY_SCALE) < 0
+                || Decimal::compare($taxRate, '100', Decimal::MONEY_SCALE) > 0) {
+                throw new DomainException('نرخ مالیات باید بین صفر و صد درصد باشد.');
+            }
+
+            $taxable = Decimal::subtract($gross, $discount, Decimal::MONEY_SCALE);
+            $taxAmount = Decimal::divide(
+                Decimal::multiply($taxable, $taxRate, 4),
+                '100',
+                Decimal::MONEY_SCALE,
+            );
+            $lineTotal = Decimal::add($taxable, $taxAmount, Decimal::MONEY_SCALE);
+
+            $invoice->items()->create([
+                'product_id' => $product->id,
+                'product_code' => $product->code,
+                'product_name' => $product->name,
+                'unit' => $product->unit,
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'discount_amount' => $discount,
+                'tax_rate' => $taxRate,
+                'tax_amount' => $taxAmount,
+                'line_total' => $lineTotal,
+                'sort_order' => $index + 1,
+                'purchase_batch_number' => $item['batch_number'] ?? null,
+                'purchase_expiry_date' => $item['expiry_date'] ?? null,
+                'purchase_serial_numbers' => $item['serial_numbers'] ?? null,
+            ]);
+
+            $subtotal = Decimal::add($subtotal, $gross, Decimal::MONEY_SCALE);
+            $discountTotal = Decimal::add($discountTotal, $discount, Decimal::MONEY_SCALE);
+            $taxTotal = Decimal::add($taxTotal, $taxAmount, Decimal::MONEY_SCALE);
+            $total = Decimal::add($total, $lineTotal, Decimal::MONEY_SCALE);
+        }
+
+        $additionalCostTotal = array_reduce(
+            $normalizedAdditionalCosts,
+            fn (string $sum, array $cost): string => Decimal::add(
+                $sum,
+                $cost['amount'],
+                Decimal::MONEY_SCALE,
+            ),
+            '0.00',
+        );
+
+        return [
+            'subtotal' => $subtotal,
+            'discount_total' => $discountTotal,
+            'tax_total' => $taxTotal,
+            'additional_cost_total' => $additionalCostTotal,
+            'total' => Decimal::add($total, $additionalCostTotal, Decimal::MONEY_SCALE),
+        ];
     }
 
     /**

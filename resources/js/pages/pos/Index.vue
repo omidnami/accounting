@@ -1594,6 +1594,12 @@ onBeforeUnmount(() => {
                         <p class="mt-1 text-xs text-slate-500">
                             {{ sale.customer_name }}
                         </p>
+                        <p
+                            v-if="sale.customer_legacy_current"
+                            class="mt-1 text-[10px] text-amber-700 dark:text-amber-300"
+                        >
+                            هویت جاری (سند قدیمی)
+                        </p>
                     </div>
                     <div class="text-left">
                         <strong>{{ money(sale.total) }} ریال</strong>
@@ -1632,8 +1638,14 @@ onBeforeUnmount(() => {
                     ><DialogDescription
                         >فاکتور {{ lastSale?.invoice_number }} ·
                         {{ lastSale?.customer_name }}</DialogDescription
-                    ></DialogHeader
-                >
+                    >
+                    <p
+                        v-if="lastSale?.customer_legacy_current"
+                        class="text-center text-[11px] text-amber-700 dark:text-amber-300"
+                    >
+                        هویت جاری (سند قدیمی)
+                    </p>
+                </DialogHeader>
                 <div v-if="lastSale" class="space-y-4">
                     <div class="pos-payment-total justify-center">
                         <strong class="text-3xl"

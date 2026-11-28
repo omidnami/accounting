@@ -2,7 +2,6 @@
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import {
     ArrowRight,
-    Building2,
     Check,
     ChevronLeft,
     CircleAlert,
@@ -19,13 +18,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { normalizeNumber, parseNumber } from '@/lib/number';
+import { normalizeNumber } from '@/lib/number';
 import { amountNumber, cents, grossCents, taxCents } from '@/lib/decimal';
 import lookups from '@/routes/purchases/lookups';
 import {
-    create as createPurchase,
     index as purchasesIndex,
     store as storePurchase,
+    update as updatePurchase,
 } from '@/routes/purchases';
 
 type SupplierOption = {
@@ -68,8 +67,33 @@ type AdditionalCost = {
     description: string;
     amount: string;
 };
+type PurchaseInvoiceItem = {
+    id: number;
+    product_id: number;
+    code: string | null;
+    name: string;
+    unit: string;
+    quantity: string;
+    unit_price: string;
+    discount_amount: string;
+    tax_rate: string;
+    track_batches: boolean;
+    track_serials: boolean;
+    batch_number: string | null;
+    expiry_date: string | null;
+    serial_numbers: string[];
+};
+type PurchaseInvoice = {
+    id: number;
+    invoice_number: string;
+    supplier: SupplierOption;
+    notes: string | null;
+    items: PurchaseInvoiceItem[];
+    additional_costs: AdditionalCost[];
+};
 
 const props = defineProps<{
+    invoice: PurchaseInvoice | null;
     defaults: {
         invoice_date: string;
         due_date: string;
@@ -80,14 +104,33 @@ const props = defineProps<{
     warehouses: Array<{ id: number; name: string; is_default: boolean }>;
 }>();
 
+const isEditing = computed(() => props.invoice !== null);
+const lineFromInvoice = (item: PurchaseInvoiceItem): Line => ({
+    row_id: `invoice-item-${item.id}`,
+    product_id: item.product_id,
+    code: item.code ?? '',
+    name: item.name,
+    unit: item.unit,
+    stock_quantity: '',
+    quantity: item.quantity,
+    unit_price: item.unit_price,
+    discount_amount: item.discount_amount,
+    tax_rate: item.tax_rate,
+    track_batches: item.track_batches,
+    track_serials: item.track_serials,
+    batch_number: item.batch_number ?? '',
+    expiry_date: item.expiry_date ?? '',
+    serial_numbers_text: item.serial_numbers.join('\n'),
+});
 const form = useForm({
     submission_token: props.defaults.submission_token,
-    supplier_id: '',
+    supplier_id: props.invoice?.supplier.id.toString() ?? '',
     invoice_date: props.defaults.invoice_date,
     due_date: props.defaults.due_date,
-    notes: '',
-    items: [] as Line[],
-    additional_costs: [] as AdditionalCost[],
+    notes: props.invoice?.notes ?? '',
+    items: props.invoice?.items.map(lineFromInvoice) ?? [],
+    additional_costs:
+        props.invoice?.additional_costs.map((cost) => ({ ...cost })) ?? [],
 });
 watch(
     () => form.invoice_date,
@@ -98,7 +141,9 @@ watch(
     },
 );
 const warehouseId = ref(props.defaults.warehouse_id?.toString() ?? '');
-const selectedSupplier = ref<SupplierOption | null>(null);
+const selectedSupplier = ref<SupplierOption | null>(
+    props.invoice?.supplier ?? null,
+);
 const supplierSearch = ref('');
 const suppliers = ref<SupplierOption[]>([]);
 const supplierLoading = ref(false);
@@ -294,8 +339,9 @@ const submit = () => {
         return;
     }
 
-    form.transform((data) => ({
+    const request = form.transform((data) => ({
         ...data,
+        submission_token: props.invoice ? undefined : data.submission_token,
         items: data.items.map((line) => ({
             product_id: line.product_id,
             quantity: normalizeNumber(line.quantity),
@@ -315,21 +361,36 @@ const submit = () => {
                 description: cost.description.trim(),
                 amount: normalizeNumber(cost.amount),
             })),
-    })).post(storePurchase().url, { preserveScroll: true });
+    }));
+
+    if (props.invoice) {
+        request.put(updatePurchase(props.invoice.id).url, {
+            preserveScroll: true,
+        });
+    } else {
+        request.post(storePurchase().url, { preserveScroll: true });
+    }
 };
 
 defineOptions({
     layout: {
         breadcrumbs: [
             { title: 'خرید و تأمین', href: purchasesIndex() },
-            { title: 'خرید جدید', href: createPurchase() },
+            {
+                title: 'فاکتور خرید',
+                href: purchasesIndex(),
+            },
         ],
     },
 });
 </script>
 
 <template>
-    <Head title="خرید جدید" />
+    <Head
+        :title="
+            invoice ? `ویرایش پیش‌نویس ${invoice.invoice_number}` : 'خرید جدید'
+        "
+    />
 
     <div class="mx-auto w-full max-w-7xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
         <section
@@ -344,8 +405,18 @@ defineOptions({
                         <span class="text-xs font-bold">فاکتور خرید</span>
                     </div>
                     <h1 class="text-2xl font-black sm:text-3xl">
-                        ساخت پیش‌نویس خرید
+                        {{
+                            isEditing
+                                ? 'ویرایش پیش‌نویس خرید'
+                                : 'ساخت پیش‌نویس خرید'
+                        }}
                     </h1>
+                    <p
+                        v-if="invoice"
+                        class="mt-2 font-mono text-xs text-muted-foreground"
+                    >
+                        {{ invoice.invoice_number }}
+                    </p>
                     <p class="mt-2 text-sm text-muted-foreground">
                         سال مالی {{ defaults.fiscal_year.title }} · ورود انبار
                         هنگام تأیید نهایی انجام می‌شود.
@@ -554,13 +625,16 @@ defineOptions({
                                     <p
                                         class="mt-1 text-[10px] text-muted-foreground"
                                     >
-                                        {{ line.code }} · موجودی فعلی
-                                        {{
-                                            quantity.format(
-                                                Number(line.stock_quantity),
-                                            )
-                                        }}
-                                        {{ line.unit }}
+                                        {{ line.code }}
+                                        <span v-if="line.stock_quantity">
+                                            · موجودی فعلی
+                                            {{
+                                                quantity.format(
+                                                    Number(line.stock_quantity),
+                                                )
+                                            }}
+                                            {{ line.unit }}
+                                        </span>
                                     </p>
                                 </div>
                                 <Button
@@ -862,8 +936,13 @@ defineOptions({
                         :disabled="form.processing"
                     >
                         <Spinner v-if="form.processing" />
+                        <Check v-else-if="isEditing" class="size-4" />
                         <Plus v-else class="size-4" />
-                        ثبت پیش‌نویس خرید
+                        {{
+                            isEditing
+                                ? 'ذخیره پیش‌نویس خرید'
+                                : 'ثبت پیش‌نویس خرید'
+                        }}
                     </Button>
                 </section>
                 <section
