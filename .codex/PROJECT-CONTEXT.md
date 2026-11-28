@@ -10,8 +10,8 @@
 ### وضعیت تحویل
 
 - مخزن: `omidnami/accounting`، شاخهٔ `main`.
-- آخرین تغییر کد/تست: رفع باگهای گزارش‌شدهٔ کالا، موجودی، ویرایش پیش‌نویس
-  فروش/خرید و یکسان‌سازی snapshot مشتری POS/فروش.
+- آخرین کامیت کد/تست: `4d7c92a` — رفع باگهای گزارش‌شدهٔ کالا، موجودی،
+  ویرایش پیش‌نویس فروش/خرید و یکسان‌سازی snapshot مشتری POS/فروش.
 - ممیزی عمیق بخش ۱ در `.codex/project-audit-and-roadmap.md` با وضعیت اجرا به‌روز شد.
 - P1 اصلی، First-run، backup/restore، خدمت/غیرانباری، موجودی افتتاحیه، refund،
   tenant resolver، module registry و outbox پیاده‌سازی شدند.
@@ -25,8 +25,8 @@
 - SQLite: ۶۱۱ تست موفق و ۵۴۲۲ assertion. MariaDB 10.11: ۶۱۰ موفق،
   ۵۴۱۵ assertion و یک skip مخصوص SQLite. ۹ تست هم‌زمانی با ۳۵ assertion سبز است.
 - Pint، PHPStan، TypeScript، `npm run check` و build سبزند.
-- CI پایهٔ قبلی روی MySQL 8.4 و MariaDB 11.4 سبز بود؛ CI این اصلاحات پس از
-  push نهایی بررسی می‌شود.
+- CI نهایی روی MySQL 8.4 و MariaDB 11.4 با migrations و ۹ تست هم‌زمانی سبز است:
+  [Run 46133769536](https://github.com/omidnami/accounting/actions/runs/46133769536).
 - backup/restore واقعی روی MariaDB با marker داده تأیید شد.
 - MVP هنوز برای تگ نسخهٔ ۱ تأیید نشده است؛ بدون درخواست صریح کاربر تگ نزن.
 - آزمون production راست‌چین و چاپگر واقعی هنوز انجام نشده است؛ تست دستی
@@ -404,12 +404,13 @@ Business logic باید در Service بماند. برای تغییرات درخ�
 ## وضعیت Git و کیفیت
 
 - شاخهٔ مرجع: `main` در `omidnami/accounting`.
-- آخرین تغییر کد/تست: رفع باگهای کالا/موجودی/پیش‌نویس و snapshot POS/فروش.
+- آخرین کامیت کد/تست: `4d7c92a` — رفع باگهای کالا/موجودی/پیش‌نویس و snapshot POS/فروش.
 - commit و push این تغییرات با مجوز کاربر انجام شده‌اند؛ مجوز برای تغییرات
   درخواستی برقرار است. برای کار خارج از دامنه، از روی نقشهٔ راه اقدام نکن.
-- CI پایهٔ `c026f7b` موفق بود:
-  [Run 45814039151](https://github.com/omidnami/accounting/actions/runs/45814039151).
-  CI این اصلاحات پس از push نهایی بررسی می‌شود.
+- CI نهایی برای `4d7c92a` موفق است:
+  [Run 46133769536](https://github.com/omidnami/accounting/actions/runs/46133769536).
+  هر دو job مربوط به MySQL و MariaDB، migrations، `composer ci:check` و
+  ۹ تست هم‌زمانی را موفق اجرا کردند.
 
 آخرین اجرای محلی تأییدشده:
 

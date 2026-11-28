@@ -61,9 +61,9 @@ B19/B46 و بستن کامل P2 انجام شد. علائم: ✅ اصلاح‌ش
 - `composer audit --locked` و `npm audit --omit=dev`: بدون advisory.
 - `composer ci:check` سبز است.
 - migration کامل روی MariaDB 10.11 محلی موفق بود.
-- CI پایهٔ `c026f7b` روی MySQL 8.4 و MariaDB 11.4 موفق بود:
-  [Run 45814039151](https://github.com/omidnami/accounting/actions/runs/45814039151).
-  CI این اصلاحات پس از push نهایی بررسی می‌شود.
+- CI نهایی روی MySQL 8.4 و MariaDB 11.4 برای `4d7c92a`:
+  [Run 46133769536](https://github.com/omidnami/accounting/actions/runs/46133769536).
+  هر دو job، migrations، `composer ci:check` و ۹ تست هم‌زمانی را موفق اجرا کردند.
 - backup/restore واقعی دیتابیس روی MariaDB با marker داده موفق بود.
 
 ---
